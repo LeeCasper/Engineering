@@ -1,0 +1,184 @@
+'use strict'
+
+/**
+ * C 端个人中心（C-5.1 ~ C-5.6 / AC-U01 ~ AC-U05、AC-U14 ~ AC-U16）。
+ *
+ * ── 与 miniAuth.service 的分工 ──
+ * `miniAuth.service` 管的是**账号身份**（登录、绑手机号、注销）；
+ * 本模块管的是**用户在项目里的样子**（资料与角色、专属统计、联系人）。
+ * 两者都会回用户信息，但前者的视角是「你是谁」，后者是「你在某个项目里是谁」。
+ */
+
+const AppError = require('../utils/AppError')
+const datetime = require('../utils/datetime')
+const db = require('../db/pool')
+const userModel = require('../models/user.model')
+const projectMemberModel = require('../models/projectMember.model')
+const miniAuthService = require('./miniAuth.service')
+
+const ROLE_LABELS = { foreman: '工长', supervisor: '监理', owner: '业主' }
+
+/**
+ * 个人资料（AC-U01 / AC-U02）。
+ *
+ * ── projectId 是可选的，这决定了角色的语义 ──
+ * 「所属角色」在 C-5.1 里是资料的一部分，但本系统的角色**是按项目判定的**
+ * （同一个人可以是 A 项目的业主、B 项目的工长）。因此传了 projectId
+ * 就回该项目里的角色，不传则为 null —— 而不是随便挑一个项目当默认值：
+ * 挑错项目会让界面显示一个他在当前项目里根本没有的权限。
+ *
+ * ── 传了不是自己项目的 id 时返回 role: null，不是 404 ──
+ * AC-P26 要求 C 端不泄露项目是否存在。若「不是成员」返回 403/404 而
+ * 「项目不存在」返回另一种，两者一比就能探出某个 id 是否真实存在。
+ */
+async function getProfile(userId, { projectId } = {}) {
+  const user = await userModel.findById(userId)
+  if (!user) throw AppError.notFound('用户不存在')
+
+  const profile = {
+    id: user.id,
+    nickname: user.nickname,
+    avatar: user.avatar,
+    // AC-U02：只回脱敏手机号，接口不做完整回显
+    phoneMasked: miniAuthService.maskPhone(user.phone),
+    hasPhone: Boolean(user.phone),
+    lastLoginAt: user.last_login_at,
+    projectId: projectId ?? null,
+    role: null,
+    roleLabel: null,
+    isPrimaryForeman: false,
+  }
+
+  if (!projectId) return profile
+
+  const member = await projectMemberModel.findActiveRole(projectId, userId)
+  if (!member) return profile
+
+  return {
+    ...profile,
+    role: member.role,
+    roleLabel: ROLE_LABELS[member.role] || member.role,
+    // 主工长标记（Q11）：界面上要能区分「工长」与「主工长」，
+    // 因为只有后者能发起验收 —— 不显示的话，普通工长会以为自己也能
+    isPrimaryForeman: member.is_primary === 1,
+  }
+}
+
+/**
+ * 工长专属统计（C-5.5 / AC-U14）：本月汇报数、待整改数、待验收数。
+ *
+ * ── 「我的」与「项目的」混用是有意的 ──
+ * 文档写的是「**我的**汇报统计」，但三项里只有第一项真的是「我的」：
+ *   - 本月汇报数：我提交的（确实是我的产出）
+ *   - 待整改数：本项目处于待整改的验收单（谁提交的都要整改）
+ *   - 待验收数：本项目正在流转中的验收单（多工长下，等的是别人也是等）
+ *
+ * 若后两项也按提交人过滤，普通工长（非主工长）看到的永远是 0 ——
+ * 因为只有主工长能发起验收（Q11）。对一个「待办」性质的数字来说，
+ * 恒为 0 比不展示更糟：他会以为自己没有待办。
+ *
+ * ── 统计口径必须与验收模块一致（AC-U14 的「与进度、验收模块的统计一致」）──
+ * 待整改取 `pending_rectify`，待验收取「已提交、还没走完」的两个环节，
+ * 两者都直接读 `acceptance.status`，不另设状态映射表。
+ */
+async function getMyStats(userId, projectId) {
+  const member = await projectMemberModel.findActiveRole(projectId, userId)
+  if (!member) throw AppError.notFound('项目不存在')
+
+  // C-5.5 明确是「工长专属」。其余角色拿到一份空统计没有意义，
+  // 反而会让前端以为「有数据但都是 0」
+  if (member.role !== 'foreman') {
+    throw AppError.forbidden('仅工长可查看汇报统计')
+  }
+
+  const monthStart = datetime.dayjs().startOf('month').format(datetime.DATETIME_FORMAT)
+  const monthEnd = datetime.dayjs().add(1, 'month').startOf('month').format(datetime.DATETIME_FORMAT)
+
+  const [reportCount, rectifyCount, pendingCount] = await Promise.all([
+    db.count(
+      `FROM progress_report
+        WHERE project_id = ? AND user_id = ? AND deleted_at IS NULL
+          AND created_at >= ? AND created_at < ?`,
+      [projectId, userId, monthStart, monthEnd]
+    ),
+    db.count(
+      "FROM acceptance WHERE project_id = ? AND status = 'pending_rectify' AND deleted_at IS NULL",
+      [projectId]
+    ),
+    db.count(
+      `FROM acceptance
+        WHERE project_id = ? AND status IN ('pending_supervisor', 'pending_owner') AND deleted_at IS NULL`,
+      [projectId]
+    ),
+  ])
+
+  return {
+    projectId,
+    month: monthStart.slice(0, 7),
+    monthReportCount: reportCount,
+    pendingRectifyCount: rectifyCount,
+    pendingAcceptanceCount: pendingCount,
+  }
+}
+
+/**
+ * 一键联系工长 / 监理（C-5.6 / AC-U15）。
+ *
+ * ── 为什么这里返回**完整手机号**，而 AC-U02 要求脱敏 ──
+ * AC-U02 约束的是「个人资料不做完整回显」—— 那说的是**用户自己**的资料页。
+ * AC-U15 的功能就是拨号，脱敏后的号码拨不出去。
+ *
+ * 两者的边界靠**可见范围**来守，而不是靠打码：
+ *   - 只有业主能调本接口（C-5.6 明确写「业主专属」）；
+ *   - 只返回本项目的工长与监理，不返回其他业主 —— 业主之间没有互相联系的需求，
+ *     而多业主的家庭住址、手机号彼此可见是明显的隐私问题；
+ *   - 成员关系本身就是可见性授权：被邀请进同一个项目，就意味着同意被对方联系。
+ *
+ * 不做读取留痕（与门锁密码不同）：门锁密码是物理安全凭证，泄露的后果是有人能进门；
+ * 手机号是项目内部的正常协作信息。为后者每次点按写一条审计日志，
+ * 只会把 operation_log 冲成噪音，让真正的变更记录淹没在里面。
+ */
+async function getContacts(userId, projectId) {
+  const member = await projectMemberModel.findActiveRole(projectId, userId)
+  if (!member) throw AppError.notFound('项目不存在')
+
+  if (member.role !== 'owner') {
+    throw AppError.forbidden('仅业主可查看工长与监理的联系方式')
+  }
+
+  const rows = await db.query(
+    `SELECT pm.role, pm.is_primary, u.nickname, u.phone
+       FROM project_member pm
+       JOIN user u ON u.id = pm.user_id AND u.deleted_at IS NULL AND u.status = 'active'
+      WHERE pm.project_id = ?
+        AND pm.role IN ('foreman', 'supervisor')
+        AND pm.status = 'active'
+        AND pm.deleted_at IS NULL
+      -- 主工长排最前：业主最常联系的是他，而「先联系谁」在界面上的默认顺序
+      -- 就是这个排序
+      ORDER BY FIELD(pm.role, 'foreman', 'supervisor'), pm.is_primary DESC, pm.id`,
+    [projectId]
+  )
+
+  // 没有手机号的成员不进列表：给了名字却拨不出去，界面上会变成一个点了没反应的按钮。
+  // 这种情况真实存在 —— 邀请时建的占位账号在对方绑定手机号之前是没有号码的
+  const contacts = rows
+    .filter((r) => r.phone)
+    .map((r) => ({
+      role: r.role,
+      roleLabel: ROLE_LABELS[r.role],
+      name: r.nickname || r.roleLabel,
+      phone: r.phone,
+      isPrimaryForeman: r.is_primary === 1,
+    }))
+
+  return {
+    projectId,
+    contacts,
+    // AC-U15：「项目未配置监理时不展示该入口」。给一个显式布尔值，
+    // 免得前端为了这一点去遍历数组判断角色
+    hasSupervisor: contacts.some((c) => c.role === 'supervisor'),
+  }
+}
+
+module.exports = { ROLE_LABELS, getProfile, getMyStats, getContacts }

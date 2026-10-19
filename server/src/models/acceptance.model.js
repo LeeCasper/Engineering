@@ -1,0 +1,304 @@
+'use strict'
+
+/**
+ * acceptance / acceptance_item / acceptance_flow 数据访问层。
+ *
+ * ── 关于 acceptance_flow 是只追加表（§6.2 / AC-A14 / AC-A26）──
+ * 「任何角色（含管理员）不得 UPDATE 或 DELETE」。MySQL 没有表级只读约束，
+ * 因此本模块**刻意不导出**任何针对 acceptance_flow 的 update / delete 方法。
+ *
+ * 想改验收流转记录的人会在这里找不到入口 —— 那就对了。
+ * 需要更正时应当新增一条记录并说明原因，而不是改历史（AC-N26 同理）。
+ */
+
+const db = require('../db/pool')
+
+/** 非终态。同一阶段存在这些状态中任意一张单时，不允许重复发起（AC-A03） */
+const OPEN_STATUSES = ['draft', 'pending_supervisor', 'pending_owner', 'pending_rectify']
+
+// ─────────────────────────────────────────────────────────────
+// 验收单
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 查某阶段当前未终结的验收单（AC-A03）。
+ *
+ * `FOR UPDATE` 是必需的：两个并发请求同时发起验收时，若只做普通查询，
+ * 双方都会读到「没有未终结单」并各自插入一张 —— 唯一索引在这里帮不上忙，
+ * 因为「未终结」是个状态条件而非唯一键。§6.2 明确要求该校验在事务内加锁执行。
+ */
+async function findOpenByStageForUpdate(tx, stageId) {
+  const rows = await tx.query(
+    `SELECT id, status FROM acceptance
+      WHERE project_stage_id = ? AND status IN (${OPEN_STATUSES.map(() => '?').join(', ')})
+        AND deleted_at IS NULL
+      FOR UPDATE`,
+    [stageId, ...OPEN_STATUSES]
+  )
+  return rows.length > 0 ? rows[0] : null
+}
+
+async function create(data, tx) {
+  const result = await tx.query(
+    `INSERT INTO acceptance
+       (project_id, project_stage_id, project_item_id, type, status, submitter_id, current_step, description)
+     VALUES (?, ?, ?, ?, 'draft', ?, 'self_check', ?)`,
+    [
+      data.projectId,
+      data.projectStageId ?? null,
+      data.projectItemId ?? null,
+      data.type,
+      data.submitterId,
+      data.description ?? null,
+    ]
+  )
+  return result.insertId
+}
+
+async function findById(id, tx = db) {
+  return tx.queryOne(
+    // photos 是迁移 010 新增的列。查询列表漏掉它不会报错，
+    // 只会让「现场照片」在所有读取路径上静默变成空数组 ——
+    // 而 AC-A18 要求报告 PDF 必须包含现场照片
+    `SELECT id, project_id, project_stage_id, project_item_id, type, status, submitter_id,
+            submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
+            signature_url, report_pdf_url, report_pdf_status, report_pdf_error, description, photos,
+            created_at, updated_at
+       FROM acceptance WHERE id = ? AND deleted_at IS NULL`,
+    [id]
+  )
+}
+
+/** 加锁读取，供状态流转使用（§6.2 要求行锁） */
+async function lockById(tx, id) {
+  const rows = await tx.query(
+    `SELECT id, project_id, project_stage_id, project_item_id, type, status, submitter_id,
+            submitted_at, current_step, step_entered_at, resubmit_count, finished_at
+       FROM acceptance WHERE id = ? AND deleted_at IS NULL FOR UPDATE`,
+    [id]
+  )
+  return rows.length > 0 ? rows[0] : null
+}
+
+/**
+ * 流转到下一个状态。
+ *
+ * `submitted_at` 只在这里首次写入 —— 它是「首次提交时刻」，永不变更（G-01）。
+ * 更新语句里用 `COALESCE(submitted_at, NOW())` 而不是 `NOW()`：
+ * 驳回后重新提交时，submitted_at 必须保持第一次的值，
+ * 否则 AC-A22 的 48 小时超时与 AC-AD39 的平均验收周期都会被最后一次重提的时间重置。
+ */
+async function transition(id, { status, currentStep, stepEnteredAt, isFirstSubmit = false, resubmitIncrement = false }, tx) {
+  const sets = ['status = ?', 'current_step = ?', 'step_entered_at = ?']
+  const params = [status, currentStep ?? null, stepEnteredAt ?? null]
+
+  if (isFirstSubmit) sets.push('submitted_at = COALESCE(submitted_at, NOW())')
+  if (resubmitIncrement) sets.push('resubmit_count = resubmit_count + 1')
+
+  params.push(id)
+  await tx.query(`UPDATE acceptance SET ${sets.join(', ')} WHERE id = ?`, params)
+}
+
+/** 验收通过：终态 + 签名 + 完成时间 */
+async function markPassed(id, { signatureUrl, finishedAt }, tx) {
+  await tx.query(
+    `UPDATE acceptance
+        SET status = 'passed', current_step = NULL, step_entered_at = NULL,
+            signature_url = ?, finished_at = ?
+      WHERE id = ?`,
+    [signatureUrl ?? null, finishedAt, id]
+  )
+}
+
+/** 更新 PDF 生成状态（AC-A19：失败要有可重试入口，但不能阻断状态流转） */
+async function updatePdfState(id, { status, url, error }) {
+  await db.query('UPDATE acceptance SET report_pdf_status = ?, report_pdf_url = ?, report_pdf_error = ? WHERE id = ?', [
+    status,
+    url ?? null,
+    error ?? null,
+    id,
+  ])
+}
+
+/** 更新验收说明（草稿阶段可改） */
+async function updateDescription(id, description, tx = db) {
+  await tx.query('UPDATE acceptance SET description = ? WHERE id = ?', [description, id])
+}
+
+// ─────────────────────────────────────────────────────────────
+// 验收项（自检清单）
+// ─────────────────────────────────────────────────────────────
+
+async function createItems(acceptanceId, names, tx) {
+  for (const [index, name] of names.entries()) {
+    await tx.query('INSERT INTO acceptance_item (acceptance_id, seq, name) VALUES (?, ?, ?)', [
+      acceptanceId,
+      index + 1,
+      name,
+    ])
+  }
+}
+
+async function listItems(acceptanceId, tx = db) {
+  return tx.query(
+    'SELECT id, seq, name, result, remark FROM acceptance_item WHERE acceptance_id = ? AND deleted_at IS NULL ORDER BY seq',
+    [acceptanceId]
+  )
+}
+
+/**
+ * 批量写入自检结果。
+ *
+ * @param {Array<{id: number, result: 'pass'|'fail'|null, remark?: string}>} results
+ */
+async function saveItemResults(acceptanceId, results, tx) {
+  for (const row of results) {
+    // 带上 acceptance_id 条件：itemId 是自增主键、可被枚举，
+    // 少了它就能改别的验收单的自检项
+    await tx.query('UPDATE acceptance_item SET result = ?, remark = ? WHERE id = ? AND acceptance_id = ?', [
+      row.result,
+      row.remark ?? null,
+      row.id,
+      acceptanceId,
+    ])
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 流转记录（只追加 —— 本模块不提供任何修改方法）
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 追加一条流转记录。
+ *
+ * 这是本模块对 acceptance_flow **唯一**的写操作。不要新增 update / delete ——
+ * AC-A14 要求「此前流转记录不被覆盖或删除」，AC-A26 要求「对任何角色只读」。
+ * 数据库层管不了这件事（MySQL 没有表级只读约束），只能靠这里不提供入口。
+ */
+async function appendFlow(
+  { acceptanceId, round, step, operatorId, action, reason, images },
+  tx = db
+) {
+  const result = await tx.query(
+    `INSERT INTO acceptance_flow (acceptance_id, round, step, operator_id, action, reason, images)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [acceptanceId, round, step, operatorId, action, reason ?? null, images ? JSON.stringify(images) : null]
+  )
+  return result.insertId
+}
+
+/** 某验收单的完整流转记录（AC-A09：按时间正序，可读成一条故事线） */
+async function listFlow(acceptanceId) {
+  return db.query(
+    `SELECT f.id, f.round, f.step, f.operator_id, f.action, f.reason, f.images, f.operated_at,
+            u.nickname
+       FROM acceptance_flow f
+       LEFT JOIN user u ON u.id = f.operator_id
+      WHERE f.acceptance_id = ?
+      ORDER BY f.round ASC, f.operated_at ASC, f.id ASC`,
+    [acceptanceId]
+  )
+}
+
+/**
+ * 某验收单当前是第几轮。
+ *
+ * ── 用 `resubmit_count + 1`，**不要**用 `MAX(round) + 1` ──
+ * 后者看似等价，实际是错的：同一轮里插入第二条记录时，
+ * `MAX(round)` 已经等于当前轮次，于是第二条起每条都被算成新的一轮 ——
+ * 一次「提交 + 驳回」会被拆成两轮，流程记录读起来完全错乱。
+ *
+ * `resubmit_count` 是「这张单被重新提交过几次」，它在一轮内是**恒定**的，
+ * 只有再次重新提交才递增。这正是轮次的定义。
+ */
+function currentRound(acceptance) {
+  return Number(acceptance.resubmit_count || 0) + 1
+}
+
+/** 是否有过驳回（AC-AD39 的驳回率统计口径） */
+async function hasRejection(acceptanceId) {
+  return db.count('FROM acceptance_flow WHERE acceptance_id = ? AND action = ?', [acceptanceId, 'reject'])
+}
+
+// ─────────────────────────────────────────────────────────────
+// 列表（AC-A23 的分组依据）
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 某项目下的验收单，含阶段名与提交人。
+ *
+ * 不分页：一个项目的验收单数量与阶段数同量级（几十条以内），
+ * 而列表要按「待我处理 / 进行中 / 已完成」分组统计角标 ——
+ * 分页会让分组计数变得没有意义（每页各算一次）。
+ */
+async function listByProject(projectId) {
+  return db.query(
+    `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
+            a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at, a.resubmit_count,
+            a.finished_at, a.signature_url, a.report_pdf_status, a.created_at,
+            s.name AS stage_name, i.name AS item_name,
+            u.nickname AS submitter_nickname,
+            (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count
+       FROM acceptance a
+       LEFT JOIN project_stage s ON s.id = a.project_stage_id
+       LEFT JOIN project_item i ON i.id = a.project_item_id
+       LEFT JOIN user u ON u.id = a.submitter_id
+      WHERE a.project_id = ? AND a.deleted_at IS NULL
+      ORDER BY a.id DESC`,
+    [projectId]
+  )
+}
+
+/**
+ * 扫描超时未处理的验收单（AC-A22：进入「待我处理」超过 48 小时）。
+ *
+ * 用 `step_entered_at` 而不是 `submitted_at` 作为起点 ——
+ * 重新提交会刷新前者，后者永不变化。超时提醒应该以「进入当前环节」为准，
+ * 否则一张被驳回过、重新提交的单会立刻被判为超时。
+ */
+async function listTimeoutCandidates() {
+  return db.query(
+    // `resubmit_count` 必须带上：调用方要用它算「第几轮」，
+    // 漏掉会得到 undefined + 1 = NaN，而去重键里的 NaN 会变成一个
+    // 看起来合法、实际恒定不变的字符串（acceptance_rNaN）——
+    // 于是所有轮次共用同一个键，第二轮的提醒被静默判定为「已发过」
+    // JOIN project 取租户：超时时长是**按租户**配置的，没有租户就不知道该用哪套阈值
+    // `project_stage_id` 也必须选出来：超时提醒的文案要带阶段名。
+    // 漏选它不会报错，只会让每条提醒都写成「验收单」——
+    // 收件人无法判断到底是哪个阶段卡住了（CLAUDE.md 第 55 条：少 SELECT 一列
+    // 的症状就是「安静地少做一件事」）
+    `SELECT a.id, a.project_id, a.project_stage_id, p.tenant_id, a.status, a.current_step,
+            a.step_entered_at, a.submitter_id, a.resubmit_count
+       FROM acceptance a
+       JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL
+       JOIN tenant t ON t.id = p.tenant_id AND t.deleted_at IS NULL
+      WHERE a.status IN ('pending_supervisor', 'pending_owner')
+        AND a.deleted_at IS NULL
+        AND a.step_entered_at IS NOT NULL
+        -- 停用/到期租户的用户做不了任何处理（C 端只读），继续催办
+        -- 只会制造噪音；等租户恢复后下一轮扫描会自然补上
+        AND t.status = 'active'
+        AND (t.expires_at IS NULL OR t.expires_at > NOW())`
+  )
+}
+
+module.exports = {
+  OPEN_STATUSES,
+  findOpenByStageForUpdate,
+  create,
+  findById,
+  lockById,
+  transition,
+  markPassed,
+  updatePdfState,
+  updateDescription,
+  createItems,
+  listItems,
+  saveItemResults,
+  appendFlow,
+  listFlow,
+  currentRound,
+  hasRejection,
+  listByProject,
+  listTimeoutCandidates,
+}

@@ -1,0 +1,282 @@
+<!DOCTYPE html><html lang="zh-CN" style=""><svg class="inline-defs-container" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden"></svg><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport">
+<title>工程宝 - 装修管理登录</title>
+<!-- Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style data-purpose="custom-utilities">
+    /* 解决移动端默认点击高亮及字体优化 */
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+    }
+    /* 倾斜手绘文字效果 */
+    .handwriting-tilt {
+      transform: rotate(-10deg);
+      display: inline-block;
+      font-family: "KaiTi", "STKaiti", "Biaodian", "Comic Sans MS", cursive, sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-[#F2F6FC] min-h-screen flex justify-center items-start text-slate-800 antialiased selection:bg-blue-500 selection:text-white">
+<!-- BEGIN: PhoneShellContainer -->
+<!-- 手机视口容器：严格参照 iPhone 标准尺寸 390px-428px 渲染 -->
+<div class="relative w-full max-w-[428px] min-h-screen bg-[#F5F8FC] flex flex-col justify-between overflow-hidden shadow-2xl">
+<!-- BEGIN: BackgroundArt -->
+<!-- 顶部装修实景与阳光穿透建筑插画背景 -->
+<div class="absolute top-0 left-0 right-0 h-[380px] pointer-events-none overflow-hidden z-0">
+<svg class="w-full h-full object-cover" fill="none" preserveAspectRatio="xMidYMid slice" viewBox="0 0 428 380" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="skyGrad" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#CAE0F5"></stop>
+<stop offset="45%" stop-color="#EBF4FD"></stop>
+<stop offset="100%" stop-color="#F5F8FC" stop-opacity="0"></stop>
+</linearGradient>
+<linearGradient id="fadeDown" x1="0" x2="0" y1="0.6" y2="1">
+<stop offset="0%" stop-color="#F5F8FC" stop-opacity="0"></stop>
+<stop offset="100%" stop-color="#F5F8FC" stop-opacity="1"></stop>
+</linearGradient>
+<linearGradient id="sunGlow" x1="1" x2="0.3" y1="0" y2="0.7">
+<stop offset="0%" stop-color="#FFFDF0" stop-opacity="0.85"></stop>
+<stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"></stop>
+</linearGradient>
+</defs>
+<!-- 天空背景底色 -->
+<rect fill="url(#skyGrad)" height="380" width="428"></rect>
+<!-- 阳光高光 -->
+<circle cx="360" cy="80" fill="url(#sunGlow)" r="140"></circle>
+<!-- 远景城市天际线 -->
+<path d="M120 220 H135 V200 H150 V220 H180 V190 H195 V220 H230 V180 H250 V220 H280 V195 H300 V220 H340 V205 H360 V220" opacity="0.6" stroke="#B8D3EE" stroke-width="1.5"></path>
+<!-- 装修现场：明亮全景落地窗外立面与水泥梁柱结构 -->
+<!-- 房屋外立面框架 -->
+<polygon fill="#E8EDF3" opacity="0.7" points="180,180 428,90 428,320 180,320"></polygon>
+<!-- 吊顶顶角 -->
+<polygon fill="#FFFFFF" points="180,180 428,90 428,125 180,200"></polygon>
+<polygon fill="#D3DDE8" points="210,190 428,105 428,115 210,197"></polygon>
+<!-- 落地玻璃窗框与阳光反光 -->
+<rect fill="#C5DCF2" fill-opacity="0.45" height="95" stroke="#FFFFFF" stroke-width="3" width="80" x="230" y="195"></rect>
+<line stroke="#FFFFFF" stroke-width="2" x1="270" x2="270" y1="195" y2="290"></line>
+<line stroke="#FFFFFF" stroke-width="1.5" x1="230" x2="310" y1="240" y2="240"></line>
+<!-- 落地大飘窗与内景柱子 -->
+<rect fill="#B9D5EE" fill-opacity="0.3" height="150" stroke="#CBDCE9" stroke-width="3" width="98" x="330" y="150"></rect>
+<rect fill="#E2DDD5" height="160" width="22" x="375" y="140"></rect>
+<!-- 装修施工木工梯子 -->
+<g stroke="#C69255" stroke-linecap="round" stroke-width="2.5">
+<line x1="380" x2="368" y1="245" y2="305"></line>
+<line x1="388" x2="400" y1="245" y2="305"></line>
+<line stroke-width="2" x1="375" x2="392" y1="262" y2="262"></line>
+<line stroke-width="2" x1="372" x2="395" y1="278" y2="278"></line>
+<line stroke-width="2" x1="370" x2="398" y1="293" y2="293"></line>
+</g>
+<!-- 油漆桶 / 施工建材道具 -->
+<rect fill="#2E75D3" height="18" rx="2" width="15" x="338" y="278"></rect>
+<ellipse cx="345.5" cy="278" fill="#6EA5E8" rx="7.5" ry="2"></ellipse>
+<rect fill="#F4F4F6" height="15" rx="2" stroke="#D1D5DB" stroke-width="1" width="14" x="350" y="282"></rect>
+<!-- 地面木地板 / 饰面板条 -->
+<polygon fill="#E6CEB3" opacity="0.85" points="120,310 428,290 428,335 120,340"></polygon>
+<line stroke="#D7BA9A" stroke-width="1.5" x1="160" x2="428" y1="315" y2="297"></line>
+<!-- 柔和羽化渐变到底色 -->
+<rect fill="url(#fadeDown)" height="150" width="428" y="230"></rect>
+</svg>
+</div>
+<!-- END: BackgroundArt -->
+<!-- BEGIN: TopSection -->
+<div class="relative z-10 w-full px-6 pt-6"><!-- iOS 状态栏 -->
+<header class="flex justify-between items-center text-black font-semibold text-[15px] pt-1 pb-3">
+  <span class="tracking-tight ml-2 font-medium">9:41</span>
+  <div class="flex items-center space-x-1.5 mr-2">
+    <svg class="w-4 h-3.5 fill-current" viewBox="0 0 17 12">
+      <rect height="3" rx="0.5" width="2.5" x="0" y="9"></rect>
+      <rect height="5.5" rx="0.5" width="2.5" x="4" y="6.5"></rect>
+      <rect height="8" rx="0.5" width="2.5" x="8" y="4"></rect>
+      <rect height="11" rx="0.5" width="2.5" x="12" y="1"></rect>
+    </svg>
+    <svg class="w-4 h-3.5 fill-current" viewBox="0 0 16 12">
+      <path d="M8 2.5C10.8 2.5 13.3 3.6 15.1 5.4L16 4.5C13.9 2.4 11.1 1 8 1C4.9 1 2.1 2.4 0 4.5L0.9 5.4C2.7 3.6 5.2 2.5 8 2.5ZM8 6C9.9 6 11.6 6.8 12.8 8.1L13.7 7.2C12.2 5.7 10.2 4.7 8 4.7C5.8 4.7 3.8 5.7 2.3 7.2L3.2 8.1C4.4 6.8 6.1 6 8 6ZM8 9.5C6.9 9.5 6 10.4 6 11.5C6 12.1 6.2 12.6 6.6 13L8 14.4L9.4 13C9.8 12.6 10 12.1 10 11.5C10 10.4 9.1 9.5 8 9.5Z" transform="translate(0,-1)"></path>
+    </svg>
+    <div class="w-6 h-3 border border-black rounded-[4px] p-0.5 flex items-center">
+      <div class="bg-black h-full w-[85%] rounded-[1.5px]"></div>
+    </div>
+  </div>
+</header>
+
+<!-- 品牌 Logo 及品牌标语 -->
+<section class="mt-3 mb-2">
+  <div class="flex items-center space-x-3.5">
+    <!-- 蓝色房形品牌 Icon -->
+    <div class="w-13 h-13 bg-gradient-to-b from-[#2575FC] to-[#165DFF] rounded-2xl p-2.5 shadow-md flex items-center justify-center">
+      <svg class="w-8 h-8 text-white fill-current" viewBox="0 0 24 24">
+        <path d="M12 2L2 9.5V20C2 21.1 2.9 22 4 22H20C21.1 22 22 21.1 22 20V9.5L12 2ZM14.5 19H9.5V14H14.5V19ZM19.5 19H16.5V13C16.5 12.45 16.05 12 15.5 12H8.5C7.95 12 7.5 12.45 7.5 13V19H4.5V10.45L12 4.83L19.5 10.45V19Z"></path>
+      </svg>
+    </div>
+    <div class="flex flex-col">
+      <div class="flex items-center space-x-2">
+        <h1 class="text-3xl font-extrabold text-[#0D1C3C] tracking-tight">工程宝</h1>
+        
+      </div>
+      <p class="mt-1 text-[13px] font-medium text-[#465670] tracking-wide">
+        让装修工程更透明、更可控
+      </p>
+    </div>
+  </div>
+
+  <!-- 手绘艺术标语 -->
+  <div class="mt-4 pl-1">
+    <div class="handwriting-tilt relative">
+      <div class="text-[#2052C8] font-bold text-[17px] tracking-wider drop-shadow-sm leading-none">
+        从开工到竣工
+      </div>
+      <div class="text-[#2052C8] font-bold text-[17px] tracking-wider drop-shadow-sm mt-1 leading-none">
+        全程在线管理
+      </div>
+      <!-- 手绘弧形下划线 -->
+      <svg class="w-36 h-3 mt-1 text-[#2B66EE] stroke-current" fill="none" viewBox="0 0 140 10">
+        <path d="M2 4C40 9 95 9 138 3" stroke-linecap="round" stroke-width="2.5"></path>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- BEGIN: LoginCard -->
+<main class="mt-3 bg-white rounded-2xl p-5 shadow-[0_8px_30px_rgb(22,93,255,0.08)] border border-white">
+  <!-- 标签页分段切换器 -->
+  
+
+  <!-- 登录表单 -->
+  <form class="space-y-3" onsubmit="event.preventDefault();">
+    <!-- 手机号输入框 -->
+    <div class="flex items-center px-3.5 py-3 rounded-xl border border-slate-200 bg-white focus-within:border-[#165DFF] focus-within:ring-2 focus-within:ring-blue-100 transition">
+      <svg class="w-5 h-5 text-slate-400 mr-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <rect height="20" rx="3" stroke-linecap="round" stroke-linejoin="round" width="12" x="6" y="2"></rect>
+        <line stroke-linecap="round" x1="11" x2="13" y1="18" y2="18"></line>
+      </svg>
+      <input class="w-full text-[15px] text-slate-800 placeholder-slate-400 bg-transparent border-0 p-0 focus:ring-0" maxlength="11" placeholder="请输入手机号" type="tel">
+    </div>
+
+    <!-- 验证码输入框 -->
+    <div class="flex items-center px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus-within:border-[#165DFF] focus-within:ring-2 focus-within:ring-blue-100 transition">
+      <svg class="w-5 h-5 text-slate-400 mr-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <path d="M12 3L4 6.5V12C4 16.5 7.5 20.5 12 21.5C16.5 20.5 20 16.5 20 12V6.5L12 3Z" stroke-linecap="round" stroke-linejoin="round"></path>
+        <path d="M9 12L11 14L15 10" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+      <input class="w-full text-[15px] text-slate-800 placeholder-slate-400 bg-transparent border-0 p-0 focus:ring-0" placeholder="请输入验证码" type="number">
+      <div class="h-4 w-[1px] bg-slate-200 mx-2 flex-shrink-0"></div>
+      <button class="text-sm font-medium text-[#165DFF] hover:text-blue-700 whitespace-nowrap pl-1 pr-0.5" type="button">
+        获取验证码
+      </button>
+    </div>
+
+    <!-- 登录主操作按钮 -->
+    <div class="pt-2">
+      <button class="w-full py-3.5 bg-[#165DFF] hover:bg-blue-600 active:bg-blue-700 text-white font-semibold text-base rounded-full shadow-[0_6px_20px_rgba(22,93,255,0.35)] transition-all" type="submit">
+        登 录
+      </button>
+    </div>
+
+    <!-- 协议勾选行 -->
+    <div class="flex items-start pt-1 text-xs text-slate-500 space-x-1.5 leading-relaxed">
+      <input checked="" class="mt-0.5 rounded-full border-slate-300 text-[#165DFF] focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5" id="agreement" type="checkbox">
+      <label class="select-none text-[12px] text-[#707E94]" for="agreement">
+        我已阅读并同意 <a class="text-[#165DFF] hover:underline" href="javascript:;">《用户协议》</a> 和 <a class="text-[#165DFF] hover:underline" href="javascript:;">《隐私政策》</a>
+      </label>
+    </div>
+  </form>
+</main>
+<!-- END: LoginCard -->
+
+<!-- BEGIN: ThirdPartyLogin -->
+<section class="mt-5 text-center">
+  <!-- 分隔线标题 -->
+  <div class="relative flex items-center justify-center">
+    <div class="border-t border-[#DDE5F0] w-full max-w-[240px]"></div>
+    <span class="bg-[#F5F8FC] px-3 text-xs text-[#8A98A8] absolute">其他登录方式</span>
+  </div>
+
+  <!-- 微信快捷登录按钮 -->
+  <div class="mt-3.5 flex justify-center">
+    <button class="inline-flex items-center justify-center space-x-2 px-8 py-2.5 rounded-full bg-white border border-[#E3EAF2] shadow-sm hover:bg-slate-50 transition active:scale-90" type="button">
+      <img alt="微信" class="w-5 h-5 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCOJNpUeEjoR0Is56qvESn3RQi86EaTQ0dKzhznTwDV3ofJIPZ7g6GTWEG4yA3w0MZVckj6-Se8xpwabVRFJExwN5X5GhavyJyjIXC3n0o2GrNdVwQs_pI5Wm49l9QyFcmiCxpO0kL9k8OpYfhyoKFprtAy579kh5uBdUbYtIJPhxw3HxNuCnFBM1XJR-Xlyfa-ScKUcUCREzMc5zHe0tML3ZrOstx63x5XYAG1uDD9cl2lyGG1_suBZ9GK9p6L7dFShA">
+      <span class="text-sm font-medium text-[#2C384A]">微信登录</span>
+    </button>
+  </div>
+</section>
+<!-- END: ThirdPartyLogin --></div>
+<!-- END: TopSection -->
+<!-- BEGIN: BottomFeatureHighlights -->
+<!-- 底部四大核心业务特色价值与建筑剪影 -->
+<footer class="relative z-10 w-full mt-6">
+<!-- 4 大核心特色横排 -->
+<div class="grid grid-cols-4 gap-1 px-3 pb-3 text-center">
+<!-- 特色 1：进度透明 -->
+<div class="flex flex-col items-center">
+<div class="w-11 h-11 rounded-full bg-[#E5EEFF] flex items-center justify-center shadow-sm">
+<div class="w-8 h-8 rounded-full bg-[#165DFF] flex items-center justify-center">
+<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+<path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</div>
+<span class="mt-1.5 text-xs font-bold text-[#1D2B44]">进度透明</span>
+<span class="text-[10px] text-[#8692A6] scale-90 tracking-tighter mt-0.5">实时汇报 · 图文留痕</span>
+</div>
+<!-- 特色 2：验收可溯 -->
+<div class="flex flex-col items-center">
+<div class="w-11 h-11 rounded-full bg-[#FFF2E6] flex items-center justify-center shadow-sm">
+<div class="w-8 h-8 rounded-full bg-[#FA8C16] flex items-center justify-center">
+<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+<path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</div>
+<span class="mt-1.5 text-xs font-bold text-[#1D2B44]">验收可溯</span>
+<span class="text-[10px] text-[#8692A6] scale-90 tracking-tighter mt-0.5">多级审核 · 电子签名</span>
+</div>
+<!-- 特色 3：账目清晰 -->
+<div class="flex flex-col items-center">
+<div class="w-11 h-11 rounded-full bg-[#E8F8F0] flex items-center justify-center shadow-sm">
+<div class="w-8 h-8 rounded-full bg-[#00B42A] flex items-center justify-center font-bold text-white text-sm">
+              ¥
+            </div>
+</div>
+<span class="mt-1.5 text-xs font-bold text-[#1D2B44]">账目清晰</span>
+<span class="text-[10px] text-[#8692A6] scale-90 tracking-tighter mt-0.5">双向账目 · 阶段结算</span>
+</div>
+<!-- 特色 4：管理高效 -->
+<div class="flex flex-col items-center">
+<div class="w-11 h-11 rounded-full bg-[#F3EBFB] flex items-center justify-center shadow-sm">
+<div class="w-8 h-8 rounded-full bg-[#722ED1] flex items-center justify-center text-white">
+<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+<path clip-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" fill-rule="evenodd"></path>
+</svg>
+</div>
+</div>
+<span class="mt-1.5 text-xs font-bold text-[#1D2B44]">管理高效</span>
+<span class="text-[10px] text-[#8692A6] scale-90 tracking-tighter mt-0.5">统一建档 · 数据看板</span>
+</div>
+</div>
+<!-- 城市建筑群与塔吊剪影装饰层 -->
+<div class="relative w-full h-14 overflow-hidden -mb-1">
+<svg class="w-full h-full text-[#D9E6F5] fill-current opacity-60" preserveAspectRatio="none" viewBox="0 0 428 50">
+<!-- 塔吊 -->
+<path d="M350 15 V48 M320 22 H395 M320 22 L350 15 L365 22 M380 22 V34" fill="none" stroke="#BDD4EC" stroke-width="1.2"></path>
+<!-- 城市楼群 -->
+<rect height="12" width="428" x="0" y="38"></rect>
+<path d="M10 32 H22 V50 H10 Z M24 25 H36 V50 H24 Z M40 30 H55 V50 H40 Z M120 28 H135 V50 H120 Z M137 20 H152 V50 H137 Z M154 26 H168 V50 H154 Z M172 32 H182 V50 H172 Z M215 18 H230 V50 H215 Z M233 28 H246 V50 H233 Z M250 22 H265 V50 H250 Z M268 34 H280 V50 H268 Z M370 26 H388 V50 H370 Z M392 32 H410 V50 H392 Z"></path>
+</svg>
+</div>
+<!-- iOS Home 指示条 -->
+<div class="w-full pb-2 pt-1 flex justify-center bg-[#F5F8FC]">
+<div class="w-32 h-1 bg-black rounded-full"></div>
+</div>
+</footer>
+<!-- END: BottomFeatureHighlights -->
+</div>
+<!-- END: PhoneShellContainer -->
+
+
+
+
+</body></html>

@@ -1,0 +1,276 @@
+'use strict'
+
+/**
+ * project_member 数据访问层。
+ *
+ * ── 本项目最容易出错的一条约定，在这里落地 ──
+ * `status='pending'` 的成员**不计入任何权限判定**（§6.2 / AC-AD18）。
+ * 因此凡是用到成员关系的地方，都必须显式写明 status 条件。
+ * 本模块把「活跃成员」的过滤收在 ACTIVE 常量里，避免各处手写漏掉。
+ *
+ * 唯一的例外是「我的待确认邀请」—— 那个查询要的正是 pending，
+ * 单独用 findPendingInvitations 表达，不复用活跃成员的条件。
+ */
+
+const db = require('../db/pool')
+
+/** 唯一合法的「有权限」状态。任何权限查询都必须带上它 */
+const ACTIVE = "pm.status = 'active' AND pm.deleted_at IS NULL"
+
+/**
+ * 查某人在某项目中的活跃角色。
+ * @returns {Promise<{role: string, id: number}|null>}
+ */
+async function findActiveRole(projectId, userId) {
+  // is_primary 一并返回：验收发起、阶段结算单提交的权限判定要用它（Q11），
+  // 让调用方不必再查一次
+  return db.queryOne(
+    `SELECT id, role, is_primary FROM project_member pm WHERE pm.project_id = ? AND pm.user_id = ? AND ${ACTIVE}`,
+    [projectId, userId]
+  )
+}
+
+/**
+ * 某人所属的租户列表（C 端跨租户的基础查询）。
+ *
+ * 只统计 active 成员关系对应的项目所属租户 —— pending 还没确认，
+ * 不在其中出现，与 AC-AD18「pending 不计入任何权限判定」同口径。
+ */
+async function listUserTenants(userId) {
+  return db.query(
+    `SELECT DISTINCT p.tenant_id, t.name AS tenant_name, t.code AS tenant_code
+       FROM project_member pm
+       JOIN project p ON p.id = pm.project_id AND p.deleted_at IS NULL
+       JOIN tenant t ON t.id = p.tenant_id AND t.deleted_at IS NULL
+      WHERE pm.user_id = ? AND pm.status = 'active' AND pm.deleted_at IS NULL
+      ORDER BY p.tenant_id`,
+    [userId]
+  )
+}
+
+/** 查某人在某项目中的成员记录（含 pending），用于判断「是否已被邀请」 */
+async function findAny(projectId, userId) {
+  return db.queryOne('SELECT id, role, status FROM project_member WHERE project_id = ? AND user_id = ?', [
+    projectId,
+    userId,
+  ])
+}
+
+/**
+ * 按角色统计项目成员数。用于 AC-AD58 的人数约束：
+ * 工长必须且仅 1 人、业主至少 1 人。
+ *
+ * @param {string} [role] 不传则统计全部活跃成员
+ */
+async function countByRole(projectId, role) {
+  const params = [projectId]
+  let clause = ACTIVE
+  if (role) {
+    clause += ' AND pm.role = ?'
+    params.push(role)
+  }
+  return db.count(`FROM project_member pm WHERE pm.project_id = ? AND ${clause}`, params)
+}
+
+/**
+ * 创建或重新激活成员关系（B-2.6 邀请流程）。
+ *
+ * 用 ON DUPLICATE KEY UPDATE 而不是先查后插：`project_member` 对
+ * (project_id, user_id) 有唯一索引（AC-AD20：同一用户在同一项目内只能有一个角色），
+ * 「解除关系后重新邀请」会命中同一行，必须走更新而不是插入。
+ *
+ * 重复分配时**替换角色**而不是新增 —— AC-AD20 明确要求「提示替换而非新增」。
+ */
+async function invite({ projectId, userId, role, invitedBy, isPrimary = false, tx = db }) {
+  await tx.query(
+    `INSERT INTO project_member (project_id, user_id, role, status, invited_by, is_primary)
+     VALUES (?, ?, ?, 'pending', ?, ?)
+     ON DUPLICATE KEY UPDATE
+       role       = VALUES(role),
+       status     = 'pending',
+       invited_by = VALUES(invited_by),
+       is_primary = VALUES(is_primary),
+       confirmed_at = NULL,
+       left_at    = NULL,
+       deleted_at = NULL`,
+    [projectId, userId, role, invitedBy ?? null, isPrimary ? 1 : 0]
+  )
+
+  return findAny(projectId, userId)
+}
+
+/** 当前主工长（仅 active，pending 不计入权限判定 —— AC-AD18） */
+async function findPrimaryForeman(projectId) {
+  return db.queryOne(
+    `SELECT pm.id, pm.user_id, u.nickname, u.openid
+       FROM project_member pm JOIN user u ON u.id = pm.user_id
+      WHERE pm.project_id = ? AND pm.role = 'foreman' AND pm.is_primary = 1
+        AND pm.status = 'active' AND pm.deleted_at IS NULL`,
+    [projectId]
+  )
+}
+
+/**
+ * 指定主工长（Q11）。
+ *
+ * ── 两步的顺序不能换 ──
+ * `primary_foreman_key` 上有唯一索引（一个项目最多 1 名主工长）。
+ * 若先把新人置为 1，此刻旧主工长还占着这个键，会直接撞唯一索引 ——
+ * 表现为一个莫名其妙的「数据已存在」。必须先全部清零，再置位。
+ * 这与 user.model.bindPhone 的占位账号合并是同一类陷阱。
+ *
+ * 只清 `role='foreman'` 的行：非工长角色的 is_primary 本就恒为 0，
+ * 但显式限定角色能让语句的意图更清楚。
+ */
+async function setPrimary(projectId, userId, tx = db) {
+  await tx.query(
+    "UPDATE project_member SET is_primary = 0 WHERE project_id = ? AND role = 'foreman' AND is_primary = 1",
+    [projectId]
+  )
+  const result = await tx.query(
+    "UPDATE project_member SET is_primary = 1 WHERE project_id = ? AND user_id = ? AND role = 'foreman' AND status = 'active' AND deleted_at IS NULL",
+    [projectId, userId]
+  )
+  return result.affectedRows > 0
+}
+
+/**
+ * 被邀请人确认，状态转为 active（AC-AD18 → AC-AD19）。
+ *
+ * 条件里带 status='pending' 是并发保护：两个确认请求同时到达时，
+ * 只有一个能改到行（另一个的 WHERE 不匹配），不会重复写入 joined_at。
+ *
+ * @returns {Promise<boolean>} 是否真的完成了状态流转
+ */
+async function confirm(projectId, userId) {
+  const result = await db.query(
+    `UPDATE project_member
+        SET status = 'active', confirmed_at = NOW(), joined_at = COALESCE(joined_at, NOW())
+      WHERE project_id = ? AND user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
+    [projectId, userId]
+  )
+  return result.affectedRows > 0
+}
+
+/**
+ * 拒绝邀请（§5.2 邀请流程的另一半，需求文档未明确要求，按现实需要补充）。
+ *
+ * ── 为什么不用一个新的状态值 ──
+ * §6.1 把 status 定为 `pending/active/removed` 三个值。为「拒绝」新增一个枚举值
+ * 需要一次迁移，而这三个值其实已经够表达：
+ *
+ *   拒绝 = status 'removed' 且 **confirmed_at 仍为 NULL**
+ *   解除 = status 'removed' 且 confirmed_at 有值
+ *
+ * 前者是「从未成为成员就退出」，后者是「曾是成员后被解除」。
+ * 管理后台据此就能区分，不必加字段。
+ *
+ * 保留记录而不是删除：管理员需要看到「这个人拒绝了」，
+ * 否则列表里凭空少一条，会被误判成邀请没发出去。
+ *
+ * 条件带 status='pending' 保证只能拒绝未处理的邀请；
+ * 已确认过的成员要走 remove（解除关系），语义不同。
+ */
+async function reject(projectId, userId) {
+  const result = await db.query(
+    `UPDATE project_member
+        SET status = 'removed', left_at = NOW()
+      WHERE project_id = ? AND user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
+    [projectId, userId]
+  )
+  return result.affectedRows > 0
+}
+
+/** 解除成员关系（AC-AD21：立即失去访问权限，但历史记录保留） */
+async function remove(projectId, userId) {
+  const result = await db.query(
+    `UPDATE project_member
+        SET status = 'removed', left_at = NOW()
+      WHERE project_id = ? AND user_id = ? AND status <> 'removed' AND deleted_at IS NULL`,
+    [projectId, userId]
+  )
+  return result.affectedRows > 0
+}
+
+/**
+ * 某项目的全部成员（含 pending 与 removed）。
+ *
+ * 这里**不**用 ACTIVE 过滤：成员管理界面需要看到「已邀请但未确认」和
+ * 「已移除」的人，否则管理员会以为邀请没发出去（AC-AD18 的可见性要求）。
+ * 需要活跃成员的场景请用 countByRole。
+ */
+async function listByProject(projectId) {
+  return db.query(
+    `SELECT pm.id, pm.user_id, pm.role, pm.status, pm.invited_by, pm.is_primary,
+            pm.created_at AS invited_at, pm.confirmed_at, pm.left_at,
+            u.nickname, u.phone
+       FROM project_member pm
+       JOIN user u ON u.id = pm.user_id
+      WHERE pm.project_id = ? AND pm.deleted_at IS NULL
+      ORDER BY FIELD(pm.role, 'foreman', 'supervisor', 'owner'), pm.id`,
+    [projectId]
+  )
+}
+
+/**
+ * 按 id 查某人的待确认邀请。
+ *
+ * `user_id` 条件不可省：id 是自增主键、可被枚举，
+ * 只按 id 查会让任何人确认任意一条邀请，把自己塞进别人的项目。
+ * 同时带 status='pending'，使「不存在」与「已处理」对外表现一致。
+ */
+async function findPendingById(memberId, userId) {
+  return db.queryOne(
+    `SELECT id, project_id, role
+       FROM project_member
+      WHERE id = ? AND user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
+    [memberId, userId]
+  )
+}
+
+/**
+ * 我的待确认邀请（C-1.1 之后的引导，也是 AC-AD18 的另一半）。
+ * 这里要的正是 pending，与上面的 ACTIVE 过滤相反，因此单独一个方法。
+ */
+async function findPendingInvitations(userId, { tenantId } = {}) {
+  const where = ["pm.user_id = ?", "pm.status = 'pending'", 'pm.deleted_at IS NULL', 'p.deleted_at IS NULL']
+  const params = [userId]
+
+  if (tenantId) {
+    where.push('p.tenant_id = ?')
+    params.push(tenantId)
+  }
+
+  return db.query(
+    // admin_user 表没有 nickname 字段（§6.1 只定义了 username），
+    // 邀请人展示名就用 username
+    `SELECT pm.id, pm.project_id, pm.role, pm.created_at AS invited_at,
+            p.name AS project_name, p.address AS project_address,
+            p.tenant_id, t.name AS tenant_name,
+            u.username AS inviter_username
+       FROM project_member pm
+       JOIN project p ON p.id = pm.project_id AND p.deleted_at IS NULL
+       JOIN tenant t ON t.id = p.tenant_id AND t.deleted_at IS NULL
+       LEFT JOIN admin_user u ON u.id = pm.invited_by
+      WHERE ${where.join(' AND ')}
+      ORDER BY pm.id DESC`,
+    params
+  )
+}
+
+module.exports = {
+  ACTIVE,
+  findActiveRole,
+  listUserTenants,
+  findAny,
+  countByRole,
+  invite,
+  confirm,
+  reject,
+  remove,
+  findPrimaryForeman,
+  setPrimary,
+  listByProject,
+  findPendingById,
+  findPendingInvitations,
+}

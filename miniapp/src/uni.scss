@@ -1,0 +1,52 @@
+/**
+ * 设计令牌（来自 Stitch DESIGN.md）
+ *
+ * uni-app 会把本文件自动注入每个 `<style lang="scss">`，
+ * 因此页面里可以直接使用这些变量与 dp() 函数。
+ */
+
+$color-primary: #165dff;
+$color-primary-pressed: #0e42d2;
+$color-primary-soft: #e8f0ff;
+$color-primary-wash: #f2f7ff;
+$color-on-primary: #ffffff;
+
+$color-canvas: #f5f7fa;
+$color-login-canvas: #f5f8fc;
+$color-surface: #ffffff;
+$color-surface-sunken: #f7f8fa;
+
+$color-ink: #1d2129;
+$color-ink-secondary: #4e5969;
+$color-ink-tertiary: #626b79;
+$color-hairline: #e5e6eb;
+$color-hairline-strong: #c9cdd4;
+
+$color-success: #00b42a;
+$color-success-soft: #e8ffea;
+$color-success-ink: #087a1e;
+$color-warning: #ff7d00;
+$color-warning-soft: #fff7e8;
+$color-warning-ink: #a85400;
+$color-danger: #f53f3f;
+$color-danger-solid: #c62828;
+$color-danger-soft: #ffece8;
+$color-danger-ink: #b22a26;
+$color-neutral: #86909c;
+$color-neutral-soft: #f2f3f5;
+$color-neutral-ink: #5e6673;
+
+$radius-xs: 4px;
+$radius-sm: 6px;
+$radius-md: 8px;
+$radius-lg: 12px;
+$radius-xl: 16px;
+$radius-xxl: 20px;
+
+/**
+ * 设计稿按 390px 宽绘制；小程序以 750rpx 为满宽。
+ * 1px ≈ 1.923rpx。取整避免出现 30.768rpx 这类数值。
+ */
+@function dp($px) {
+  @return round($px * 1.923) * 1rpx;
+}

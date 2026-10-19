@@ -1,0 +1,1005 @@
+'use strict'
+
+/**
+ * 验收单状态机与流转（§4.3 / AC-A01 ~ AC-A26）。
+ *
+ * ── 状态机（§4.3.1）──
+ *
+ *   草稿 draft ──自检提交──→ 待监理审核 pending_supervisor ──通过──→ 待业主确认 pending_owner ──通过+签名──→ 已通过 passed（终态）
+ *                                  │ 驳回                                        │ 驳回
+ *                                  └──────→ 待整改 pending_rectify ←──────────────┘
+ *                                                   │ 工长重新提交
+ *                                                   └──→ 回到流程首环节
+ *
+ *   项目未配置监理时跳过监理环节：提交后直接进入 pending_owner（AC-A05）。
+ *
+ * ── 三处必须守住的边界 ──
+ *   1. **终态不可再操作**（AC-A06）—— passed 之后任何 approve / reject 一律拒绝；
+ *   2. **流转记录只追加**（AC-A14 / AC-A26）—— 驳回重提不覆盖历史，
+ *      acceptance.model 刻意不导出任何修改流转记录的方法；
+ *   3. **仅主工长可发起与重新提交**（Q11 / AC-A24）—— 不是「任意工长」。
+ *      普通工长能汇报进度，但不能代表项目对外确认验收。
+ */
+
+const AppError = require('../utils/AppError')
+const datetime = require('../utils/datetime')
+const db = require('../db/pool')
+const logger = require('../utils/logger')
+const storage = require('../storage')
+const watermark = require('../utils/watermark')
+const signedUrl = require('../utils/signedUrl')
+const notificationService = require('./notification.service')
+const sysConfigService = require('./sysConfig.service')
+const acceptancePdfService = require('./acceptancePdf.service')
+const acceptanceModel = require('../models/acceptance.model')
+const projectModel = require('../models/project.model')
+const projectStageModel = require('../models/projectStage.model')
+const projectItemModel = require('../models/projectItem.model')
+const projectMemberModel = require('../models/projectMember.model')
+const paymentNodeModel = require('../models/paymentNode.model')
+
+const STATUS = {
+  DRAFT: 'draft',
+  PENDING_SUPERVISOR: 'pending_supervisor',
+  PENDING_OWNER: 'pending_owner',
+  PENDING_RECTIFY: 'pending_rectify',
+  PASSED: 'passed',
+}
+
+const STEP = { SELF_CHECK: 'self_check', SUPERVISOR: 'supervisor', OWNER: 'owner' }
+
+const STATUS_LABELS = {
+  draft: '草稿',
+  pending_supervisor: '待监理审核',
+  pending_owner: '待业主确认',
+  pending_rectify: '待整改',
+  passed: '已通过',
+}
+
+const STEP_LABELS = { self_check: '自检', supervisor: '监理审核', owner: '业主确认' }
+
+/**
+ * 合法的状态迁移表。
+ *
+ * 逐条列出而不是用「有序数组 + 索引比较」：
+ * 验收状态机**不是线性的**（驳回会回到 pending_rectify，重新提交又回到首环节），
+ * 用序数比较会放行一批实际非法的跃迁（例如 pending_rectify 直接跳到 passed）。
+ * AC-A04 明确要求非法跃迁返回 409，因此必须是一张精确的表。
+ */
+const TRANSITIONS = {
+  [STATUS.DRAFT]: ['submit'],
+  [STATUS.PENDING_SUPERVISOR]: ['approve', 'reject'],
+  [STATUS.PENDING_OWNER]: ['approve', 'reject'],
+  [STATUS.PENDING_RECTIFY]: ['resubmit'],
+  // 终态：没有任何合法动作（AC-A06）
+  [STATUS.PASSED]: [],
+}
+
+/**
+ * 验收单相关接口统一的「查不到」文案。
+ *
+ * 「单子不存在」与「你不是本项目成员」必须返回**同一个**提示 ——
+ * 否则两者一比就能探出某个 id 是否真实存在（AC-A25 / AC-P26 都要求不泄露）。
+ */
+const NOT_FOUND_MESSAGE = '验收单不存在'
+
+/** 当前环节 → 谁该处理 */
+const STEP_ROLE = {
+  [STATUS.PENDING_SUPERVISOR]: 'supervisor',
+  [STATUS.PENDING_OWNER]: 'owner',
+}
+
+function assertTransition(status, action) {
+  const allowed = TRANSITIONS[status]
+  if (!allowed || !allowed.includes(action)) {
+    throw AppError.conflict(`当前状态「${STATUS_LABELS[status] || status}」不允许执行该操作`)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 权限
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 解析访问者在项目中的身份。
+ *
+ * 非参与成员一律 404（AC-P26 / AC-A25：跨项目操作返回 403 且不泄露项目是否存在，
+ * 这里统一为 404 —— 与 C 端其他接口一致）。
+ */
+async function resolveViewer(userId, projectId) {
+  const membership = await projectMemberModel.findActiveRole(projectId, userId)
+  if (!membership) throw AppError.notFound('项目不存在')
+  return membership
+}
+
+/** 仅主工长（Q11 / AC-A24）。普通工长能汇报进度，但不能发起验收 */
+function assertPrimaryForeman(viewer) {
+  if (viewer.role !== 'foreman') throw AppError.forbidden('仅该项目的工长可发起验收')
+  if (viewer.is_primary !== 1) throw AppError.forbidden('仅主工长可发起验收与重新提交')
+}
+
+async function loadWritableProject(projectId) {
+  const project = await projectModel.findByIdUnscoped(projectId)
+  if (!project) throw AppError.notFound('项目不存在')
+  if (project.status === 'archived') throw AppError.forbidden('项目已归档，全部数据只读')
+  return project
+}
+
+// ─────────────────────────────────────────────────────────────
+// 发起验收
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 发起验收（C-3.2 / C-3.4 / AC-A01 / AC-A03 / AC-A24 / AC-S10）。
+ *
+ * 校验顺序刻意如此：权限 → 项目可写 → 目标存在且属于本项目 → 进度满 100%
+ * → 门禁未锁定 → 无未终结单（加锁）。越靠前的失败越省资源，
+ * 而最后一步必须加锁（见 acceptance.model 的说明）。
+ */
+async function createAcceptance(userId, projectId, input) {
+  const viewer = await resolveViewer(userId, projectId)
+  assertPrimaryForeman(viewer)
+  await loadWritableProject(projectId)
+
+  const target = await resolveTarget(projectId, input)
+
+  // AC-A01 / C-3.4：阶段进度未达 100% 时禁止发起
+  if (Number(target.progress) < 100) {
+    throw AppError.conflict(`「${target.name}」的进度为 ${target.progress}%，未达 100%，暂不可发起验收`)
+  }
+
+  // AC-S10 / C-3.13：上一阶段未结清时本阶段锁定，发起验收返回 409
+  if (target.gateStatus === 'locked') {
+    throw AppError.conflict(`「${target.name}」的上一阶段尚未结清，暂不可发起验收`)
+  }
+
+  // AC-A01 的第二层：已验收过的阶段不必再验收
+  if (target.gateStatus === 'accepted' || target.gateStatus === 'settled') {
+    throw AppError.conflict(`「${target.name}」已验收通过，无需重复发起`)
+  }
+
+  // 现场照片（C-3.2）。与进度汇报一样，图片由服务端叠加水印后另存
+  const photos = input.files && input.files.length > 0 ? await persistPhotos(input.files, target) : []
+
+  const acceptanceId = await db.withTransaction(async (tx) => {
+    // AC-A03：同一阶段存在未终结验收单时重复发起返回 409。
+    // 必须 FOR UPDATE —— 唯一索引在这里帮不上忙（「未终结」是状态条件而非唯一键），
+    // 两个并发请求会双双读到「没有」并各插一张
+    const open = await acceptanceModel.findOpenByStageForUpdate(tx, target.stageId)
+    if (open) {
+      throw AppError.conflict(
+        `该阶段已有一张「${STATUS_LABELS[open.status]}」的验收单，请先处理完再发起`,
+        { detail: { acceptanceId: open.id, status: open.status } }
+      )
+    }
+
+    const id = await acceptanceModel.create(
+      {
+        projectId,
+        projectStageId: target.stageId,
+        projectItemId: target.itemId ?? null,
+        type: target.itemId ? 'item' : 'stage',
+        submitterId: userId,
+        description: input.description ?? null,
+      },
+      tx
+    )
+
+    // 自检清单从工序的 checklist 带入（B-3.5 / AC-AD32）。
+    // 阶段级验收取该阶段下全部工序清单的并集 —— 逐个工序列出来，
+    // 让自检时能一眼看出哪一项属于哪个工序
+    const checklist = await buildChecklist(projectId, target, tx)
+    await acceptanceModel.createItems(id, checklist, tx)
+
+    if (photos.length > 0) {
+      await tx.query('UPDATE acceptance SET photos = ? WHERE id = ?', [JSON.stringify(photos), id])
+    }
+
+    return id
+  })
+
+  return getDetail(userId, acceptanceId)
+}
+
+/**
+ * 解析验收对象：阶段级还是工序级（C-3.2 的「选择阶段或工序」）。
+ *
+ * 工序级验收时，其所属阶段同样要满足进度与门禁条件 ——
+ * 否则会出现「阶段还锁着，但某个工序已经验收通过」的矛盾状态。
+ */
+async function resolveTarget(projectId, input) {
+  if (input.itemId) {
+    const item = await projectItemModel.findById(input.itemId)
+    if (!item) throw AppError.notFound('工序不存在')
+
+    const stage = await projectStageModel.findById(item.project_stage_id)
+    if (!stage || Number(stage.project_id) !== Number(projectId)) throw AppError.notFound('工序不存在')
+
+    if (Number(item.progress) < 100) {
+      throw AppError.conflict(`工序「${item.name}」的进度为 ${item.progress}%，未达 100%，暂不可发起验收`)
+    }
+
+    return {
+      stageId: stage.id,
+      itemId: item.id,
+      name: item.name,
+      progress: item.progress,
+      gateStatus: stage.gate_status,
+      stageName: stage.name,
+    }
+  }
+
+  if (input.stageId) {
+    const stage = await projectStageModel.findById(input.stageId)
+    if (!stage || Number(stage.project_id) !== Number(projectId)) throw AppError.notFound('阶段不存在')
+
+    return {
+      stageId: stage.id,
+      itemId: null,
+      name: stage.name,
+      progress: stage.progress,
+      gateStatus: stage.gate_status,
+      stageName: stage.name,
+    }
+  }
+
+  throw AppError.badRequest('请选择要验收的阶段或工序')
+}
+
+/**
+ * 组装自检清单。
+ *
+ * 来源是 `project_item.checklist`（建档时由模板的 `default_checklist` 带入，
+ * 见 AC-AD32）。若工序没有配置清单，用「工序名 + 完成」兜底 ——
+ * 空清单会让 AC-A07 的「逐项勾选」变成零项，自检环节直接失去意义。
+ */
+async function buildChecklist(projectId, target, tx) {
+  const items = target.itemId
+    ? [await projectItemModel.findById(target.itemId, tx)]
+    : await projectItemModel.listByStage(target.stageId, tx)
+
+  const names = []
+  for (const item of items) {
+    let checklist = item.checklist
+    if (typeof checklist === 'string') {
+      try {
+        checklist = JSON.parse(checklist)
+      } catch {
+        checklist = null
+      }
+    }
+
+    if (Array.isArray(checklist) && checklist.length > 0) {
+      for (const entry of checklist) {
+        const name = typeof entry === 'string' ? entry : entry && entry.name
+        // 阶段级验收时把工序名拼进验收项，否则几十条散项看不出归属
+        if (name) names.push(target.itemId ? String(name) : `${item.name}：${name}`)
+      }
+    } else {
+      names.push(target.itemId ? `${item.name}已完成` : `${item.name}已完成`)
+    }
+  }
+
+  // 去重但保持顺序
+  return [...new Set(names)]
+}
+
+/** 现场照片落盘 + 服务端水印（复用进度汇报那一套，理由同 AC-P12） */
+async function persistPhotos(files, target) {
+  const photos = []
+  for (const file of files) {
+    const original = await storage.save(file.buffer, { category: 'acceptances', ext: file.ext })
+    let watermarkUrl = null
+
+    if (file.type === 'image') {
+      const marked = await watermark.apply(file.buffer, {
+        lines: [datetime.format(), target.stageName, `验收：${target.name}`],
+      })
+      watermarkUrl = (await storage.save(marked, { category: 'acceptances', ext: file.ext })).url
+    }
+
+    photos.push({ url: original.url, watermarkUrl })
+  }
+  return photos
+}
+
+// ─────────────────────────────────────────────────────────────
+// 草稿与自检
+// ─────────────────────────────────────────────────────────────
+
+/** 保存草稿（AC-A08：可稍后继续编辑；草稿不计入任何角色的待办数与红点） */
+async function saveDraft(userId, acceptanceId, input) {
+  const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
+  assertPrimaryForeman(viewer)
+  assertTransition(acceptance.status, 'submit') // 草稿保留在可提交状态
+
+  await db.withTransaction(async (tx) => {
+    if (input.description !== undefined) {
+      await acceptanceModel.updateDescription(acceptanceId, input.description, tx)
+    }
+    if (Array.isArray(input.items)) {
+      await acceptanceModel.saveItemResults(acceptanceId, input.items, tx)
+    }
+  })
+
+  return getDetail(userId, acceptanceId)
+}
+
+/**
+ * 提交自检（C-3.3 / AC-A07 / AC-A09）。
+ *
+ * AC-A07 要求「须逐项勾选全部自检清单，存在未勾选项时提交按钮不可用并高亮缺失项」。
+ * 服务端同样必须校验 —— 前端按钮置灰拦不住直接调接口的人，
+ * 而一条自检项没勾就流到监理那里，等于把检查责任推给了下游。
+ */
+async function submitSelfCheck(userId, acceptanceId, input) {
+  const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
+  assertPrimaryForeman(viewer)
+  assertTransition(acceptance.status, 'submit')
+
+  const trimmedDescription = input.description !== undefined ? input.description : acceptance.description
+
+  return db.withTransaction(async (tx) => {
+    if (input.description !== undefined) {
+      await acceptanceModel.updateDescription(acceptanceId, input.description, tx)
+    }
+    if (Array.isArray(input.items)) {
+      await acceptanceModel.saveItemResults(acceptanceId, input.items, tx)
+    }
+
+    // 全部勾选校验：任何一项 result 为空都拒绝
+    const items = await acceptanceModel.listItems(acceptanceId, tx)
+    const missing = items.filter((item) => !item.result)
+    if (missing.length > 0) {
+      throw AppError.badRequest(`还有 ${missing.length} 项自检未勾选，请逐项确认后再提交`, {
+        detail: {
+          missingItems: missing.map((item) => ({ id: item.id, name: item.name })),
+        },
+      })
+    }
+
+    // 自检项被标记为不合格时不应放行 —— 那说明工长自己知道有问题，
+    // 此时该先整改而不是把单子推给监理
+    const failed = items.filter((item) => item.result === 'fail')
+    if (failed.length > 0) {
+      throw AppError.conflict(`有 ${failed.length} 项自检未通过，请先整改后再提交`, {
+        detail: { failedItems: failed.map((item) => ({ id: item.id, name: item.name })) },
+      })
+    }
+
+    const nextStatus = await nextStatusAfterSubmit(tx, acceptance.project_id)
+    const round = acceptanceModel.currentRound(acceptance)
+
+    await acceptanceModel.appendFlow(
+      {
+        acceptanceId,
+        round,
+        step: STEP.SELF_CHECK,
+        operatorId: userId,
+        action: 'submit',
+        reason: trimmedDescription ? '工长自检完成' : null,
+      },
+      tx
+    )
+
+    // isFirstSubmit：`submitted_at` 只在首次写入（G-01）。
+    // 它永不更新是 AC-A22 的 48 小时超时与 AC-AD39 的平均验收周期能成立的前提
+    await acceptanceModel.transition(
+      acceptanceId,
+      {
+        status: nextStatus,
+        currentStep: nextStatus === STATUS.PENDING_SUPERVISOR ? STEP.SUPERVISOR : STEP.OWNER,
+        stepEnteredAt: datetime.format(),
+        isFirstSubmit: acceptance.submitted_at === null,
+      },
+      tx
+    )
+
+    return nextStatus
+  }).then(async (nextStatus) => {
+    await notifyStepHandlers(acceptance.project_id, acceptanceId, nextStatus, acceptance.project_stage_id)
+    return getDetail(userId, acceptanceId)
+  })
+}
+
+/**
+ * 提交后进入哪个状态。
+ *
+ * AC-A05：项目未配置监理（或监理全部未确认）时跳过监理环节，直接进入待业主确认。
+ * 只统计 active 成员 —— pending 的监理还没确认邀请，不计入任何权限判定（AC-AD18），
+ * 若把他算进去，工长的验收单会卡在一个永远不会有人处理的状态上。
+ */
+async function nextStatusAfterSubmit(tx, projectId) {
+  const supervisorCount = await tx.count(
+    "FROM project_member WHERE project_id = ? AND role = 'supervisor' AND status = 'active' AND deleted_at IS NULL",
+    [projectId]
+  )
+  return supervisorCount > 0 ? STATUS.PENDING_SUPERVISOR : STATUS.PENDING_OWNER
+}
+
+// ─────────────────────────────────────────────────────────────
+// 审核与驳回
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 当前环节通过（C-3.5 / C-3.6 / AC-A10 / AC-A15 / AC-A16 / AC-A21）。
+ *
+ * 同一个接口按当前状态判定该由谁操作：pending_supervisor → 监理，
+ * pending_owner → 业主。调用方无需知道自己正在扮演哪个环节 ——
+ * 让前端传「我是以监理身份操作」反而是个可以伪造的参数。
+ */
+async function approve(userId, acceptanceId, { signatureFile } = {}) {
+  const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
+  assertTransition(acceptance.status, 'approve')
+
+  const expectedRole = STEP_ROLE[acceptance.status]
+  if (viewer.role !== expectedRole) {
+    // AC-A10：对非本环节的验收单操作返回 403
+    throw AppError.forbidden(`当前处于「${STATUS_LABELS[acceptance.status]}」，仅该项目${roleLabel(expectedRole)}可处理`)
+  }
+
+  const step = expectedRole === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER
+
+  // AC-A16：业主确认通过时必须完成手写电子签名，未签名无法提交
+  let signatureUrl = null
+  if (step === STEP.OWNER) {
+    if (!signatureFile) throw AppError.badRequest('请先完成电子签名再确认验收')
+    const saved = await storage.save(signatureFile.buffer, { category: 'signatures', ext: signatureFile.ext })
+    signatureUrl = saved.url
+  }
+
+  const isFinal = step === STEP.OWNER
+
+  await db.withTransaction(async (tx) => {
+    const round = acceptanceModel.currentRound(acceptance)
+
+    await acceptanceModel.appendFlow(
+      { acceptanceId, round, step, operatorId: userId, action: 'approve' },
+      tx
+    )
+
+    if (isFinal) {
+      // AC-A17：签名与验收单一并归档
+      await acceptanceModel.markPassed(acceptanceId, { signatureUrl, finishedAt: datetime.format() }, tx)
+
+      // §4.7.1：验收通过后阶段门禁进入 accepted（待结算）。
+      // 注意**不是**直接 settled —— 结算要等业主对账无异议（AC-S08），
+      // 两件事分开才能让「验收通过」与「款已结清」各自可追溯。
+      //
+      // 同时把**展示状态**也写成 accepted：`status` 是派生字段，
+      // 但它是落库的，只改 gate_status 会让阶段在时间轴上仍显示「已完成」——
+      // 而 AC-P02 要求的展示值就是「已验收」。派生逻辑在 progress.service，
+      // 这里直接写是因为验收通过是它唯一不由进度触发的情形
+      await tx.query("UPDATE project_stage SET gate_status = 'accepted', status = 'accepted' WHERE id = ?", [
+        acceptance.project_stage_id,
+      ])
+    } else {
+      await acceptanceModel.transition(
+        acceptanceId,
+        { status: STATUS.PENDING_OWNER, currentStep: STEP.OWNER, stepEnteredAt: datetime.format() },
+        tx
+      )
+    }
+  })
+
+  // AC-A21：验收通过后解锁关联付款节点并生成通知。
+  // 放在事务**外**：解锁失败不该让「验收通过」这个事实回滚 ——
+  // 门禁已经推进，回滚会让阶段卡在一个说不清的状态。失败可重试（见 unlockPaymentNodes）
+  if (isFinal) {
+    await finalizeAfterPass(acceptance, userId).catch((err) => {
+      logger.error('验收通过后的联动处理失败，需要人工介入', { acceptanceId, err })
+    })
+  } else {
+    await notifyStepHandlers(acceptance.project_id, acceptanceId, STATUS.PENDING_OWNER, acceptance.project_stage_id)
+  }
+
+  return getDetail(userId, acceptanceId)
+}
+
+/**
+ * 驳回（C-3.5 / C-3.6 / AC-A11 / AC-A12 / AC-A13）。
+ *
+ * AC-A11 要求驳回原因必填。这不只是表单校验 ——
+ * 驳回是「不接受当前成果」的判断，没有理由的驳回让工长无从整改，
+ * 而这条记录还是日后争议时的关键材料。
+ */
+async function reject(userId, acceptanceId, { reason, files }) {
+  const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
+  assertTransition(acceptance.status, 'reject')
+
+  const expectedRole = STEP_ROLE[acceptance.status]
+  if (viewer.role !== expectedRole) {
+    throw AppError.forbidden(`当前处于「${STATUS_LABELS[acceptance.status]}」，仅该项目${roleLabel(expectedRole)}可处理`)
+  }
+
+  const text = String(reason || '').trim()
+  if (!text) throw AppError.badRequest('驳回原因必填')
+  if (text.length > 500) throw AppError.badRequest('驳回原因不超过 500 字')
+
+  // AC-A12：驳回可附照片，随流转记录一并保存
+  const images = []
+  for (const file of files || []) {
+    const original = await storage.save(file.buffer, { category: 'acceptances', ext: file.ext })
+    let watermarkUrl = null
+    if (file.type === 'image') {
+      const marked = await watermark.apply(file.buffer, {
+        lines: [datetime.format(), '驳回凭证', text.slice(0, 40)],
+      })
+      watermarkUrl = (await storage.save(marked, { category: 'acceptances', ext: file.ext })).url
+    }
+    images.push({ url: original.url, watermarkUrl })
+  }
+
+  const step = expectedRole === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER
+
+  await db.withTransaction(async (tx) => {
+    const round = acceptanceModel.currentRound(acceptance)
+
+    await acceptanceModel.appendFlow(
+      { acceptanceId, round, step, operatorId: userId, action: 'reject', reason: text, images },
+      tx
+    )
+
+    // AC-A13：任一环节驳回后进入待整改，回到工长手上
+    await acceptanceModel.transition(
+      acceptanceId,
+      { status: STATUS.PENDING_RECTIFY, currentStep: STEP.SELF_CHECK, stepEnteredAt: datetime.format() },
+      tx
+    )
+  })
+
+  await notifyRectify(acceptance, text)
+
+  return getDetail(userId, acceptanceId)
+}
+
+/**
+ * 重新提交（C-3.8 / AC-A14）。
+ *
+ * 「回到流程首环节」—— 有监理就重新走监理审核，没有就直接到业主。
+ * **此前的流转记录不被覆盖或删除**：新记录 round + 1，
+ * 旧记录原样保留，`listFlow` 会把多轮拼成一条完整的故事线。
+ */
+async function resubmit(userId, acceptanceId, input = {}) {
+  const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
+  assertPrimaryForeman(viewer)
+  assertTransition(acceptance.status, 'resubmit')
+
+  const nextStatus = await db.withTransaction(async (tx) => {
+    if (input.description !== undefined) {
+      await acceptanceModel.updateDescription(acceptanceId, input.description, tx)
+    }
+    if (Array.isArray(input.items)) {
+      await acceptanceModel.saveItemResults(acceptanceId, input.items, tx)
+      const items = await acceptanceModel.listItems(acceptanceId, tx)
+      const missing = items.filter((item) => !item.result || item.result === 'fail')
+      if (missing.length > 0) {
+        throw AppError.badRequest(`有 ${missing.length} 项自检未通过，请整改后再提交`)
+      }
+    }
+
+    const next = await nextStatusAfterSubmit(tx, acceptance.project_id)
+
+    // 本次重新提交**开启新的一轮**，因此要 +1。
+    // `currentRound(acceptance)` 读的是递增前的 resubmit_count，
+    // 给出的是「刚刚结束的那一轮」的编号 —— 直接用会把新一轮的记录
+    // 错误地归到上一轮里，流程记录读起来就像没重新提交过
+    const round = acceptanceModel.currentRound(acceptance) + 1
+
+    await acceptanceModel.appendFlow(
+      { acceptanceId, round, step: STEP.SELF_CHECK, operatorId: userId, action: 'submit', reason: '工长整改完成，重新提交' },
+      tx
+    )
+
+    await acceptanceModel.transition(
+      acceptanceId,
+      {
+        status: next,
+        currentStep: next === STATUS.PENDING_SUPERVISOR ? STEP.SUPERVISOR : STEP.OWNER,
+        stepEnteredAt: datetime.format(),
+        // 重新提交只递增计数，**不动 submitted_at**（G-01）
+        resubmitIncrement: true,
+      },
+      tx
+    )
+
+    return next
+  })
+
+  await notifyStepHandlers(acceptance.project_id, acceptanceId, nextStatus, acceptance.project_stage_id)
+
+  return getDetail(userId, acceptanceId)
+}
+
+// ─────────────────────────────────────────────────────────────
+// 通过后的联动
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 验收通过后的联动：解锁付款节点 + 生成 PDF + 通知（AC-A21 / AC-A18）。
+ *
+ * 三件事都**不参与**「验收通过」那个事务：验收通过是既成事实，
+ * 下游任何一步失败都不该把它回滚。各自失败各自记录，可重试。
+ */
+async function finalizeAfterPass(acceptance, operatorId) {
+  await unlockPaymentNodes(acceptance)
+  await notifyPassed(acceptance)
+
+  // AC-A19：PDF 生成失败不阻断验收单进入已通过 —— 因此这里是「尽力而为」，
+  // 失败只把 report_pdf_status 置为 failed 并记下原因，前端据此展示重试入口
+  await acceptancePdfService.generate(acceptance.id).catch((err) => {
+    logger.error('验收报告 PDF 生成失败，已标记为可重试', { acceptanceId: acceptance.id, err })
+  })
+
+  logger.info('验收通过后的联动处理完成', { acceptanceId: acceptance.id, operatorId })
+}
+
+/** AC-A21 / C-3.11 / AC-L14：解锁关联该阶段的付款节点 */
+async function unlockPaymentNodes(acceptance) {
+  if (!acceptance.project_stage_id) return []
+
+  const unlocked = await db.withTransaction((tx) =>
+    paymentNodeModel.unlockByStage(acceptance.project_id, acceptance.project_stage_id, tx)
+  )
+
+  if (unlocked.length === 0) return []
+
+  // AC-A21：在工长与业主的消息中心各生成一条通知
+  const targets = await db.query(
+    `SELECT DISTINCT user_id FROM project_member
+      WHERE project_id = ? AND role IN ('foreman', 'owner') AND status = 'active' AND deleted_at IS NULL`,
+    [acceptance.project_id]
+  )
+
+  for (const { user_id: userId } of targets) {
+    await notificationService
+      .notify({
+        userId,
+        projectId: acceptance.project_id,
+        type: notificationService.TYPES.PAYMENT,
+        title: '付款节点已解锁',
+        content: `验收通过，已解锁 ${unlocked.length} 个付款节点：${unlocked.map((n) => n.name).join('、')}`,
+        refType: 'acceptance',
+        refId: acceptance.id,
+      })
+      .catch((err) => logger.warn('付款节点解锁通知发送失败', { acceptanceId: acceptance.id, err }))
+  }
+
+  return unlocked
+}
+
+/** 通知某个状态的下一个处理人 */
+async function notifyStepHandlers(projectId, acceptanceId, status, stageId) {
+  const role = STEP_ROLE[status]
+  if (!role) return
+
+  const targets = await db.query(
+    `SELECT DISTINCT user_id FROM project_member
+      WHERE project_id = ? AND role = ? AND status = 'active' AND deleted_at IS NULL`,
+    [projectId, role]
+  )
+  if (targets.length === 0) return
+
+  const stage = stageId ? await projectStageModel.findById(stageId) : null
+  const title = `有一张验收单待你${STEP_LABELS[role === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER]}`
+
+  for (const { user_id: userId } of targets) {
+    await notificationService
+      .notify({
+        userId,
+        projectId,
+        type: notificationService.TYPES.ACCEPTANCE,
+        title,
+        content: stage ? `「${stage.name}」的验收单等待处理` : '验收单等待处理',
+        refType: 'acceptance',
+        refId: acceptanceId,
+      })
+      .catch((err) => logger.warn('验收待办通知发送失败', { acceptanceId, err }))
+  }
+}
+
+/** 驳回后通知工长（含主工长与普通工长 —— 整改是所有人都能做的） */
+async function notifyRectify(acceptance, reason) {
+  const targets = await db.query(
+    `SELECT DISTINCT user_id FROM project_member
+      WHERE project_id = ? AND role = 'foreman' AND status = 'active' AND deleted_at IS NULL`,
+    [acceptance.project_id]
+  )
+
+  for (const { user_id: userId } of targets) {
+    await notificationService
+      .notify({
+        userId,
+        projectId: acceptance.project_id,
+        type: notificationService.TYPES.ACCEPTANCE,
+        title: '验收被驳回，需要整改',
+        content: reason.slice(0, 100),
+        refType: 'acceptance',
+        refId: acceptance.id,
+      })
+      .catch((err) => logger.warn('驳回通知发送失败', { acceptanceId: acceptance.id, err }))
+  }
+}
+
+/** 验收通过后通知工长与业主 */
+async function notifyPassed(acceptance) {
+  const targets = await db.query(
+    `SELECT DISTINCT user_id FROM project_member
+      WHERE project_id = ? AND role IN ('foreman', 'owner') AND status = 'active' AND deleted_at IS NULL`,
+    [acceptance.project_id]
+  )
+
+  const stage = acceptance.project_stage_id
+    ? await projectStageModel.findById(acceptance.project_stage_id)
+    : null
+
+  for (const { user_id: userId } of targets) {
+    await notificationService
+      .notify({
+        userId,
+        projectId: acceptance.project_id,
+        type: notificationService.TYPES.ACCEPTANCE,
+        title: '验收已通过',
+        content: stage ? `「${stage.name}」验收通过，已归档` : '验收通过，已归档',
+        refType: 'acceptance',
+        refId: acceptance.id,
+      })
+      .catch((err) => logger.warn('验收通过通知发送失败', { acceptanceId: acceptance.id, err }))
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 读取
+// ─────────────────────────────────────────────────────────────
+
+async function getDetail(userId, acceptanceId) {
+  const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
+
+  const [items, flow, stage, item, project] = await Promise.all([
+    acceptanceModel.listItems(acceptanceId),
+    acceptanceModel.listFlow(acceptanceId),
+    acceptance.project_stage_id ? projectStageModel.findById(acceptance.project_stage_id) : null,
+    acceptance.project_item_id ? projectItemModel.findById(acceptance.project_item_id) : null,
+    projectModel.findByIdUnscoped(acceptance.project_id),
+  ])
+
+  const photos = parseJson(acceptance.photos) || []
+
+  return {
+    id: acceptance.id,
+    projectId: acceptance.project_id,
+    projectName: project ? project.name : null,
+    type: acceptance.type,
+    status: acceptance.status,
+    statusLabel: STATUS_LABELS[acceptance.status],
+    currentStep: acceptance.current_step,
+    currentStepLabel: acceptance.current_step ? STEP_LABELS[acceptance.current_step] : null,
+    stageId: acceptance.project_stage_id,
+    stageName: stage ? stage.name : null,
+    itemId: acceptance.project_item_id,
+    itemName: item ? item.name : null,
+    description: acceptance.description,
+    photos: photos.map((p) => ({ url: p.watermarkUrl || p.url, originalUrl: p.watermarkUrl ? p.url : null })),
+    submitterId: acceptance.submitter_id,
+    submittedAt: acceptance.submitted_at,
+    stepEnteredAt: acceptance.step_entered_at,
+    resubmitCount: acceptance.resubmit_count,
+    finishedAt: acceptance.finished_at,
+    signatureUrl: acceptance.signature_url,
+    reportPdf: {
+      status: acceptance.report_pdf_status,
+      url: acceptance.report_pdf_url,
+      error: acceptance.report_pdf_error,
+      // AC-A20：通过带签名的临时 URL 访问。**每次读取都重新签发**，
+      // 因此过期后重新获取即可正常下载
+      signedPath:
+        acceptance.report_pdf_status === 'success'
+          ? signedUrl.buildPath({
+              resource: 'acceptance-report',
+              id: acceptance.id,
+              path: `/api/v1/acceptances/${acceptance.id}/report.pdf`,
+            })
+          : null,
+    },
+    items: items.map((row) => ({
+      id: row.id,
+      seq: row.seq,
+      name: row.name,
+      result: row.result,
+      remark: row.remark,
+    })),
+    flow: flow.map(toFlowView),
+    // 当前访问者在这张单子上能做什么 —— 前端据此决定按钮的可用性，
+    // 但**服务端仍然独立校验**（AC-A10/A15/A24），前端只是体验层的提示
+    myActions: buildMyActions(acceptance, viewer),
+  }
+}
+
+function toFlowView(row) {
+  return {
+    id: row.id,
+    round: row.round,
+    step: row.step,
+    stepLabel: STEP_LABELS[row.step] || row.step,
+    operatorId: row.operator_id,
+    operator: row.nickname || `用户${row.operator_id}`,
+    action: row.action,
+    actionLabel: { submit: '提交', approve: '通过', reject: '驳回' }[row.action] || row.action,
+    reason: row.reason,
+    images: (parseJson(row.images) || []).map((img) => ({
+      url: img.watermarkUrl || img.url,
+      originalUrl: img.watermarkUrl ? img.url : null,
+    })),
+    operatedAt: row.operated_at,
+  }
+}
+
+/**
+ * 当前访问者可执行的动作。
+ *
+ * 与 approve/reject 里的角色校验是**同一套判据**，这里只是把它提前告诉前端。
+ * 两处若分叉，会出现「按钮可点但接口 403」这种最难解释的现象 ——
+ * 因此判据都来自 STEP_ROLE 与 assertPrimaryForeman 的同样条件。
+ */
+function buildMyActions(acceptance, viewer) {
+  const actions = []
+  if (acceptance.status === STATUS.PASSED) return actions
+
+  const expectedRole = STEP_ROLE[acceptance.status]
+  if (expectedRole && viewer.role === expectedRole) {
+    actions.push('approve', 'reject')
+  }
+
+  if (viewer.role === 'foreman' && viewer.is_primary === 1) {
+    if (acceptance.status === STATUS.DRAFT) actions.push('submit')
+    if (acceptance.status === STATUS.PENDING_RECTIFY) actions.push('resubmit')
+  }
+
+  if (viewer.role === 'foreman' && acceptance.status === STATUS.DRAFT) {
+    actions.push('saveDraft')
+  }
+
+  return actions
+}
+
+/**
+ * 验收列表（C-3.1 / AC-A23）。
+ *
+ * 按「待我处理 / 进行中 / 已完成」分组，各组数量与 tab 红点角标一致 ——
+ * 因此分组计数与返回的列表**必须来自同一次查询**，各自算一遍就会不一致。
+ *
+ * 草稿不计入任何角色的待办（AC-A08）：它只是工长自己没写完的东西。
+ */
+async function listAcceptances(userId, projectId) {
+  const viewer = await resolveViewer(userId, projectId)
+  const rows = await acceptanceModel.listByProject(projectId)
+
+  const views = rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    statusLabel: STATUS_LABELS[row.status],
+    type: row.type,
+    stageId: row.project_stage_id,
+    stageName: row.stage_name,
+    itemId: row.project_item_id,
+    itemName: row.item_name,
+    submitter: row.submitter_nickname,
+    submittedAt: row.submitted_at,
+    stepEnteredAt: row.step_entered_at,
+    resubmitCount: row.resubmit_count,
+    finishedAt: row.finished_at,
+    rejectCount: Number(row.reject_count),
+    hasSignature: Boolean(row.signature_url),
+    reportPdfStatus: row.report_pdf_status,
+    // 是否为「待我处理」—— 由当前访问者的角色与单子所处环节共同决定
+    isMine: isAwaitingMe(row, viewer),
+  }))
+
+  const todo = views.filter((v) => v.isMine)
+  const done = views.filter((v) => v.status === STATUS.PASSED)
+  const inProgress = views.filter((v) => !v.isMine && v.status !== STATUS.PASSED)
+
+  return {
+    groups: [
+      { key: 'todo', label: '待我处理', count: todo.length, items: todo },
+      { key: 'inProgress', label: '进行中', count: inProgress.length, items: inProgress },
+      { key: 'done', label: '已完成', count: done.length, items: done },
+    ],
+    total: views.length,
+    // tab 红点角标 = 待我处理数，与上面的 count 同源
+    todoCount: todo.length,
+    myRole: viewer.role,
+    isPrimaryForeman: viewer.is_primary === 1,
+  }
+}
+
+/**
+ * 是否「待我处理」。
+ *
+ * 草稿只对提交者本人算待办吗？**不算** —— AC-A08 明确「草稿不计入任何角色的
+ * 待办数与红点」，因为它是还没写完的东西，计入待办会变成一个催自己交作业的提醒。
+ */
+function isAwaitingMe(row, viewer) {
+  if (row.status === STATUS.DRAFT || row.status === STATUS.PASSED) return false
+
+  if (row.status === STATUS.PENDING_RECTIFY) {
+    return viewer.role === 'foreman'
+  }
+
+  const expectedRole = STEP_ROLE[row.status]
+  return Boolean(expectedRole) && viewer.role === expectedRole
+}
+
+/** 流转记录（C-3.9 / AC-A26：对任何角色只读） */
+async function getFlow(userId, acceptanceId) {
+  const { acceptance } = await loadForAction(userId, acceptanceId)
+
+  const rows = await acceptanceModel.listFlow(acceptanceId)
+
+  // 按轮次分组，前端可以直接渲染成「第 1 轮 / 第 2 轮」的时间线
+  const rounds = []
+  for (const row of rows) {
+    let bucket = rounds.find((r) => r.round === row.round)
+    if (!bucket) {
+      bucket = { round: row.round, entries: [] }
+      rounds.push(bucket)
+    }
+    bucket.entries.push(toFlowView(row))
+  }
+
+  return { acceptanceId, status: acceptance.status, rounds }
+}
+
+function roleLabel(role) {
+  return { supervisor: '监理', owner: '业主', foreman: '工长' }[role] || role
+}
+
+function parseJson(value) {
+  if (!value) return null
+  if (typeof value === 'object') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 取验收单并做可见性校验，返回 { acceptance, viewer }。
+ *
+ * ── 「不存在」与「无权访问」必须给出**同一个**提示 ──
+ * AC-A25 与 AC-P26 都要求不泄露资源是否存在。若「不是本项目成员」返回
+ * 「项目不存在」而「单子不存在」返回「验收单不存在」，两者一比就能探出
+ * 某个 id 是否真实存在 —— 正是这类提示差异把「不泄露」变成了空话。
+ */
+async function loadForAction(userId, acceptanceId) {
+  const acceptance = await acceptanceModel.findById(acceptanceId)
+  if (!acceptance) throw AppError.notFound(NOT_FOUND_MESSAGE)
+
+  const viewer = await projectMemberModel.findActiveRole(acceptance.project_id, userId)
+  if (!viewer) throw AppError.notFound(NOT_FOUND_MESSAGE)
+
+  return { acceptance, viewer }
+}
+
+
+module.exports = {
+  STATUS,
+  STEP,
+  STATUS_LABELS,
+  STEP_LABELS,
+  TRANSITIONS,
+  assertTransition,
+  createAcceptance,
+  saveDraft,
+  submitSelfCheck,
+  approve,
+  reject,
+  resubmit,
+  getDetail,
+  listAcceptances,
+  getFlow,
+  resolveViewer,
+  assertPrimaryForeman,
+  isAwaitingMe,
+}

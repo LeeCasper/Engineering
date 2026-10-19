@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<title>工程宝 - 请选择您的身份</title>
+<!-- Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- BEGIN: Custom Styles -->
+<style data-purpose="base-styling">
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+  </style>
+<style data-purpose="visual-effects">
+    /* 背景建筑与工程蓝白渐变 */
+    .hero-bg-gradient {
+      background: linear-gradient(180deg, #dcecfc 0%, #edf5fc 40%, #f4f8fc 100%);
+    }
+
+    /* 卡片羽化渐变遮罩，使右侧实景图与左侧背景柔和衔接 */
+    .image-blend-mask {
+      mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.45) 25%, rgba(0, 0, 0, 1) 55%);
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.45) 25%, rgba(0, 0, 0, 1) 55%);
+    }
+
+    /* 顶部 3D 建筑插画透光融合 */
+    .hero-blend-mask {
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.8) 60%, transparent 100%),
+                  linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 1) 40%);
+      -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.8) 60%, transparent 100%),
+                          linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 1) 40%);
+    }
+  </style>
+<!-- END: Custom Styles -->
+</head>
+<body class="bg-[#f0f4f9] flex justify-center min-h-screen text-[#1f2937]">
+<!-- BEGIN: Phone Mockup Frame -->
+<div class="relative w-full max-w-[428px] min-h-[926px] bg-[#f2f6fa] shadow-2xl flex flex-col justify-between overflow-hidden">
+<!-- BEGIN: Top Area & Background Illustrations -->
+<div class="relative z-10">
+<!-- 顶部实景模型与工程帽背景元素 (以纯 CSS 和高质感混合图层渲染) -->
+<div class="absolute top-0 right-0 w-[270px] h-[220px] pointer-events-none opacity-80 hero-blend-mask z-0 overflow-hidden">
+<img alt="3D Building Architecture" class="w-full h-full object-cover object-left opacity-35 filter brightness-110 contrast-125" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-pgD1zgBCAO-GIqIA3eRS6bv08DmbryuEazlD2NC5wmyYtt1T5c59ObeCbO1muz0CpeT6ZAMDNzKo3kotjEpb18hG_K74Y_30ktQPrGwa7Rqy7U-mJHiTi-oA-bDfhXMOY-KvRC0UCFJYm6DC2usQzJdE7XcsEFyuTLBlU2K7egDCGsbWo20A2ttbSuCRm-kNPNUOgWxPLmRyUcFPemfadYX-fftqdmoVKDVglF_1DuYcdGSY1sal"/>
+<!-- 3D工程安全帽黄色点缀 -->
+<div class="absolute bottom-4 right-5 w-24 h-14 bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 rounded-t-full shadow-lg transform rotate-[-4deg] border-b-4 border-amber-600/60">
+<div class="w-full h-2.5 bg-amber-400/80 rounded-full mt-7 shadow-inner"></div>
+</div>
+</div>
+<!-- BEGIN: iOS Status Bar -->
+<header class="relative z-20 flex justify-between items-center px-7 pt-3.5 pb-2">
+<!-- 时间 -->
+<span class="text-[15px] font-semibold tracking-tight text-slate-800">9:41</span>
+<!-- 状态栏图标：蜂窝、WiFi、电池 -->
+<div class="flex items-center space-x-1.5 text-slate-800">
+<!-- 信号强度 -->
+<svg class="w-4 h-3.5 fill-current" viewbox="0 0 18 14">
+<rect height="4" rx="0.6" width="2.5" x="0" y="10"></rect>
+<rect height="6.5" rx="0.6" width="2.5" x="4" y="7.5"></rect>
+<rect height="10" rx="0.6" width="2.5" x="8" y="4"></rect>
+<rect height="13" rx="0.6" width="2.5" x="12" y="1"></rect>
+</svg>
+<!-- Wi-Fi 图标 -->
+<svg class="w-4 h-3.5 fill-current" viewbox="0 0 20 15">
+<path d="M10 2.5C13.2 2.5 16.1 3.8 18.2 5.9L19.7 4.4C17.2 1.9 13.8 0.5 10 0.5C6.2 0.5 2.8 1.9 0.3 4.4L1.8 5.9C3.9 3.8 6.8 2.5 10 2.5ZM10 6.5C12.1 6.5 14 7.4 15.4 8.8L16.9 7.3C15.1 5.5 12.7 4.5 10 4.5C7.3 4.5 4.9 5.5 3.1 7.3L4.6 8.8C6 7.4 7.9 6.5 10 6.5ZM10 10.5C11.1 10.5 12 11.4 12 12.5C12 13.6 11.1 14.5 10 14.5C8.9 14.5 8 13.6 8 12.5C8 11.4 8.9 10.5 10 10.5Z"></path>
+</svg>
+<!-- 电池图标 -->
+<div class="flex items-center">
+<div class="w-5 h-2.5 border-[1.2px] border-slate-800 rounded-[3px] p-[1px] flex items-center">
+<div class="w-full h-full bg-slate-800 rounded-[1.5px]"></div>
+</div>
+<div class="w-[1.5px] h-1 bg-slate-800 rounded-r-sm -ml-[0.5px]"></div>
+</div>
+</div>
+</header>
+<!-- END: iOS Status Bar -->
+<!-- BEGIN: Navigation Bar (Back & WeChat Capsule) -->
+<nav class="relative z-20 flex items-center justify-between px-5 pt-1.5 pb-3">
+<!-- 返回箭头 -->
+<button aria-label="返回上一页" class="p-1 text-slate-800 active:opacity-60 transition" type="button">
+<svg class="w-5 h-5 stroke-[2.2] stroke-current fill-none" viewbox="0 0 24 24">
+<path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+<!-- 微信小程序胶囊控件 -->
+<div class="flex items-center bg-white/70 backdrop-blur-md border border-slate-200/90 rounded-full h-[32px] px-2.5 py-1 shadow-sm space-x-2.5">
+<!-- 更多选项 (...) -->
+<button aria-label="小程序更多选项" class="flex items-center space-x-[2px] px-0.5" type="button">
+<span class="w-[3px] h-[3px] rounded-full bg-slate-800"></span>
+<span class="w-[4px] h-[4px] rounded-full bg-slate-800"></span>
+<span class="w-[3px] h-[3px] rounded-full bg-slate-800"></span>
+</button>
+<!-- 竖向微细分割线 -->
+<div class="w-[1px] h-3.5 bg-slate-300"></div>
+<!-- 退出/圆环图标 -->
+<button aria-label="退出小程序" class="flex items-center justify-center p-0.5" type="button">
+<div class="w-[15px] h-[15px] rounded-full border-[1.8px] border-slate-800 flex items-center justify-center">
+<div class="w-[5px] h-[5px] rounded-full bg-slate-800"></div>
+</div>
+</button>
+</div>
+</nav>
+<!-- END: Navigation Bar -->
+<!-- BEGIN: Brand and Headline Section -->
+<section class="relative z-20 px-6 pt-2 pb-5">
+<!-- App 图标与应用名 -->
+<div class="flex items-center space-x-3 mb-3">
+<div class="w-11 h-11 bg-gradient-to-b from-[#2a87ff] to-[#166ee8] rounded-2xl flex items-center justify-center shadow-md shadow-blue-500/20">
+<!-- 房屋轮廓图标 -->
+<svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"></path>
+</svg>
+</div>
+<h1 class="text-2xl font-black tracking-tight text-[#0f274a]">工程宝</h1>
+</div>
+<!-- 主引导文案 -->
+<h2 class="text-[23px] font-extrabold text-[#111f38] tracking-tight mb-2">请选择您的身份</h2>
+<!-- 副标题文案 -->
+<p class="text-[12px] font-medium text-[#7a8da3] tracking-wide space-x-2">
+<span>不同角色</span>
+<span>不同视角</span>
+<span>同一项目</span>
+<span>共同协作</span>
+</p>
+</section>
+<!-- END: Brand and Headline Section -->
+<!-- BEGIN: Role Selection Cards Stack -->
+<main class="relative z-20 px-4 space-y-3.5 mt-1" data-purpose="role-cards-container">
+<!-- 角色 1：工长 (已选中状态) -->
+<article class="relative bg-white rounded-2xl p-4 border-2 border-[#2680eb] shadow-[0_4px_16px_rgba(38,128,235,0.12)] overflow-hidden cursor-pointer transition active:scale-[0.99]" data-purpose="role-card-foreman">
+<!-- 右上角选中勾选标签 -->
+<div class="absolute top-0 right-0 w-6 h-6 bg-[#1f7ae6] rounded-bl-xl flex items-center justify-center shadow-sm z-30">
+<svg class="w-3.5 h-3.5 text-white stroke-[3] stroke-current fill-none" viewbox="0 0 24 24">
+<path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<!-- 右侧实景图片透视区域 (施工负责人背影+黄色工程帽+手持看板) -->
+<div class="absolute top-0 right-0 bottom-0 w-[54%] image-blend-mask z-10 pointer-events-none overflow-hidden">
+<img alt="工长施工现场管理" class="w-full h-full object-cover object-center filter saturate-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCUmEnEdlWuzB3dFyYmTtfoDoajpT1SzvcnX8ZOwKaH_yaCJbOY8NzLE9319TsKfqfzOkN6zfqo4dVHhH3y7clDlVrm-ClOB62LfIz_m7ca2mmDGYJX9om2_Gis5au6Quu1B2puEd1n-Qs9FIkDINgqfTR5VcSt-RSy0WZcYXys8seN2UrCWJ8LT4zYYMSAQNMC4Q6iCV7Altpl48_CsE5mKm5eyKpz6iXuUL5BJf2j5Y_ost6iodaG"/>
+</div>
+<!-- 左侧文字内容信息 -->
+<div class="relative z-20 flex flex-col justify-between max-w-[70%]">
+<div class="flex items-center space-x-3 mb-2.5">
+<!-- 头像图标：工长 -->
+<div class="w-12 h-12 rounded-full bg-[#1e83f0] flex items-center justify-center text-white shadow-sm flex-shrink-0">
+<svg class="w-6 h-6 fill-current" viewbox="0 0 24 24">
+<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
+</svg>
+</div>
+<div>
+<h3 class="text-[19px] font-bold text-[#1a2332] leading-tight tracking-tight">工长</h3>
+<p class="text-[13px] text-[#4f5f73] mt-0.5 font-medium">现场施工负责人</p>
+</div>
+</div>
+<!-- 核心功能与职责 -->
+<p class="text-[11px] text-[#8695a7] tracking-tight leading-normal pl-0.5">
+              汇报进度、登记支出、发起验收、提交结算
+            </p>
+</div>
+<!-- 细右箭头导航图标 -->
+<div class="absolute right-3.5 top-1/2 -translate-y-1/2 z-20 text-slate-500">
+<svg class="w-4 h-4 stroke-[2.4] stroke-current fill-none" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</article>
+<!-- 角色 2：监理 (未选中状态) -->
+<article class="relative bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_2px_12px_rgba(0,0,0,0.03)] overflow-hidden cursor-pointer hover:border-blue-200 transition active:scale-[0.99]" data-purpose="role-card-supervisor">
+<!-- 右侧实景图片透视区域 (戴白帽的监理人员手持记录板) -->
+<div class="absolute top-0 right-0 bottom-0 w-[54%] image-blend-mask z-10 pointer-events-none overflow-hidden">
+<img alt="工程监理现场检查" class="w-full h-full object-cover object-right filter brightness-95" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjddcf8yNe3sqSIUDGmXswvQ1QyoHZhB7vlSzDwIezDuOqeCk5asb2XJXuIrppgoCU3V1jqxS8vkTucHqOf9-7kW0wpi5Jv1ao7nkaezo9qctRvpHf_kmOzbTdBbxKSEfLit0JsqQxmL4orNBK2uIsftxBTRTA8gcpNOnrwWJ5olCymrp5tYTcIic9XpJgL-mXyU4A7SRPdajdAbIy21Ge34PcvR4kiJlLbyf1t15t1ScqB1leaLvZ"/>
+</div>
+<!-- 左侧文字内容信息 -->
+<div class="relative z-20 flex flex-col justify-between max-w-[70%]">
+<div class="flex items-center space-x-3 mb-2.5">
+<!-- 头像图标：监理绿色盾牌徽标 -->
+<div class="w-12 h-12 rounded-full bg-[#10b981] flex items-center justify-center text-white shadow-sm flex-shrink-0">
+<svg class="w-6 h-6 stroke-[2.2] stroke-current fill-none" viewbox="0 0 24 24">
+<path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<div>
+<h3 class="text-[19px] font-bold text-[#1a2332] leading-tight tracking-tight">监理</h3>
+<p class="text-[13px] text-[#4f5f73] mt-0.5 font-medium">质量监督方</p>
+</div>
+</div>
+<!-- 核心职责 -->
+<p class="text-[11px] text-[#8695a7] tracking-tight leading-normal pl-0.5">
+              审核验收、查看进度、提出整改
+            </p>
+</div>
+<!-- 细右箭头导航图标 -->
+<div class="absolute right-3.5 top-1/2 -translate-y-1/2 z-20 text-slate-500">
+<svg class="w-4 h-4 stroke-[2.4] stroke-current fill-none" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</article>
+<!-- 角色 3：业主 (未选中状态) -->
+<article class="relative bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_2px_12px_rgba(0,0,0,0.03)] overflow-hidden cursor-pointer hover:border-blue-200 transition active:scale-[0.99]" data-purpose="role-card-owner">
+<!-- 右侧实景图片透视区域 (温馨家居、正在查看手机的业主背影) -->
+<div class="absolute top-0 right-0 bottom-0 w-[54%] image-blend-mask z-10 pointer-events-none overflow-hidden">
+<img alt="业主查看装修进程" class="w-full h-full object-cover object-left filter contrast-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCKLtCt1HIOSaJMXKuXfc5cvv5M44HOrqPTUL9jitTjwIXJjhG8rnWyby71uRbi4X-6yF1EPdry9IF6pA4KemEA9dD-vpOxbVxSChiw7SNFiWiL-KXv9zJc__toFf8kGnNj5E00dg7vCrIvbUK3iRFvZnpqxTSo_juLLK-9Okl4fZ3nBbBr0OjTTyEiz0cB7nZoaQLZ5OsJTV__VKoylMRY5_rVGAejihcaI3a1yL7af-ww_IqUu6xh"/>
+</div>
+<!-- 左侧文字内容信息 -->
+<div class="relative z-20 flex flex-col justify-between max-w-[70%]">
+<div class="flex items-center space-x-3 mb-2.5">
+<!-- 头像图标：业主橙色徽标 -->
+<div class="w-12 h-12 rounded-full bg-[#f97316] flex items-center justify-center text-white shadow-sm flex-shrink-0">
+<svg class="w-6 h-6 fill-current" viewbox="0 0 24 24">
+<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
+</svg>
+</div>
+<div>
+<h3 class="text-[19px] font-bold text-[#1a2332] leading-tight tracking-tight">业主</h3>
+<p class="text-[13px] text-[#4f5f73] mt-0.5 font-medium">项目出资方</p>
+</div>
+</div>
+<!-- 核心职责 -->
+<p class="text-[11px] text-[#8695a7] tracking-tight leading-normal pl-0.5">
+              查看进度、确认验收、核对账目
+            </p>
+</div>
+<!-- 细右箭头导航图标 -->
+<div class="absolute right-3.5 top-1/2 -translate-y-1/2 z-20 text-slate-500">
+<svg class="w-4 h-4 stroke-[2.4] stroke-current fill-none" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</article>
+</main>
+<!-- END: Role Selection Cards Stack -->
+</div>
+<!-- END: Top Area & Background Illustrations -->
+<!-- BEGIN: Bottom Footer & Skyline Silhouette -->
+<footer class="relative z-10 w-full pt-10 pb-2 flex flex-col items-center justify-end" data-purpose="footer-branding">
+<!-- 中部质保盾牌与分割线 -->
+<div class="flex items-center justify-center w-full px-12 mb-2">
+<div class="flex-grow h-[1px] bg-gradient-to-r from-transparent via-[#cbd7e6] to-[#cbd7e6]"></div>
+<div class="mx-3 text-[#7d93af]">
+<!-- 安全保障盾牌图标 -->
+<svg class="w-4 h-4 stroke-[1.8] stroke-current fill-none" viewbox="0 0 24 24">
+<path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<div class="flex-grow h-[1px] bg-gradient-to-l from-transparent via-[#cbd7e6] to-[#cbd7e6]"></div>
+</div>
+<!-- 品牌价值主张小字 -->
+<p class="text-[12px] text-[#7d93af] tracking-tight font-normal mb-8">
+        工程宝 · 让装修工程更透明、更可控
+      </p>
+<!-- 底部淡蓝建筑天际线与波浪剪影层 -->
+<div class="relative w-full h-[95px] overflow-hidden pointer-events-none -mt-4">
+<!-- 天际线建筑群与起重机 SVG 图形 -->
+<svg class="absolute bottom-0 w-full h-full text-[#cde1f7]/60" fill="currentColor" preserveaspectratio="none" viewbox="0 0 500 120">
+<!-- 远景微淡剪影 -->
+<path d="M 0,120 L 0,80 L 30,80 L 30,65 L 60,65 L 60,85 L 110,85 L 110,50 L 130,50 L 130,70 L 180,70 L 180,90 L 240,90 L 240,40 L 270,40 L 270,75 L 340,75 L 340,55 L 380,55 L 380,85 L 430,85 L 430,65 L 470,65 L 470,90 L 500,90 L 500,120 Z" opacity="0.35"></path>
+<!-- 近景层次建筑与塔吊 -->
+<path d="M 0,120 L 0,95 L 45,95 L 45,75 L 85,75 L 85,98 L 140,98 L 140,65 L 165,65 L 165,95 L 210,95 L 210,80 L 290,80 L 290,60 L 325,60 L 325,85 L 390,85 L 390,70 L 420,70 L 420,95 L 500,95 L 500,120 Z" opacity="0.6"></path>
+<!-- 柔和浅弧线底衬过渡 -->
+<path d="M0,120 Q200,90 500,115 L500,120 Z" fill="#b9d6f3" opacity="0.8"></path>
+</svg>
+</div>
+<!-- iOS 底部指示条 (Home Bar) -->
+<div class="w-full flex justify-center pb-2 pt-1 relative z-20">
+<div class="w-36 h-1 bg-slate-900 rounded-full"></div>
+</div>
+</footer>
+<!-- END: Bottom Footer & Skyline Silhouette -->
+</div>
+<!-- END: Phone Mockup Frame -->
+<!-- BEGIN: Interactive Feedback Script -->
+<script data-purpose="card-selection-toggle">
+    // 监听角色卡片点击交互，切换激活的高亮状态
+    document.addEventListener('DOMContentLoaded', () => {
+      const cards = document.querySelectorAll('[data-purpose^="role-card-"]');
+      
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          // 清理其它卡片的选中态
+          cards.forEach(c => {
+            c.classList.remove('border-2', 'border-[#2680eb]', 'shadow-[0_4px_16px_rgba(38,128,235,0.12)]');
+            c.classList.add('border', 'border-slate-100', 'shadow-[0_2px_12px_rgba(0,0,0,0.03)]');
+            const badge = c.querySelector('.checked-badge');
+            if (badge) badge.remove();
+          });
+
+          // 设置当前点击卡片的选中态
+          card.classList.remove('border', 'border-slate-100', 'shadow-[0_2px_12px_rgba(0,0,0,0.03)]');
+          card.classList.add('border-2', 'border-[#2680eb]', 'shadow-[0_4px_16px_rgba(38,128,235,0.12)]');
+
+          // 动态插入右上角 Checked 勾选图标
+          const badgeDiv = document.createElement('div');
+          badgeDiv.className = 'checked-badge absolute top-0 right-0 w-6 h-6 bg-[#1f7ae6] rounded-bl-xl flex items-center justify-center shadow-sm z-30';
+          badgeDiv.innerHTML = `
+            <svg class="w-3.5 h-3.5 text-white stroke-[3] stroke-current fill-none" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          `;
+          card.appendChild(badgeDiv);
+        });
+      });
+    });
+  </script>
+<!-- END: Interactive Feedback Script -->
+</body></html>
