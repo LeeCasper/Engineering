@@ -1,0 +1,413 @@
+/**
+ * 小程序管理端的通用样式。
+ *
+ * 只在 App.vue 里全局引入一次；管理页面都是非 tab 页，不参与 C 端设计稿的
+ * 像素级还原，因此这里用一套更偏「工具型后台」的卡片、表单、列表与底部面板。
+ */
+
+.admin-page {
+  min-height: 100vh;
+  padding-bottom: calc(#{dp(28)} + env(safe-area-inset-bottom));
+  background: #faf7f4;
+}
+
+.admin-content {
+  padding: 0 dp(14);
+}
+
+.admin-card {
+  margin-bottom: dp(12);
+  padding: dp(14);
+  border: 1px solid rgba(229, 231, 235, 0.9);
+  border-radius: dp(14);
+  background: #fff;
+  box-shadow: 0 dp(2) dp(8) rgba(0, 0, 0, 0.04);
+}
+
+.admin-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: dp(10);
+}
+
+.admin-section-title {
+  display: block;
+  color: #241c17;
+  font-size: dp(14);
+  font-weight: 700;
+}
+
+.admin-section-sub {
+  display: block;
+  margin-top: dp(3);
+  color: #8b8179;
+  font-size: dp(10);
+  line-height: 1.5;
+}
+
+.admin-muted {
+  color: #8b8179;
+  font-size: dp(11);
+  line-height: 1.6;
+}
+
+.admin-label {
+  color: #8b8179;
+  font-size: dp(11);
+}
+
+.admin-value {
+  color: #241c17;
+  font-size: dp(12);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+}
+
+.admin-divider {
+  height: 1px;
+  margin: dp(10) 0;
+  background: #f3efea;
+}
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: dp(10) 0;
+  border-bottom: 1px solid #f8f4ef;
+}
+
+.admin-row:last-child {
+  border-bottom: none;
+}
+
+.admin-row-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: dp(10);
+}
+
+.admin-form-group {
+  margin-bottom: dp(14);
+}
+
+.admin-form-label {
+  display: block;
+  margin-bottom: dp(6);
+  color: #51463e;
+  font-size: dp(12);
+  font-weight: 500;
+}
+
+.admin-form-hint {
+  margin-top: dp(4);
+  color: #a79c92;
+  font-size: dp(10);
+  line-height: 1.5;
+}
+
+.admin-input,
+.admin-textarea {
+  width: 100%;
+  border: 1px solid #e8e1da;
+  border-radius: dp(8);
+  background: #fff;
+  color: #241c17;
+  font-size: dp(13);
+  box-sizing: border-box;
+}
+
+.admin-input {
+  height: dp(42);
+  padding: 0 dp(11);
+}
+
+.admin-textarea {
+  min-height: dp(80);
+  padding: dp(10) dp(11);
+  line-height: 1.6;
+}
+
+.admin-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: dp(42);
+  padding: 0 dp(11);
+  border: 1px solid #e8e1da;
+  border-radius: dp(8);
+  background: #fff;
+}
+
+.admin-picker-value {
+  color: #241c17;
+  font-size: dp(13);
+}
+
+.admin-placeholder {
+  color: #cfc6bd;
+}
+
+.admin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: dp(38);
+  padding: 0 dp(14);
+  border: none;
+  border-radius: dp(8);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(13);
+  font-weight: 500;
+}
+
+.admin-btn--block {
+  width: 100%;
+}
+
+.admin-btn--ghost {
+  border: 1px solid #f6c5ae;
+  background: #fff;
+  color: #eb5c20;
+}
+
+.admin-btn--danger {
+  border: 1px solid #ffd8d2;
+  background: #fff;
+  color: #f53f3f;
+}
+
+.admin-btn--small {
+  min-height: dp(30);
+  padding: 0 dp(10);
+  font-size: dp(11);
+  border-radius: dp(6);
+}
+
+.admin-btn--disabled {
+  opacity: 0.5;
+}
+
+.admin-inline {
+  display: flex;
+  align-items: center;
+  gap: dp(8);
+}
+
+.admin-chip {
+  padding: dp(4) dp(10);
+  border: 1px solid #e8e1da;
+  border-radius: dp(999);
+  background: #fff;
+  color: #51463e;
+  font-size: dp(11);
+}
+
+.admin-chip--active {
+  border-color: #eb5c20;
+  background: #fdebe4;
+  color: #eb5c20;
+  font-weight: 600;
+}
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: dp(2) dp(6);
+  border-radius: dp(4);
+  font-size: dp(10);
+  white-space: nowrap;
+}
+
+.admin-badge--accent {
+  background: #fdebe4;
+  color: #eb5c20;
+}
+
+.admin-badge--green {
+  background: #e8ffea;
+  color: #00b42a;
+}
+
+.admin-badge--orange {
+  background: #fff0e0;
+  color: #ff7d00;
+}
+
+.admin-badge--red {
+  background: #ffece8;
+  color: #f53f3f;
+}
+
+.admin-badge--gray {
+  background: #f3efea;
+  color: #8b8179;
+}
+
+.admin-search {
+  display: flex;
+  align-items: center;
+  height: dp(40);
+  padding: 0 dp(12);
+  border: 1px solid #e8e1da;
+  border-radius: dp(999);
+  background: #fff;
+}
+
+.admin-search-input {
+  flex: 1;
+  min-width: 0;
+  color: #241c17;
+  font-size: dp(12);
+}
+
+.admin-progress-track {
+  height: dp(6);
+  overflow: hidden;
+  border-radius: dp(999);
+  background: #f3efea;
+}
+
+.admin-progress-fill {
+  height: 100%;
+  border-radius: dp(999);
+  background: #eb5c20;
+}
+
+.admin-fab {
+  position: fixed;
+  right: dp(18);
+  bottom: calc(#{dp(24)} + env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(52);
+  height: dp(52);
+  border-radius: 50%;
+  background: #eb5c20;
+  box-shadow: 0 dp(8) dp(20) rgba(235, 92, 32, 0.3);
+}
+
+.admin-fab-icon {
+  width: dp(22);
+  height: dp(22);
+}
+
+.admin-note {
+  padding: dp(10);
+  border-radius: dp(8);
+  background: #faf7f3;
+  color: #8b8179;
+  font-size: dp(10);
+  line-height: 1.7;
+}
+
+.admin-warning {
+  padding: dp(10);
+  border: 1px solid #ffe8ce;
+  border-radius: dp(8);
+  background: #fff9f3;
+  color: #a85400;
+  font-size: dp(10);
+  line-height: 1.7;
+}
+
+.admin-empty-inline {
+  padding: dp(18) 0;
+  color: #a79c92;
+  font-size: dp(11);
+  text-align: center;
+}
+
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: dp(10);
+}
+
+.admin-list-item {
+  padding: dp(12);
+  border: 1px solid #f0eae4;
+  border-radius: dp(12);
+  background: #fff;
+}
+
+.admin-sheet-mask {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(29, 33, 41, 0.5);
+}
+
+.admin-sheet {
+  width: 100%;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: dp(8) dp(16) calc(#{dp(16)} + env(safe-area-inset-bottom));
+  border-radius: dp(20) dp(20) 0 0;
+  background: #fff;
+}
+
+.admin-sheet-handle {
+  width: dp(36);
+  height: dp(4);
+  margin: 0 auto dp(10);
+  border-radius: dp(999);
+  background: #e8e1da;
+}
+
+.admin-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: dp(12);
+  border-bottom: 1px solid #f3efea;
+}
+
+.admin-sheet-title {
+  display: block;
+  color: #2b2119;
+  font-size: dp(18);
+  font-weight: 700;
+}
+
+.admin-sheet-sub {
+  display: block;
+  margin-top: dp(3);
+  color: #8b8179;
+  font-size: dp(11);
+}
+
+.admin-sheet-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(32);
+  height: dp(32);
+  flex-shrink: 0;
+}
+
+.admin-sheet-close-icon {
+  width: dp(18);
+  height: dp(18);
+}
+
+.admin-sheet-actions {
+  display: flex;
+  gap: dp(10);
+  margin-top: dp(16);
+}
+
+.admin-sheet-actions .admin-btn {
+  flex: 1;
+}

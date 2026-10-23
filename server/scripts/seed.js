@@ -198,20 +198,31 @@ async function seedConfigs(tenantId, adminId) {
 }
 
 
-/** 写入内容页骨架。已存在则跳过，不覆盖运营已经改好的正文 */
+/**
+ * 写入内容页骨架。已存在则跳过，不覆盖运营已经改好的正文。
+ *
+ * `tenantId === null` 写入的是平台基础版本（登录前与租户未发布时的兜底）。
+ * 平台骨架同样保持「未发布」——占位文本不能当成正式法律文本发布。
+ */
 async function seedContentPages(tenantId, adminId) {
   let inserted = 0
 
   for (const page of CONTENT_PAGE_SKELETONS) {
-    const existing = await db.queryOne(
-      'SELECT id FROM content_page WHERE tenant_id = ? AND page_key = ? AND deleted_at IS NULL',
-      [tenantId, page.key]
-    )
+    const existing =
+      tenantId == null
+        ? await db.queryOne(
+            'SELECT id FROM content_page WHERE tenant_id IS NULL AND page_key = ? AND deleted_at IS NULL',
+            [page.key]
+          )
+        : await db.queryOne(
+            'SELECT id FROM content_page WHERE tenant_id = ? AND page_key = ? AND deleted_at IS NULL',
+            [tenantId, page.key]
+          )
     if (existing) continue
 
     await db.query(
       `INSERT INTO content_page (tenant_id, page_key, title, content, updated_by) VALUES (?, ?, ?, ?, ?)`,
-      [tenantId, page.key, page.title, page.content, adminId]
+      [tenantId ?? null, page.key, page.title, page.content, adminId]
     )
     inserted += 1
   }
@@ -228,10 +239,12 @@ async function main() {
 
   const tenantId = await seedTenant()
   const adminId = await seedSuperAdmin(tenantId)
-  await seedPlatformAdmin()
+  const platformId = await seedPlatformAdmin()
   await seedDefaultTemplate(tenantId, adminId)
   await seedConfigs(tenantId, adminId)
   await seedContentPages(tenantId, adminId)
+  // 平台基础内容页：登录前可读的兜底版本，租户未发布时也用它
+  await seedContentPages(null, platformId)
 
   console.log('[seed] 完成')
 }

@@ -42,6 +42,15 @@ const codeField = z
   .trim()
   .regex(/^[a-z0-9][a-z0-9-]{1,31}$/, '租户标识需为 2-32 位小写字母、数字或 -，且以字母或数字开头')
 
+/**
+ * 行政区划代码。名称不接受前端提交 —— 服务端用 regions.json 派生，
+ * 避免代码与名称不一致（见 utils/region.js）。
+ */
+const regionCodeField = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, '行政区划代码应为 6 位数字')
+
 const ownerSchema = z.object({
   username: z
     .string()
@@ -65,6 +74,9 @@ const createSchema = z.object({
   contactName: z.string().trim().max(50).optional(),
   contactPhone: z.string().trim().max(20).optional(),
   remark: z.string().trim().max(200).optional(),
+  // 新建租户必填地区，用于平台运营的城市统计
+  provinceCode: regionCodeField,
+  cityCode: regionCodeField,
   owner: ownerSchema,
 })
 
@@ -81,6 +93,9 @@ const updateSchema = z
     contactName: z.string().trim().max(50).nullable().optional(),
     contactPhone: z.string().trim().max(20).nullable().optional(),
     remark: z.string().trim().max(200).nullable().optional(),
+    // 老租户可在这里补录；显式传 null 清空，且省、市必须成对出现
+    provinceCode: regionCodeField.nullable().optional(),
+    cityCode: regionCodeField.nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, '没有需要更新的字段')
 
@@ -91,10 +106,34 @@ const statusSchema = z.object({
   reason: z.string().trim().max(200).optional(),
 })
 
-const listQuerySchema = z.object({
-  status: z.enum(tenantService.STATUSES).optional(),
-  keyword: z.string().trim().max(50).optional(),
-})
+const listQuerySchema = z
+  .object({
+    status: z.enum(tenantService.STATUSES).optional(),
+    keyword: z.string().trim().max(50).optional(),
+    // 地区筛选与看板共用同一套口径：代码成对出现，未分配与代码互斥
+    provinceCode: regionCodeField.optional(),
+    cityCode: regionCodeField.optional(),
+    unassigned: z
+      .enum(['0', '1'])
+      .transform((value) => value === '1')
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.unassigned && (data.provinceCode || data.cityCode)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '未分配地区不能同时指定省份或城市',
+        path: ['unassigned'],
+      })
+    }
+    if (data.cityCode && !data.provinceCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '请选择省份',
+        path: ['provinceCode'],
+      })
+    }
+  })
 
 /** GET /admin/platform/tenants —— 租户列表（含用量） */
 async function list(req, res) {

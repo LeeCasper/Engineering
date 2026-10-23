@@ -22,10 +22,9 @@ const ROLE_LABELS = { foreman: '工长', supervisor: '监理', owner: '业主' }
  * 个人资料（AC-U01 / AC-U02）。
  *
  * ── projectId 是可选的，这决定了角色的语义 ──
- * 「所属角色」在 C-5.1 里是资料的一部分，但本系统的角色**是按项目判定的**
- * （同一个人可以是 A 项目的业主、B 项目的工长）。因此传了 projectId
- * 就回该项目里的角色，不传则为 null —— 而不是随便挑一个项目当默认值：
- * 挑错项目会让界面显示一个他在当前项目里根本没有的权限。
+ * v2.5 起角色是**账号级固定**的：工长、监理不会因为切换项目而改变，
+ * 业主可以参与多个项目。传了 projectId 就回该项目里的角色（必须与
+ * accountRole 一致），不传则项目角色为 null，但仍返回 accountRole。
  *
  * ── 传了不是自己项目的 id 时返回 role: null，不是 404 ──
  * AC-P26 要求 C 端不泄露项目是否存在。若「不是成员」返回 403/404 而
@@ -43,6 +42,10 @@ async function getProfile(userId, { projectId } = {}) {
     phoneMasked: miniAuthService.maskPhone(user.phone),
     hasPhone: Boolean(user.phone),
     lastLoginAt: user.last_login_at,
+    // 账号级固定角色（v2.5）。项目内角色必须与它一致；这里单独返回，
+    // 便于「我的」页在没有项目上下文时也能说明这个账号固定是什么角色。
+    accountRole: user.role,
+    accountRoleLabel: user.role ? ROLE_LABELS[user.role] : null,
     projectId: projectId ?? null,
     role: null,
     roleLabel: null,
@@ -113,7 +116,68 @@ async function getMyStats(userId, projectId) {
   ])
 
   return {
+    scope: 'project',
     projectId,
+    month: monthStart.slice(0, 7),
+    monthReportCount: reportCount,
+    pendingRectifyCount: rectifyCount,
+    pendingAcceptanceCount: pendingCount,
+  }
+}
+
+/**
+ * 工长的跨项目汇报统计（v2.5）。
+ *
+ * 「我的」页在没有选中具体项目时展示全部项目汇总；选中项目后仍走
+ * `getMyStats(projectId)` 的单项目口径。两者共用同一组状态定义：
+ * 待整改 = pending_rectify，待验收 = pending_supervisor / pending_owner。
+ */
+async function getMyStatsAll(userId) {
+  const user = await userModel.findById(userId)
+  if (!user) throw AppError.notFound('用户不存在')
+  if (user.role !== 'foreman') throw AppError.forbidden('仅工长可查看汇报统计')
+
+  const monthStart = datetime.dayjs().startOf('month').format(datetime.DATETIME_FORMAT)
+  const monthEnd = datetime.dayjs().add(1, 'month').startOf('month').format(datetime.DATETIME_FORMAT)
+
+  const [projectCount, reportCount, rectifyCount, pendingCount] = await Promise.all([
+    db.count(
+      `FROM project_member pm
+        JOIN project p ON p.id = pm.project_id AND p.deleted_at IS NULL AND p.status <> 'archived'
+       WHERE pm.user_id = ? AND pm.role = 'foreman'
+         AND pm.status = 'active' AND pm.deleted_at IS NULL`,
+      [userId]
+    ),
+    db.count(
+      `FROM progress_report pr
+        JOIN project p ON p.id = pr.project_id AND p.deleted_at IS NULL AND p.status <> 'archived'
+        JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = ?
+             AND pm.role = 'foreman' AND pm.status = 'active' AND pm.deleted_at IS NULL
+       WHERE pr.user_id = ? AND pr.deleted_at IS NULL
+         AND pr.created_at >= ? AND pr.created_at < ?`,
+      [userId, userId, monthStart, monthEnd]
+    ),
+    db.count(
+      `FROM acceptance a
+        JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL AND p.status <> 'archived'
+        JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = ?
+             AND pm.role = 'foreman' AND pm.status = 'active' AND pm.deleted_at IS NULL
+       WHERE a.status = 'pending_rectify' AND a.deleted_at IS NULL`,
+      [userId]
+    ),
+    db.count(
+      `FROM acceptance a
+        JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL AND p.status <> 'archived'
+        JOIN project_member pm ON pm.project_id = p.id AND pm.user_id = ?
+             AND pm.role = 'foreman' AND pm.status = 'active' AND pm.deleted_at IS NULL
+       WHERE a.status IN ('pending_supervisor', 'pending_owner') AND a.deleted_at IS NULL`,
+      [userId]
+    ),
+  ])
+
+  return {
+    scope: 'all',
+    projectCount,
     month: monthStart.slice(0, 7),
     monthReportCount: reportCount,
     pendingRectifyCount: rectifyCount,
@@ -181,4 +245,4 @@ async function getContacts(userId, projectId) {
   }
 }
 
-module.exports = { ROLE_LABELS, getProfile, getMyStats, getContacts }
+module.exports = { ROLE_LABELS, getProfile, getMyStats, getMyStatsAll, getContacts }

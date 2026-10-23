@@ -8,7 +8,7 @@
       <view class="brand">
         <image class="brand-logo" src="/static/images/logo.png" mode="aspectFit" />
         <view class="brand-text">
-          <text class="brand-name">工程宝</text>
+          <text class="brand-name">柏总管</text>
           <text class="brand-slogan">让装修工程更透明、更可控</text>
         </view>
       </view>
@@ -81,6 +81,18 @@
           <text class="wechat-text">微信登录</text>
         </button>
       </view>
+
+      <!-- 租户管理员入口：与业主/工长/监理的微信登录分开 -->
+      <view class="admin-login-entry" @tap="goAdminLogin">
+        <view class="admin-login-icon">
+          <image class="admin-login-icon-img" src="/static/images/icon-gear-white.png" mode="aspectFit" />
+        </view>
+        <view class="admin-login-main">
+          <text class="admin-login-title">管理员登录</text>
+          <text class="admin-login-sub">租户管理员使用后台账号进入管理端</text>
+        </view>
+        <text class="admin-login-arrow">›</text>
+      </view>
     </view>
 
     <!-- 底部四大特色 + 城市剪影 -->
@@ -105,10 +117,17 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { DEV_WX_CODE } from '../../config'
+import { DEV_PHONE_BIND, DEV_WX_CODE } from '../../config'
 import { login, bindPhone } from '../../api/auth'
 import { myProjects } from '../../api/project'
-import { getToken, setToken, setUser, setCachedProjects } from '../../store/session'
+import {
+  getToken,
+  getUser,
+  setToken,
+  setUser,
+  setCachedProjects,
+} from '../../store/session'
+import { resolveProjectsLanding } from '../../store/projectContext'
 
 const phone = ref('')
 const smsCode = ref('')
@@ -120,8 +139,8 @@ const features = [
   {
     title: '进度透明',
     sub: '实时汇报 · 图文留痕',
-    outer: '#E5EEFF',
-    inner: '#165DFF',
+    outer: '#FBE3D8',
+    inner: '#EB5C20',
     icon: '/static/images/icon-shield-check-white.png',
   },
   {
@@ -141,8 +160,8 @@ const features = [
   {
     title: '管理高效',
     sub: '统一建档 · 数据看板',
-    outer: '#F3EBFB',
-    inner: '#722ED1',
+    outer: '#F6E8DF',
+    inner: '#B45309',
     icon: '/static/images/icon-gear-white.png',
   },
 ]
@@ -160,10 +179,10 @@ async function bootstrap() {
   try {
     const data = await myProjects()
     setCachedProjects(data)
-    const hasPending = (data.pendingInvitations || []).length > 0
-    uni.redirectTo({
-      url: hasPending ? '/pages/projects/index?focus=invitations' : '/pages/role/index',
-    })
+    // 登录只解决身份；项目上下文由 /projects 的结果决定。
+    // 有待确认邀请先去邀请列表，否则直接进项目列表 —— 不再经过角色选择页。
+    // 用 reLaunch 清空页面栈，避免已登录用户还能返回登录页。
+    uni.reLaunch({ url: resolveProjectsLanding(data) })
   } catch (err) {
     // 401 已在请求层清理登录态；其他错误留在登录页，让用户重试
   }
@@ -199,6 +218,10 @@ async function onWechatLogin() {
   await doLogin({ bindPhone: false })
 }
 
+function goAdminLogin() {
+  uni.navigateTo({ url: '/pages/admin/login/index' })
+}
+
 async function doLogin({ bindPhone: shouldBind }) {
   if (!agreed.value) {
     uni.showToast({ title: '请先阅读并同意用户协议与隐私政策', icon: 'none' })
@@ -216,21 +239,22 @@ async function doLogin({ bindPhone: shouldBind }) {
     // 设计稿里的手机号表单：开发/mock 环境下用它顺带绑定手机号，
     // 这样被邀请人不必再走一遍绑定流程。真实环境必须使用微信
     // getPhoneNumber 授权，这里失败不阻断登录。
-    if (shouldBind && /^1[3-9]\d{9}$/.test(phone.value)) {
+    if (DEV_PHONE_BIND && shouldBind && /^1[3-9]\d{9}$/.test(phone.value)) {
       try {
         const bound = await bindPhone({ phone: phone.value })
         if (bound && bound.token) setToken(bound.token)
+        if (bound && bound.phoneMasked) {
+          const nextUser = { ...(getUser() || {}), hasPhone: true, phoneMasked: bound.phoneMasked }
+          setUser(nextUser)
+        }
       } catch (err) {
-        // 手机号绑定失败不影响登录；进入「我的」后再引导
+        // 手机号绑定失败不影响登录；项目列表的空态还会再引导一次
       }
     }
 
     const data = await myProjects()
     setCachedProjects(data)
-    const hasPending = (data.pendingInvitations || []).length > 0
-    uni.redirectTo({
-      url: hasPending ? '/pages/projects/index?focus=invitations' : '/pages/role/index',
-    })
+    uni.reLaunch({ url: resolveProjectsLanding(data) })
   } catch (err) {
     uni.showToast({ title: err.message || '登录失败', icon: 'none' })
   } finally {
@@ -281,7 +305,7 @@ function openLegal(key) {
   height: dp(52);
   border-radius: dp(14);
   margin-right: dp(14);
-  box-shadow: 0 dp(4) dp(12) rgba(22, 93, 255, 0.18);
+  box-shadow: 0 dp(4) dp(12) rgba(235, 92, 32, 0.18);
 }
 
 .brand-text {
@@ -292,7 +316,7 @@ function openLegal(key) {
 .brand-name {
   font-size: dp(30);
   font-weight: 800;
-  color: #0d1c3c;
+  color: #2b1a12;
   letter-spacing: dp(-0.5);
   line-height: 1.1;
 }
@@ -301,7 +325,7 @@ function openLegal(key) {
   margin-top: dp(5);
   font-size: dp(13);
   font-weight: 500;
-  color: #465670;
+  color: #67564A;
   letter-spacing: dp(0.3);
 }
 
@@ -310,7 +334,8 @@ function openLegal(key) {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  margin-top: dp(18);
+  /* 与品牌区拉开距离，避免手绘标语贴着副标题 */
+  margin-top: dp(40);
   padding-left: dp(4);
   transform: rotate(-10deg);
   transform-origin: left top;
@@ -320,7 +345,7 @@ function openLegal(key) {
   font-family: 'KaiTi', 'STKaiti', 'Biaodian', 'Comic Sans MS', cursive, sans-serif;
   font-size: dp(17);
   font-weight: 700;
-  color: #2052c8;
+  color: #b8420e;
   line-height: 1;
   letter-spacing: dp(0.5);
   text-shadow: 0 dp(1) dp(2) rgba(255, 255, 255, 0.6);
@@ -338,12 +363,13 @@ function openLegal(key) {
 
 /* ── 登录卡 ── */
 .login-card {
-  margin-top: dp(14);
+  /* 手绘标语下移后这里相应收一点，登录卡整体位置保持不变 */
+  margin-top: dp(30);
   padding: dp(20);
   background: $color-surface;
   border: 1px solid $color-surface;
   border-radius: dp(16);
-  box-shadow: 0 dp(8) dp(30) rgba(22, 93, 255, 0.08);
+  box-shadow: 0 dp(8) dp(30) rgba(235, 92, 32, 0.08);
 }
 
 .field {
@@ -353,7 +379,7 @@ function openLegal(key) {
   padding: 0 dp(14);
   margin-bottom: dp(12);
   background: $color-surface;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e6ddd5;
   border-radius: dp(12);
 }
 
@@ -376,14 +402,14 @@ function openLegal(key) {
 }
 
 .field-placeholder {
-  color: #94a3b8;
+  color: #a19488;
 }
 
 .field-divider {
   width: 1px;
   height: dp(16);
   margin: 0 dp(8);
-  background: #e2e8f0;
+  background: #e6ddd5;
   flex-shrink: 0;
 }
 
@@ -407,7 +433,7 @@ function openLegal(key) {
   color: $color-on-primary;
   font-size: dp(16);
   font-weight: 600;
-  box-shadow: 0 dp(6) dp(20) rgba(22, 93, 255, 0.35);
+  box-shadow: 0 dp(6) dp(20) rgba(235, 92, 32, 0.35);
 }
 
 .login-btn:active {
@@ -431,7 +457,7 @@ function openLegal(key) {
   height: dp(14);
   margin-top: dp(2);
   margin-right: dp(6);
-  border: 1px solid #cbd5e1;
+  border: 1px solid #d3c8bd;
   border-radius: 50%;
   background: $color-surface;
   display: flex;
@@ -453,7 +479,7 @@ function openLegal(key) {
 .agreement-text {
   font-size: dp(12);
   line-height: 1.5;
-  color: #707e94;
+  color: #7f7267;
 }
 
 .agreement-link {
@@ -480,7 +506,7 @@ function openLegal(key) {
   transform: translateX(-50%);
   width: dp(240);
   height: 1px;
-  background: #dde5f0;
+  background: #e5dcd3;
 }
 
 .divider-label {
@@ -489,7 +515,7 @@ function openLegal(key) {
   padding: 0 dp(12);
   background: $color-login-canvas;
   font-size: dp(12);
-  color: #8a98a8;
+  color: #94887d;
 }
 
 .wechat-btn {
@@ -500,13 +526,13 @@ function openLegal(key) {
   margin-top: dp(14);
   padding: 0 dp(32);
   background: $color-surface;
-  border: 1px solid #e3eaf2;
+  border: 1px solid #e9e1d9;
   border-radius: dp(999);
-  box-shadow: 0 dp(2) dp(8) rgba(15, 39, 74, 0.05);
+  box-shadow: 0 dp(2) dp(8) rgba(94, 45, 22, 0.05);
 }
 
 .wechat-btn:active {
-  background: #f8fafc;
+  background: #fbf9f7;
 }
 
 .wechat-icon {
@@ -518,7 +544,67 @@ function openLegal(key) {
 .wechat-text {
   font-size: dp(14);
   font-weight: 500;
-  color: #2c384a;
+  color: #33281f;
+}
+
+/* ── 管理员登录入口 ── */
+.admin-login-entry {
+  display: flex;
+  align-items: center;
+  margin-top: dp(18);
+  padding: dp(12) dp(14);
+  border: 1px solid #e9e1d9;
+  border-radius: dp(14);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 dp(2) dp(8) rgba(94, 45, 22, 0.04);
+}
+
+.admin-login-entry:active {
+  background: #fbf9f7;
+}
+
+.admin-login-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(32);
+  height: dp(32);
+  margin-right: dp(10);
+  border-radius: dp(10);
+  background: linear-gradient(135deg, #f07a3a, #eb5c20);
+  flex-shrink: 0;
+}
+
+.admin-login-icon-img {
+  width: dp(16);
+  height: dp(16);
+}
+
+.admin-login-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-login-title {
+  display: block;
+  color: #241c17;
+  font-size: dp(13);
+  font-weight: 600;
+}
+
+.admin-login-sub {
+  display: block;
+  margin-top: dp(2);
+  color: #8b8179;
+  font-size: dp(10);
+}
+
+.admin-login-arrow {
+  margin-left: dp(8);
+  color: #8b8179;
+  font-size: dp(20);
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 /* ── 底部特色 ── */
@@ -549,7 +635,7 @@ function openLegal(key) {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 dp(2) dp(6) rgba(15, 39, 74, 0.06);
+  box-shadow: 0 dp(2) dp(6) rgba(94, 45, 22, 0.06);
 }
 
 .feature-inner {
@@ -576,13 +662,13 @@ function openLegal(key) {
   margin-top: dp(6);
   font-size: dp(12);
   font-weight: 700;
-  color: #1d2b44;
+  color: #2a211a;
 }
 
 .feature-sub {
   margin-top: dp(2);
   font-size: dp(10);
-  color: #8692a6;
+  color: #94887c;
   transform: scale(0.9);
   white-space: nowrap;
 }

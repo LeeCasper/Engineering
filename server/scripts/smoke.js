@@ -1086,6 +1086,8 @@ async function saasTenantFlow(ctx) {
       maxAdminUsers: 2,
       expiresAt,
       contactName: '冒烟联系人',
+      provinceCode: '310000',
+      cityCode: '310000',
       owner: { username: ownerUsername, password: ownerInitialPassword },
     },
   })

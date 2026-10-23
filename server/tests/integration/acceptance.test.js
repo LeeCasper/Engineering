@@ -225,6 +225,17 @@ describe('AC-A01 / AC-A02 / AC-A24 发起验收的前置条件', () => {
     expect(stage.gate_status).toBe('pending_acceptance')
   })
 
+  it('没有现场照片时支持 JSON 发起（前端不必强制 multipart）', async () => {
+    const ctx = await setup()
+
+    const res = await mini
+      .authed('post', `/projects/${ctx.projectId}/acceptances`, ctx.foreman.token)
+      .send({ stageId: ctx.stageId })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.status).toBe('draft')
+  })
+
   it('工序级验收要求该工序本身也满 100%', async () => {
     const ctx = await setup({ completeStage: false })
     const res = await initiate(ctx, ctx.foreman.token, { itemId: ctx.itemId })
@@ -1106,5 +1117,124 @@ describe('验收流程的完整闭环', () => {
 
     const again = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     expect(again.status).toBe(409)
+  })
+})
+
+describe('C-3.1 跨项目验收收件箱（验收 tab）', () => {
+  /**
+   * 在已有用户的基础上再建一个项目。
+   * 这里不复用 setup()：setup 会新建同名 admin，撞 admin_user 的租户内唯一键。
+   */
+  async function addSecondProject(ctx, { complete = true } = {}) {
+    const projectId = await mini.createProject({ name: '第二个项目' })
+    await mini.addMember({ projectId, userId: ctx.foreman.userId, role: 'foreman' })
+    await db.query('UPDATE project_member SET is_primary = 1 WHERE project_id = ? AND user_id = ?', [
+      projectId,
+      ctx.foreman.userId,
+    ])
+    await mini.addMember({ projectId, userId: ctx.owner.userId, role: 'owner' })
+    await mini.addMember({ projectId, userId: ctx.supervisor.userId, role: 'supervisor' })
+
+    const stageId = await mini.createStage({
+      projectId,
+      name: '水电工程',
+      seq: 1,
+      progress: complete ? '100.00' : '60.00',
+      gateStatus: complete ? 'pending_acceptance' : 'active',
+    })
+
+    return { projectId, stageId }
+  }
+
+  it('同一业主在多个项目的验收单都出现在收件箱，并按项目内角色判定待办', async () => {
+    const ctx = await setup()
+    const second = await addSecondProject(ctx)
+
+    // 项目 A：走到待业主确认
+    const createdA = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
+    const idA = createdA.body.data.id
+    await mini
+      .authed('post', `/acceptances/${idA}/self-check`, ctx.foreman.token)
+      .send({ items: createdA.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await mini.authed('post', `/acceptances/${idA}/approve`, ctx.supervisor.token)
+
+    // 项目 B：只走到待监理审核
+    const createdB = await initiate(
+      { ...ctx, projectId: second.projectId },
+      ctx.foreman.token,
+      { stageId: second.stageId }
+    )
+    const idB = createdB.body.data.id
+    await mini
+      .authed('post', `/acceptances/${idB}/self-check`, ctx.foreman.token)
+      .send({ items: createdB.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+
+    const ownerInbox = await mini.authed('get', '/acceptances', ctx.owner.token)
+    expect(ownerInbox.status).toBe(200)
+    expect(ownerInbox.body.data.counts.all).toBe(2)
+    // A 待业主确认 → 待我处理；B 待监理审核 → 进行中
+    expect(ownerInbox.body.data.counts.todo).toBe(1)
+    expect(ownerInbox.body.data.counts.inProgress).toBe(1)
+    expect(ownerInbox.body.data.items.map((i) => i.projectId).sort()).toEqual(
+      [ctx.projectId, second.projectId].sort()
+    )
+    expect(ownerInbox.body.data.items.find((i) => i.id === idA).isMine).toBe(true)
+    expect(ownerInbox.body.data.items.find((i) => i.id === idB).isMine).toBe(false)
+    expect(ownerInbox.body.data.projects).toHaveLength(2)
+
+    const supervisorInbox = await mini.authed('get', '/acceptances', ctx.supervisor.token)
+    expect(supervisorInbox.body.data.counts.todo).toBe(1)
+    expect(supervisorInbox.body.data.items.find((i) => i.id === idB).isMine).toBe(true)
+    expect(supervisorInbox.body.data.items.find((i) => i.id === idA).isMine).toBe(false)
+  })
+
+  it('主工长可以发起的阶段出现在待我处理，发起后立即消失', async () => {
+    const ctx = await setup()
+
+    const before = await mini.authed('get', '/acceptances', ctx.foreman.token)
+    const initiable = before.body.data.items.find(
+      (i) => i.canInitiate && i.stageId === ctx.stageId && i.projectId === ctx.projectId
+    )
+    expect(initiable).toBeTruthy()
+    expect(initiable.status).toBe('can_initiate')
+    expect(before.body.data.counts.todo).toBeGreaterThanOrEqual(1)
+
+    await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
+
+    const after = await mini.authed('get', '/acceptances', ctx.foreman.token)
+    const stillInitiable = after.body.data.items.find(
+      (i) => i.canInitiate && i.stageId === ctx.stageId && i.projectId === ctx.projectId
+    )
+    expect(stillInitiable).toBeUndefined()
+  })
+
+  it('详情返回首页/详情页需要的项目地址、阶段进度与门禁状态', async () => {
+    const ctx = await setup()
+    const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
+    const id = created.body.data.id
+    await mini
+      .authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token)
+      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await mini.authed('post', `/acceptances/${id}/approve`, ctx.supervisor.token)
+
+    const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
+    expect(detail.status).toBe(200)
+    expect(detail.body.data.projectAddress).toBe('上海市浦东新区世纪大道 100 号')
+    expect(detail.body.data.stageProgress).toBe('100.00')
+    expect(detail.body.data.stageGateStatus).toBe('pending_acceptance')
+    expect(detail.body.data.hasSupervisor).toBe(true)
+    expect(detail.body.data.round).toBe(1)
+    expect(detail.body.data.waitingHours).toBeGreaterThanOrEqual(0)
+  })
+
+  it('不是任何项目成员的用户收件箱为空；未登录返回 401', async () => {
+    const outsider = await mini.login('code-inbox-outsider')
+    const inbox = await mini.authed('get', '/acceptances', outsider.token)
+    expect(inbox.status).toBe(200)
+    expect(inbox.body.data.items).toEqual([])
+    expect(inbox.body.data.counts.all).toBe(0)
+
+    const anonymous = await request.get('/acceptances')
+    expect(anonymous.status).toBe(401)
   })
 })

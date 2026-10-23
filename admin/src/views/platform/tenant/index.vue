@@ -16,6 +16,7 @@ import {
 import { clearTenantContext, copyText, setTenantContext, tenantLoginUrl } from '@/utils/tenant';
 import { fetchProjectList } from '@/service/api/project';
 import { formatDate } from '@/utils/format';
+import RegionCascader from './components/RegionCascader.vue';
 
 defineOptions({ name: 'PlatformTenantPage' });
 
@@ -85,6 +86,7 @@ const createDialog = reactive({ visible: false, submitting: false });
 const createForm = reactive({
   name: '',
   code: '',
+  regionCodes: [] as string[],
   plan: 'basic',
   maxProjects: 20,
   maxAdminUsers: 5,
@@ -103,6 +105,7 @@ const createLoginUrl = computed(() =>
 function openCreate() {
   createForm.name = '';
   createForm.code = '';
+  createForm.regionCodes = [];
   generateCode();
   createForm.plan = 'basic';
   createForm.maxProjects = 20;
@@ -135,6 +138,11 @@ async function submitCreate() {
     return;
   }
 
+  if (createForm.regionCodes.length !== 2) {
+    ElMessage.warning('请选择租户所在省 / 市');
+    return;
+  }
+
   if (!createForm.ownerUsername.trim()) {
     ElMessage.warning('请输入租户 owner 用户名');
     return;
@@ -162,6 +170,8 @@ async function submitCreate() {
       contactName: createForm.contactName.trim() || undefined,
       contactPhone: createForm.contactPhone.trim() || undefined,
       remark: createForm.remark.trim() || undefined,
+      provinceCode: createForm.regionCodes[0],
+      cityCode: createForm.regionCodes[1],
       owner: {
         username: createForm.ownerUsername.trim(),
         password: createForm.ownerPassword
@@ -203,6 +213,7 @@ const termsDialog = reactive({ visible: false, submitting: false, id: 0 });
 
 const termsForm = reactive({
   name: '',
+  regionCodes: [] as string[],
   plan: 'basic',
   maxProjects: 20,
   maxAdminUsers: 5,
@@ -215,6 +226,9 @@ const termsForm = reactive({
 function openTerms(row: TenantItem) {
   termsDialog.id = row.id;
   termsForm.name = row.name;
+  termsForm.regionCodes = row.region
+    ? [row.region.provinceCode, row.region.cityCode].filter(Boolean) as string[]
+    : [];
   termsForm.plan = row.plan ?? 'basic';
   termsForm.maxProjects = row.maxProjects;
   termsForm.maxAdminUsers = row.maxAdminUsers;
@@ -226,6 +240,11 @@ function openTerms(row: TenantItem) {
 }
 
 async function submitTerms() {
+  if (termsForm.regionCodes.length === 1) {
+    ElMessage.warning('请选择完整的省 / 市，或清空地区');
+    return;
+  }
+
   termsDialog.submitting = true;
 
   try {
@@ -237,7 +256,9 @@ async function submitTerms() {
       expiresAt: termsForm.expiresAt || null,
       contactName: termsForm.contactName.trim() || null,
       contactPhone: termsForm.contactPhone.trim() || null,
-      remark: termsForm.remark.trim() || null
+      remark: termsForm.remark.trim() || null,
+      provinceCode: termsForm.regionCodes[0] ?? null,
+      cityCode: termsForm.regionCodes[1] ?? null
     });
 
     if (error) return;
@@ -417,15 +438,15 @@ onMounted(async () => {
       </template>
 
       <ElTable v-loading="loading" :data="list" row-key="id" stripe>
-        <ElTableColumn prop="name" label="公司名称" min-width="150" show-overflow-tooltip />
+        <ElTableColumn prop="name" label="公司名称" min-width="130" show-overflow-tooltip />
 
-        <ElTableColumn prop="code" label="租户标识" width="120">
+        <ElTableColumn prop="code" label="租户标识" width="100">
           <template #default="{ row }">
             <span class="font-mono text-13px">{{ row.code }}</span>
           </template>
         </ElTableColumn>
 
-        <ElTableColumn label="状态" width="110">
+        <ElTableColumn label="状态" width="90">
           <template #default="{ row }">
             <ElTag :type="STATUS_META[row.status]?.type || 'info'" size="small">
               {{ STATUS_META[row.status]?.label || row.statusLabel }}
@@ -436,11 +457,18 @@ onMounted(async () => {
           </template>
         </ElTableColumn>
 
-        <ElTableColumn prop="plan" label="套餐" width="90">
+        <ElTableColumn prop="plan" label="套餐" width="70">
           <template #default="{ row }">{{ row.plan || '-' }}</template>
         </ElTableColumn>
 
-        <ElTableColumn label="用量（项目 / 账号）" width="160" align="center">
+        <ElTableColumn label="所在地区" width="130">
+          <template #default="{ row }">
+            <span v-if="row.regionLabel">{{ row.regionLabel }}</span>
+            <span v-else class="text-#c0c4cc">未设置</span>
+          </template>
+        </ElTableColumn>
+
+        <ElTableColumn label="用量（项目 / 账号）" width="130" align="center">
           <template #default="{ row }">
             <div class="text-12px text-#4e5969">
               项目 {{ usageText(row.usage.projectCount, row.maxProjects) }}
@@ -451,60 +479,60 @@ onMounted(async () => {
           </template>
         </ElTableColumn>
 
-        <ElTableColumn label="到期时间" width="130">
+        <ElTableColumn label="到期时间" width="110">
           <template #default="{ row }">
             {{ row.expiresAt ? formatDate(row.expiresAt) : '长期有效' }}
           </template>
         </ElTableColumn>
 
-        <ElTableColumn label="管理地址" min-width="220">
+        <ElTableColumn label="管理地址" width="90" align="center">
           <template #default="{ row }">
-            <div class="flex items-center gap-4px">
-              <span class="truncate text-12px text-#4e5969" :title="tenantLoginUrl(row.code)">
-                {{ tenantLoginUrl(row.code) }}
-              </span>
-              <ElButton link type="primary" @click="copyLoginUrl(row.code)">复制</ElButton>
-            </div>
+            <!-- 完整 URL 太长，放进表格会把操作列挤出可视区；这里只保留复制入口 -->
+            <ElTooltip :content="tenantLoginUrl(row.code)" placement="top">
+              <ElButton link type="primary" @click="copyLoginUrl(row.code)">复制地址</ElButton>
+            </ElTooltip>
           </template>
         </ElTableColumn>
 
         <ElTableColumn label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <ElButton link type="primary" @click="openDetail(row)">详情</ElButton>
-            <ElButton link type="primary" @click="openTerms(row)">调整</ElButton>
+            <div class="flex items-center gap-2px whitespace-nowrap">
+              <ElButton link type="primary" @click="openDetail(row)">详情</ElButton>
+              <ElButton link type="primary" @click="openTerms(row)">调整</ElButton>
 
-            <ElDropdown trigger="click" @command="command => command(row)">
-              <ElButton link type="primary">更多</ElButton>
-              <template #dropdown>
-                <ElDropdownMenu>
-                  <ElDropdownItem
-                    :command="() => enterTenant(row)"
-                    :disabled="row.status !== 'active' || row.expired"
-                  >
-                    只读进入（排障）
-                  </ElDropdownItem>
-                  <ElDropdownItem :command="() => openLoginPage(row.code)">打开登录页</ElDropdownItem>
-                  <ElDropdownItem :command="() => copyLoginUrl(row.code)">复制管理地址</ElDropdownItem>
-                  <ElDropdownItem
-                    v-if="row.status === 'active'"
-                    divided
-                    :command="() => suspend(row)"
-                  >
-                    停用
-                  </ElDropdownItem>
-                  <ElDropdownItem v-if="row.status === 'suspended'" :command="() => resume(row)">
-                    恢复
-                  </ElDropdownItem>
-                  <ElDropdownItem
-                    v-if="row.status !== 'archived'"
-                    divided
-                    :command="() => archive(row)"
-                  >
-                    退租（终态）
-                  </ElDropdownItem>
-                </ElDropdownMenu>
-              </template>
-            </ElDropdown>
+              <ElDropdown trigger="click" @command="command => command(row)">
+                <ElButton link type="primary">更多</ElButton>
+                <template #dropdown>
+                  <ElDropdownMenu>
+                    <ElDropdownItem
+                      :command="() => enterTenant(row)"
+                      :disabled="row.status !== 'active' || row.expired"
+                    >
+                      只读进入（排障）
+                    </ElDropdownItem>
+                    <ElDropdownItem :command="() => openLoginPage(row.code)">打开登录页</ElDropdownItem>
+                    <ElDropdownItem :command="() => copyLoginUrl(row.code)">复制管理地址</ElDropdownItem>
+                    <ElDropdownItem
+                      v-if="row.status === 'active'"
+                      divided
+                      :command="() => suspend(row)"
+                    >
+                      停用
+                    </ElDropdownItem>
+                    <ElDropdownItem v-if="row.status === 'suspended'" :command="() => resume(row)">
+                      恢复
+                    </ElDropdownItem>
+                    <ElDropdownItem
+                      v-if="row.status !== 'archived'"
+                      divided
+                      :command="() => archive(row)"
+                    >
+                      退租（终态）
+                    </ElDropdownItem>
+                  </ElDropdownMenu>
+                </template>
+              </ElDropdown>
+            </div>
           </template>
         </ElTableColumn>
 
@@ -540,6 +568,10 @@ onMounted(async () => {
       <ElForm label-width="110px">
         <ElFormItem label="公司名称" required>
           <ElInput v-model="createForm.name" maxlength="100" placeholder="例如：阳光装饰工程有限公司" />
+        </ElFormItem>
+
+        <ElFormItem label="所在地区" required>
+          <RegionCascader v-model="createForm.regionCodes" placeholder="省 / 市（用于运营看板统计）" />
         </ElFormItem>
 
         <ElFormItem label="租户标识" required>
@@ -657,6 +689,9 @@ onMounted(async () => {
               </ElTag>
             </ElDescriptionsItem>
             <ElDescriptionsItem label="套餐">{{ detail.plan || '-' }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="所在地区">
+              {{ detail.regionLabel || '未设置' }}
+            </ElDescriptionsItem>
             <ElDescriptionsItem label="项目用量">
               {{ usageText(detail.usage.projectCount, detail.maxProjects) }}
             </ElDescriptionsItem>
@@ -701,6 +736,13 @@ onMounted(async () => {
     <!-- 调整条款 -->
     <ElDialog v-model="termsDialog.visible" title="调整租户条款" width="560px">
       <ElForm label-width="110px">
+        <ElFormItem label="所在地区">
+          <RegionCascader
+            v-model="termsForm.regionCodes"
+            clearable
+            placeholder="省 / 市（清空后不计入地图统计）"
+          />
+        </ElFormItem>
         <ElFormItem label="套餐">
           <ElInput v-model="termsForm.plan" maxlength="32" />
         </ElFormItem>

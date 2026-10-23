@@ -2,7 +2,7 @@
   "name": "gongchengbao-miniapp",
   "version": "0.1.0",
   "private": true,
-  "description": "工程宝 · 微信小程序（uni-app + Vue 3）",
+  "description": "柏总管 · 微信小程序（uni-app + Vue 3）",
   "scripts": {
     "dev:mp-weixin": "uni -p mp-weixin",
     "build:mp-weixin": "uni build -p mp-weixin",

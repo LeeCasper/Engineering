@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<title>水电工程验收</title>
+<!-- Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              DEFAULT: '#165DFF',
+              light: '#E8F3FF',
+              dark: '#0E42D2',
+            },
+            status: {
+              success: '#00B42A',
+              'success-bg': '#E8FFEA',
+              warning: '#FF7D00',
+              'warning-bg': '#FFF7E8',
+              danger: '#F53F3F',
+              'danger-bg': '#FFECE8',
+            },
+            neutral: {
+              bg: '#F5F7FA',
+              text: '#1D2129',
+              sub: '#4E5969',
+              light: '#86909C',
+              line: '#E5E6EB',
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- Typography & Global Styles -->
+<style data-purpose="typography">
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .t-nums {
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+<!-- Component Layout Adjustments -->
+<style data-purpose="layout">
+    /* 隐藏滚动条 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-[#F5F7FA] text-[#1D2129] min-h-screen flex justify-center selection:bg-blue-100">
+<!-- Mobile iOS Frame Container -->
+<div class="w-full max-w-[428px] bg-[#F5F7FA] min-h-screen flex flex-col relative pb-[100px] shadow-lg">
+<!-- BEGIN: TopStatusBar -->
+<!-- iOS 顶部状态栏 -->
+<header class="w-full pt-3 px-7 flex justify-between items-center text-[#1D2129] select-none text-[15px] font-semibold tracking-tight z-50">
+<div class="t-nums font-semibold tracking-tight">9:41</div>
+<div class="flex items-center space-x-1.5">
+<!-- 蜂窝信号图标 -->
+<svg class="w-4 h-3.5 fill-current" viewbox="0 0 17 12">
+<rect height="3.5" rx="0.6" width="2.8" x="0" y="8.5"></rect>
+<rect height="6" rx="0.6" width="2.8" x="4.5" y="6"></rect>
+<rect height="9" rx="0.6" width="2.8" x="9" y="3"></rect>
+<rect height="12" rx="0.6" width="2.8" x="13.5" y="0"></rect>
+</svg>
+<!-- Wi-Fi 图标 -->
+<svg class="w-4 h-3.5 fill-current" viewbox="0 0 16 12">
+<path d="M8 2.8C5.2 2.8 2.7 3.9 0.8 5.7L0 4.8C2.1 2.8 4.9 1.6 8 1.6C11.1 1.6 13.9 2.8 16 4.8L15.2 5.7C13.3 3.9 10.8 2.8 8 2.8ZM8 6.4C6.2 6.4 4.6 7.1 3.3 8.3L2.5 7.4C4 6.1 5.9 5.2 8 5.2C10.1 5.2 12 6.1 13.5 7.4L12.7 8.3C11.4 7.1 9.8 6.4 8 6.4ZM8 10C7.2 10 6.5 10.4 6 10.9L8 13.2L10 10.9C9.5 10.4 8.8 10 8 10Z"></path>
+</svg>
+<!-- 电池图标 -->
+<div class="flex items-center">
+<div class="w-[23px] h-[11.5px] border-[1.2px] border-[#1D2129] rounded-[3px] p-[1.5px] flex items-center">
+<div class="h-full w-full bg-[#1D2129] rounded-[1px]"></div>
+</div>
+<div class="w-[1.2px] h-[4px] bg-[#1D2129] rounded-r-[0.8px] -ml-[0.2px]"></div>
+</div>
+</div>
+</header>
+<!-- END: TopStatusBar -->
+<!-- BEGIN: NavigationBar -->
+<!-- 顶部导航栏 -->
+<nav class="w-full px-4 pt-3.5 pb-2 flex items-center justify-between z-40 bg-[#F5F7FA]">
+<div class="flex items-center space-x-2">
+<!-- 返回箭头按钮 -->
+<button aria-label="返回" class="p-1 -ml-1 text-[#1D2129] active:opacity-60" type="button">
+<svg class="w-6 h-6 stroke-current stroke-2 fill-none" viewbox="0 0 24 24">
+<path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+<!-- 标题与轮次标签 -->
+<h1 class="text-[20px] font-bold text-[#1D2129] tracking-tight">水电工程验收</h1>
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#E8F3FF] text-[#165DFF]">
+          第 2 轮
+        </span>
+</div>
+<!-- 更多操作按钮 -->
+<button aria-label="更多操作" class="p-1.5 text-[#1D2129] active:opacity-60" type="button">
+<svg class="w-5 h-5 fill-current" viewbox="0 0 20 20">
+<circle cx="10" cy="4" r="1.8"></circle>
+<circle cx="10" cy="10" r="1.8"></circle>
+<circle cx="10" cy="16" r="1.8"></circle>
+</svg>
+</button>
+</nav>
+<!-- END: NavigationBar -->
+<!-- BEGIN: MainContent -->
+<main class="px-4 space-y-3.5 pt-1 flex-1">
+<!-- BEGIN: ProjectOverviewCard -->
+<!-- 项目概览卡片 -->
+<section class="bg-white rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-black/[0.02]">
+<div class="flex items-start justify-between">
+<div class="flex space-x-3 items-center">
+<!-- 蓝色房子图标 -->
+<div class="w-12 h-12 rounded-xl bg-[#165DFF] flex items-center justify-center shrink-0 shadow-sm shadow-blue-200">
+<svg class="w-6 h-6 text-white fill-current" viewbox="0 0 24 24">
+<path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"></path>
+</svg>
+</div>
+<div>
+<div class="flex items-center space-x-2">
+<h2 class="text-[17px] font-bold text-[#1D2129] tracking-tight">阳光花园 · 室内装修</h2>
+</div>
+<!-- 地址信息 -->
+<div class="flex items-center text-[#86909C] text-[12.5px] mt-1 space-x-1">
+<svg class="w-3.5 h-3.5 fill-current shrink-0 text-[#86909C]" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" fill-rule="evenodd"></path>
+</svg>
+<span class="truncate">上海市浦东新区世纪大道 100 号</span>
+</div>
+</div>
+</div>
+<!-- 待业主签字标签 -->
+<span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#FFF7E8] text-[#FF7D00] border border-[#FFE4BA]/40 shrink-0">
+            待业主签字
+          </span>
+</div>
+<!-- 进度与等待计时 -->
+<div class="mt-4 flex items-center justify-between text-xs pt-1">
+<span class="text-[#165DFF] font-bold shrink-0">进度 100%</span>
+<!-- 进度条 -->
+<div class="flex-1 mx-3 h-2 bg-[#F2F3F5] rounded-full overflow-hidden">
+<div class="bg-[#165DFF] h-full rounded-full w-full"></div>
+</div>
+<!-- 等待时间 -->
+<div class="flex items-center space-x-1 text-[#86909C] shrink-0 text-[12px]">
+<svg class="w-3.5 h-3.5 stroke-current stroke-2 fill-none" viewbox="0 0 24 24">
+<circle cx="12" cy="12" r="10"></circle>
+<polyline points="12 6 12 12 16 14"></polyline>
+</svg>
+<span>已等待 6 小时</span>
+</div>
+</div>
+</section>
+<!-- END: ProjectOverviewCard -->
+<!-- BEGIN: StepIndicator -->
+<!-- 五步流程步进指示器 -->
+<section class="py-2.5 px-1 overflow-x-auto no-scrollbar">
+<div class="flex items-start justify-between relative min-w-[340px]">
+<!-- 步骤 1: 自检 (已完成) -->
+<div class="flex flex-col items-center flex-1">
+<div class="w-6 h-6 rounded-full bg-[#00B42A] text-white flex items-center justify-center shadow-xs">
+<svg class="w-3.5 h-3.5 stroke-current stroke-[2.8] fill-none" viewbox="0 0 24 24">
+<polyline points="20 6 9 17 4 12"></polyline>
+</svg>
+</div>
+<span class="text-[12px] font-medium text-[#1D2129] mt-1.5">自检</span>
+<span class="text-[11px] text-[#00B42A] font-normal mt-0.5">已完成</span>
+</div>
+<!-- 连线 1 -->
+<div class="flex items-center justify-center pt-2.5 -mx-1 text-[#C9CDD4]">
+<svg class="w-6 h-2 fill-none stroke-current stroke-[1.5]" viewbox="0 0 24 8">
+<line stroke-dasharray="2 2" x1="0" x2="20" y1="4" y2="4"></line>
+<polyline fill="none" points="16 1 20 4 16 7"></polyline>
+</svg>
+</div>
+<!-- 步骤 2: 监理审核 (已完成) -->
+<div class="flex flex-col items-center flex-1">
+<div class="w-6 h-6 rounded-full bg-[#00B42A] text-white flex items-center justify-center shadow-xs">
+<svg class="w-3.5 h-3.5 stroke-current stroke-[2.8] fill-none" viewbox="0 0 24 24">
+<polyline points="20 6 9 17 4 12"></polyline>
+</svg>
+</div>
+<span class="text-[12px] font-medium text-[#1D2129] mt-1.5">监理审核</span>
+<span class="text-[11px] text-[#00B42A] font-normal mt-0.5">已完成</span>
+</div>
+<!-- 连线 2 -->
+<div class="flex items-center justify-center pt-2.5 -mx-1 text-[#C9CDD4]">
+<svg class="w-6 h-2 fill-none stroke-current stroke-[1.5]" viewbox="0 0 24 8">
+<line stroke-dasharray="2 2" x1="0" x2="20" y1="4" y2="4"></line>
+<polyline fill="none" points="16 1 20 4 16 7"></polyline>
+</svg>
+</div>
+<!-- 步骤 3: 业主签名 (激活/当前) -->
+<div class="flex flex-col items-center flex-1">
+<div class="w-6 h-6 rounded-full border-2 border-[#165DFF] bg-white text-[#165DFF] font-bold text-[13px] flex items-center justify-center shadow-xs">
+              3
+            </div>
+<span class="text-[12px] font-bold text-[#165DFF] mt-1.5">业主签名</span>
+<span class="text-[11px] text-[#165DFF] font-medium mt-0.5">待确认</span>
+</div>
+<!-- 连线 3 -->
+<div class="flex items-center justify-center pt-2.5 -mx-1 text-[#E5E6EB]">
+<svg class="w-6 h-2 fill-none stroke-current stroke-[1.5]" viewbox="0 0 24 8">
+<line stroke-dasharray="2 2" x1="0" x2="20" y1="4" y2="4"></line>
+<polyline fill="none" points="16 1 20 4 16 7"></polyline>
+</svg>
+</div>
+<!-- 步骤 4: 验收通过 (未进行) -->
+<div class="flex flex-col items-center flex-1">
+<div class="w-6 h-6 rounded-full bg-[#E5E6EB] text-[#86909C] font-semibold text-[12px] flex items-center justify-center">
+              4
+            </div>
+<span class="text-[12px] font-normal text-[#4E5969] mt-1.5">验收通过</span>
+<span class="text-[11px] text-[#86909C] mt-0.5">待签名</span>
+</div>
+<!-- 连线 4 -->
+<div class="flex items-center justify-center pt-2.5 -mx-1 text-[#E5E6EB]">
+<svg class="w-6 h-2 fill-none stroke-current stroke-[1.5]" viewbox="0 0 24 8">
+<line stroke-dasharray="2 2" x1="0" x2="20" y1="4" y2="4"></line>
+<polyline fill="none" points="16 1 20 4 16 7"></polyline>
+</svg>
+</div>
+<!-- 步骤 5: 阶段结算 (未进行) -->
+<div class="flex flex-col items-center flex-1">
+<div class="w-6 h-6 rounded-full bg-[#E5E6EB] text-[#86909C] font-semibold text-[12px] flex items-center justify-center">
+              5
+            </div>
+<span class="text-[12px] font-normal text-[#4E5969] mt-1.5">阶段结算</span>
+<span class="text-[11px] text-[#86909C] mt-0.5">待对账</span>
+</div>
+</div>
+</section>
+<!-- END: StepIndicator -->
+<!-- BEGIN: NoticeBanner -->
+<!-- 状态与门禁规则提示通知条 -->
+<section class="bg-[#F0F5FF] border border-[#BED7FE]/40 rounded-xl p-3 flex items-start space-x-2.5">
+<div class="w-4 h-4 rounded-full bg-[#165DFF] text-white flex items-center justify-center shrink-0 mt-0.5 font-serif italic text-xs font-bold leading-none">
+          i
+        </div>
+<p class="text-[12px] text-[#4E5969] leading-relaxed tracking-tight">
+          本阶段已通过监理审核，等待业主确认并签名。<br/>
+          签名后解锁付款节点，完成结算后解锁下一阶段。
+        </p>
+</section>
+<!-- END: NoticeBanner -->
+<!-- BEGIN: TabBar -->
+<!-- Tab 选项卡切换栏 -->
+<nav class="flex items-center justify-around border-b border-transparent pt-2 px-1">
+<!-- 激活标签 -->
+<div class="flex flex-col items-center relative pb-2 cursor-pointer">
+<span class="text-[15px] font-bold text-[#165DFF]">验收项</span>
+<div class="w-9 h-[3px] bg-[#165DFF] rounded-full absolute bottom-0"></div>
+</div>
+<!-- 默认标签 -->
+<div class="flex flex-col items-center pb-2 cursor-pointer text-[#4E5969] hover:text-[#1D2129]">
+<span class="text-[15px] font-normal">现场照片</span>
+</div>
+<div class="flex flex-col items-center pb-2 cursor-pointer text-[#4E5969] hover:text-[#1D2129]">
+<span class="text-[15px] font-normal">流转记录</span>
+</div>
+<div class="flex flex-col items-center pb-2 cursor-pointer text-[#4E5969] hover:text-[#1D2129]">
+<span class="text-[15px] font-normal">验收报告</span>
+</div>
+</nav>
+<!-- END: TabBar -->
+<!-- BEGIN: AcceptanceItemList -->
+<!-- 验收项清单卡片 -->
+<section class="bg-white rounded-2xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-black/[0.02]">
+<!-- 列表头 -->
+<div class="flex items-center justify-between pb-3.5 border-b border-gray-50">
+<div class="flex items-baseline space-x-1.5">
+<h3 class="text-[16px] font-bold text-[#1D2129]">验收项</h3>
+<span class="text-[13px] text-[#86909C]">（共 12 项）</span>
+</div>
+<button class="text-[13px] text-[#165DFF] flex items-center font-medium active:opacity-75" type="button">
+<span>查看全部</span>
+<svg class="w-3.5 h-3.5 ml-0.5 stroke-current stroke-2 fill-none" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+<!-- 验收项列表 -->
+<ul class="divide-y divide-gray-50 text-[13.5px]">
+<!-- 序号 1 -->
+<li class="py-3 flex items-center justify-between">
+<div class="flex items-center space-x-2.5 w-5/12">
+<span class="text-[#86909C] font-normal t-nums w-4">1.</span>
+<span class="font-medium text-[#1D2129] truncate">强弱电布线</span>
+</div>
+<div class="w-3/12 flex justify-start">
+<span class="px-3 py-0.5 rounded-full text-xs font-medium bg-[#E8FFEA] text-[#00B42A]">
+                合格
+              </span>
+</div>
+<div class="w-4/12 text-left pl-3 text-[#86909C] truncate">
+              /
+            </div>
+</li>
+<!-- 序号 2 -->
+<li class="py-3 flex items-center justify-between">
+<div class="flex items-center space-x-2.5 w-5/12">
+<span class="text-[#86909C] font-normal t-nums w-4">2.</span>
+<span class="font-medium text-[#1D2129] truncate">水管打压</span>
+</div>
+<div class="w-3/12 flex justify-start">
+<span class="px-3 py-0.5 rounded-full text-xs font-medium bg-[#E8FFEA] text-[#00B42A]">
+                合格
+              </span>
+</div>
+<div class="w-4/12 text-left pl-3 text-[#86909C] truncate">
+              /
+            </div>
+</li>
+<!-- 序号 3 -->
+<li class="py-3 flex items-center justify-between">
+<div class="flex items-center space-x-2.5 w-5/12">
+<span class="text-[#86909C] font-normal t-nums w-4">3.</span>
+<span class="font-medium text-[#1D2129] truncate">配电箱标识</span>
+</div>
+<div class="w-3/12 flex justify-start">
+<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#FFF7E8] text-[#FF7D00]">
+                待整改
+              </span>
+</div>
+<div class="w-4/12 text-left pl-3 text-[#86909C] text-[12px] truncate">
+              配电箱标签不完整
+            </div>
+</li>
+<!-- 序号 4 -->
+<li class="py-3 flex items-center justify-between">
+<div class="flex items-center space-x-2.5 w-5/12">
+<span class="text-[#86909C] font-normal t-nums w-4">4.</span>
+<span class="font-medium text-[#1D2129] truncate">开关插座安装</span>
+</div>
+<div class="w-3/12 flex justify-start">
+<span class="px-3 py-0.5 rounded-full text-xs font-medium bg-[#E8FFEA] text-[#00B42A]">
+                合格
+              </span>
+</div>
+<div class="w-4/12 text-left pl-3 text-[#86909C] truncate">
+              /
+            </div>
+</li>
+<!-- 序号 5 -->
+<li class="py-3 flex items-center justify-between">
+<div class="flex items-center space-x-2.5 w-5/12">
+<span class="text-[#86909C] font-normal t-nums w-4">5.</span>
+<span class="font-medium text-[#1D2129] truncate">线槽固定</span>
+</div>
+<div class="w-3/12 flex justify-start">
+<span class="px-3 py-0.5 rounded-full text-xs font-medium bg-[#E8FFEA] text-[#00B42A]">
+                合格
+              </span>
+</div>
+<div class="w-4/12 text-left pl-3 text-[#86909C] truncate">
+              /
+            </div>
+</li>
+<!-- 序号 6 -->
+<li class="py-3 flex items-center justify-between">
+<div class="flex items-center space-x-2.5 w-5/12">
+<span class="text-[#86909C] font-normal t-nums w-4">6.</span>
+<span class="font-medium text-[#1D2129] truncate">灯具安装</span>
+</div>
+<div class="w-3/12 flex justify-start">
+<span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#FFECE8] text-[#F53F3F]">
+                不合格
+              </span>
+</div>
+<div class="w-4/12 text-left pl-3 text-[#86909C] text-[12px] truncate">
+              灯具型号不符
+            </div>
+</li>
+</ul>
+</section>
+<!-- END: AcceptanceItemList -->
+</main>
+<!-- END: MainContent -->
+<!-- BEGIN: BottomActionBar -->
+<!-- 底部固定双操作按钮栏 -->
+<footer class="fixed bottom-0 left-0 right-0 max-w-[428px] mx-auto bg-white/95 backdrop-blur-md border-t border-gray-100 px-4 pt-3 pb-7 z-50 shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
+<div class="flex items-center space-x-3">
+<!-- 驳回按钮 -->
+<button class="flex-1 py-3 border border-[#165DFF] text-[#165DFF] font-semibold text-[16px] rounded-full text-center active:bg-blue-50 transition-colors" type="button">
+          驳回
+        </button>
+<!-- 通过并签名按钮 -->
+<button class="flex-1 py-3 bg-[#165DFF] text-white font-semibold text-[16px] rounded-full text-center shadow-md shadow-blue-500/20 active:bg-blue-700 transition-colors" type="button">
+          通过并签名
+        </button>
+</div>
+<!-- iOS Home Indicator -->
+<div class="w-32 h-1 bg-black rounded-full mx-auto mt-4"></div>
+</footer>
+<!-- END: BottomActionBar -->
+</div>
+</body></html>

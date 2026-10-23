@@ -61,10 +61,11 @@ describe('GET /admin/sys-configs 配置清单', () => {
     const res = await request.authed('get', '/admin/sys-configs', token)
     const list = res.body.data.list
 
-    // 签到、路线属于 V1.2，日志清理任务还没写。这些值改完不会立即生效 ——
-    // 界面必须能如实说明，否则管理员会以为调好了而实际什么都没发生
+    // 签到尚未交付、日志清理任务还没写。这些值改完不会立即生效 ——
+    // 界面必须能如实说明，否则管理员会以为调好了而实际什么都没发生。
+    // 路线规划已交付，途经点上限必须如实标记为生效
     expect(list.find((i) => i.key === 'sign_in_distance_threshold').effective).toBe(false)
-    expect(list.find((i) => i.key === 'route_max_points').effective).toBe(false)
+    expect(list.find((i) => i.key === 'route_max_points').effective).toBe(true)
     expect(list.find((i) => i.key === 'stale_report_days').effective).toBe(true)
   })
 
@@ -177,17 +178,59 @@ describe('PUT /admin/sys-configs/:key 修改配置', () => {
     expect(await sysConfigService.getInt(1, 'stale_report_days')).toBe(7)
   })
 
-  it('订阅消息模板 ID 保存后能被消息服务读到（B-5.7）', async () => {
-    const { token } = await setupSuper()
+  it('订阅消息模板 ID 由平台统一配置，保存后消息服务能读到（B-5.7）', async () => {
+    const { token: tenantToken } = await setupSuper()
+    const { token: platformToken } = await auth.createAndLogin({
+      username: 'config-platform',
+      role: 'platform',
+      tenantId: null,
+    })
+
+    // 模板 ID 来自微信公众平台的小程序后台，租户没有该小程序的权限，
+    // 因此租户后台必须只读 —— 写接口也要拒绝，不能只靠前端隐藏入口
+    const denied = await request
+      .authed('put', '/admin/sys-configs/subscribe_template_progress', tenantToken)
+      .send({ value: 'TPL-TENANT' })
+    expect(denied.status).toBe(403)
+
+    // 「恢复平台默认」也不该可用：平台专属项没有租户覆盖的概念
+    const deniedReset = await request.authed(
+      'delete',
+      '/admin/sys-configs/subscribe_template_progress',
+      tenantToken
+    )
+    expect(deniedReset.status).toBe(403)
 
     await request
-      .authed('put', '/admin/sys-configs/subscribe_template_progress', token)
+      .authed('put', '/admin/platform/sys-configs/subscribe_template_progress', platformToken)
       .send({ value: 'TPL-PROGRESS-001' })
 
     // 两处键名必须完全一致，否则配置能保存、推送时永远取不到值
     expect(await notificationService.resolveTemplateId(1, 'progress')).toBe('TPL-PROGRESS-001')
     // 没配过的那几类各自独立，取不到模板 ID（返回 null 表示只发站内信）
     expect(await notificationService.resolveTemplateId(1, 'acceptance')).toBeNull()
+
+    const list = await request.authed('get', '/admin/sys-configs', tenantToken)
+    const item = list.body.data.list.find((i) => i.key === 'subscribe_template_progress')
+    expect(item.platformOnly).toBe(true)
+    expect(item.source).toBe('platform')
+    expect(item.value).toBe('TPL-PROGRESS-001')
+  })
+
+  it('平台专属配置忽略历史遗留的租户覆盖值', async () => {
+    // 模拟改造前已经写进租户表的数据：读取与展示都不能再用它
+    await db.query(
+      "INSERT INTO sys_config (tenant_id, config_key, config_value, scope) VALUES (1, 'subscribe_template_progress', 'TPL-LEGACY', 'global')"
+    )
+    sysConfigService.invalidate()
+
+    expect(await notificationService.resolveTemplateId(1, 'progress')).toBeNull()
+
+    const { token } = await setupSuper()
+    const list = await request.authed('get', '/admin/sys-configs', token)
+    const item = list.body.data.list.find((i) => i.key === 'subscribe_template_progress')
+    expect(item.source).toBe('default')
+    expect(item.value).toBe('')
   })
 
   it('配置值统一以字符串入库（§6.2）', async () => {

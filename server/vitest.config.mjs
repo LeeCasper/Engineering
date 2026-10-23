@@ -17,7 +17,9 @@ export default defineConfig({
     environment: 'node',
     // 必须在 config/index.js 被 require 之前生效，否则测试会连到开发库上，
     // 而集成测试会 DROP DATABASE —— 那等于每次跑测试都清空开发数据。
-    env: { NODE_ENV: 'test' },
+    // WX_MOCK 固定为 true：测试必须走 mock openid，绝不能打真实微信接口；
+    // 本地 .env 可能为了联调切成 WX_MOCK=false。
+    env: { NODE_ENV: 'test', WX_MOCK: 'true' },
     // globals 必须开启：本项目源码是 CommonJS，测试文件也写成 CJS，
     // 而 vitest 包本身是 ESM-only，`require('vitest')` 会失败。
     // 开启后 describe/it/expect 直接可用，测试文件与源码风格保持一致。

@@ -62,9 +62,14 @@ async function create(req, res) {
   )
 }
 
-/** GET /projects/:id/acceptances —— 验收列表（C-3.1 / AC-A23） */
+/** GET /projects/:id/acceptances —— 某项目的验收列表（C-3.1 / AC-A23） */
 async function list(req, res) {
   res.ok(await acceptanceService.listAcceptances(req.auth.id, Number(req.params.id)))
+}
+
+/** GET /acceptances —— 跨项目验收收件箱（验收 tab 的默认视图） */
+async function inbox(req, res) {
+  res.ok(await acceptanceService.inbox(req.auth.id))
 }
 
 /** GET /acceptances/:id —— 详情 */
@@ -152,6 +157,7 @@ async function downloadPdf(req, res) {
 module.exports = {
   create,
   list,
+  inbox,
   detail,
   flow,
   saveDraft,

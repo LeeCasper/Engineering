@@ -1,5 +1,7 @@
 import { request } from '../request';
 
+export type ContentScope = 'tenant' | 'platform';
+
 export interface ContentPageSummary {
   pageKey: string;
   label: string;
@@ -9,6 +11,11 @@ export interface ContentPageSummary {
   publishedAt: string | null;
   contentLength: number;
   exists: boolean;
+  /** 本租户未发布，但平台已有可继承的已发布版本 */
+  inheritsPlatform: boolean;
+  platformPublishedAt: string | null;
+  /** C 端实际会读到的版本来源 */
+  effectiveSource: 'tenant' | 'platform' | 'none';
   updatedAt: string | null;
 }
 
@@ -30,17 +37,25 @@ export interface ContentPageInput {
   publish: boolean;
 }
 
-export function fetchContentPages() {
-  return request<{ list: ContentPageSummary[] }>({ url: '/admin/contents' });
+function contentBase(scope: ContentScope) {
+  return scope === 'platform' ? '/admin/platform/contents' : '/admin/contents';
 }
 
-export function fetchContentPage(pageKey: string) {
-  return request<ContentPageDetail>({ url: `/admin/contents/${pageKey}` });
+export function fetchContentPages(scope: ContentScope = 'tenant') {
+  return request<{ list: ContentPageSummary[] }>({ url: contentBase(scope) });
 }
 
-export function fetchSaveContentPage(pageKey: string, data: ContentPageInput) {
+export function fetchContentPage(pageKey: string, scope: ContentScope = 'tenant') {
+  return request<ContentPageDetail>({ url: `${contentBase(scope)}/${pageKey}` });
+}
+
+export function fetchSaveContentPage(
+  pageKey: string,
+  data: ContentPageInput,
+  scope: ContentScope = 'tenant'
+) {
   return request<ContentPageDetail>({
-    url: `/admin/contents/${pageKey}`,
+    url: `${contentBase(scope)}/${pageKey}`,
     method: 'put',
     data
   });

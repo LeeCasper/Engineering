@@ -16,6 +16,7 @@ const userModel = require('../models/user.model')
 const projectMemberModel = require('../models/projectMember.model')
 const notificationModel = require('../models/notification.model')
 const feedbackModel = require('../models/feedback.model')
+const adminWechatBindingModel = require('../models/adminWechatBinding.model')
 const db = require('../db/pool')
 const operationLog = require('./operationLog.service')
 const adminNotification = require('./adminNotification.service')
@@ -188,6 +189,9 @@ async function deactivate(userId, operator) {
       )
     }
 
+    // 注销会清空 openid，之后再也找不到这些绑定；必须在匿名化之前撤销。
+    // 绑定表保留 revoked 行用于审计，不做物理删除。
+    await adminWechatBindingModel.revokeByOpenid(user.openid, 'user_deactivated', tx)
     await userModel.anonymize(userId, tx)
     await notificationModel.deleteSubscriptions(userId, tx)
     await feedbackModel.detachUser(userId, tx)

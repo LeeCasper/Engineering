@@ -23,6 +23,10 @@ const controller = require('../../controllers/report.controller')
 const projectRouter = express.Router()
 projectRouter.use(requireMini)
 projectRouter.use('/:id', tenantWriteGuard({ resource: 'project' }))
+// 单文件暂存：小程序一次只能上传一个文件，逐文件上传后拿到 mediaId，
+// 再由下面的 POST /:id/reports 一次性消费。必须放在提交路由之前声明，
+// 避免以后有人把 `/:id/reports` 改成通配匹配时把 media 吞掉。
+projectRouter.post('/:id/reports/media', uploadAny, asyncHandler(controller.stageMedia))
 projectRouter.post('/:id/reports', uploadAny, asyncHandler(controller.submit))
 projectRouter.get('/:id/reports', asyncHandler(controller.list))
 

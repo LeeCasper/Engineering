@@ -29,6 +29,9 @@ const acceptanceRouter = express.Router()
 acceptanceRouter.get('/:id/report.pdf', asyncHandler(controller.downloadPdf))
 
 acceptanceRouter.use(requireMini)
+// 跨项目收件箱：验收 tab 的默认视图。必须在 `/:id` 之前定义，
+// 否则 `GET /acceptances` 会被当成 id 为空的详情请求
+acceptanceRouter.get('/', asyncHandler(controller.inbox))
 // `:id` 是验收单 id；PDF 下载是 GET，不受只读守卫影响
 acceptanceRouter.use('/:id', tenantWriteGuard({ resource: 'acceptance' }))
 acceptanceRouter.get('/:id', asyncHandler(controller.detail))

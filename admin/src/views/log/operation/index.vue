@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import {
   fetchOperationLogFilters,
   fetchOperationLogs,
+  type LogScope,
   type OperationLog,
   type OperationLogFilterModule
 } from '@/service/api/log';
@@ -10,6 +11,15 @@ import { formatDateTime } from '@/utils/format';
 
 defineOptions({ name: 'OperationLogPage' });
 
+const props = withDefaults(
+  defineProps<{
+    /** tenant=租户业务日志；platform=平台级事件 */
+    scope?: LogScope;
+  }>(),
+  { scope: 'tenant' }
+);
+
+const isPlatformScope = computed(() => props.scope === 'platform');
 const loading = ref(false);
 const list = ref<OperationLog[]>([]);
 const total = ref(0);
@@ -37,7 +47,7 @@ const moduleLabels = computed(() => {
 });
 
 async function loadFilterOptions() {
-  const { data } = await fetchOperationLogFilters();
+  const { data } = await fetchOperationLogFilters(props.scope);
 
   if (data) modules.value = data.modules;
 }
@@ -54,7 +64,7 @@ async function load() {
       operatorType: query.operatorType || undefined,
       from: dateRange.value?.[0] || undefined,
       to: dateRange.value?.[1] || undefined
-    });
+    }, props.scope);
 
     if (!error && data) {
       list.value = data.list;
@@ -112,7 +122,7 @@ onMounted(async () => {
     <ElCard shadow="never">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-12px">
-          <span class="font-600">操作日志</span>
+          <span class="font-600">{{ isPlatformScope ? '平台操作日志' : '操作日志' }}</span>
           <div class="flex flex-wrap items-center gap-8px">
             <ElSelect
               v-model="query.module"
@@ -154,6 +164,16 @@ onMounted(async () => {
           </div>
         </div>
       </template>
+
+      <ElAlert
+        v-if="isPlatformScope"
+        class="mb-14px"
+        type="info"
+        :closable="false"
+        show-icon
+        title="只展示平台级事件"
+        description="包括租户开通/停用、平台基础配置与内容页修改等。租户业务操作日志留在租户后台，平台需在排障授权窗口内查看。"
+      />
 
       <ElTable v-loading="loading" :data="list" row-key="id" stripe>
         <ElTableColumn type="expand" width="40">

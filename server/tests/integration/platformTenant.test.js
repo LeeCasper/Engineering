@@ -65,6 +65,8 @@ function provisionBody(n, overrides = {}) {
     expiresAt: '2027-12-31',
     contactName: '张经理',
     contactPhone: '13800138000',
+    provinceCode: '310000',
+    cityCode: '310000',
     owner: { username: `acme_owner_${n}`, password: OWNER_PASSWORD },
     ...overrides,
   }
@@ -588,5 +590,140 @@ describe('P3 · 列表、详情与审计留痕', () => {
     expect(rows.every((r) => Number(r.target_id) === provisioned.tenantId)).toBe(true)
     expect(rows.every((r) => r.operator_type === 'admin')).toBe(true)
     expect(rows.every((r) => Number(r.operator_id) === platform.admin.id)).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+// 租户地区
+// ─────────────────────────────────────────────────────────────
+
+describe('P3 · 租户地区', () => {
+  it('新建租户必须填写地区，名称由服务端按代码派生', async () => {
+    const platform = await loginPlatform()
+    const n = nextSeq()
+
+    const missing = provisionBody(n)
+    delete missing.provinceCode
+    delete missing.cityCode
+    const denied = await request
+      .authed('post', '/admin/platform/tenants', platform.token)
+      .send(missing)
+    expect(denied.status).toBe(400)
+
+    const created = await request
+      .authed('post', '/admin/platform/tenants', platform.token)
+      .send(provisionBody(n, { provinceCode: '330000', cityCode: '330100' }))
+      .expect(200)
+
+    const tenant = created.body.data.tenant
+    expect(tenant.region).toEqual({
+      provinceCode: '330000',
+      provinceName: '浙江省',
+      cityCode: '330100',
+      cityName: '杭州市',
+    })
+    expect(tenant.regionLabel).toBe('浙江省 / 杭州市')
+
+    const row = await db.queryOne(
+      'SELECT province_code, province_name, city_code, city_name FROM tenant WHERE id = ?',
+      [tenant.id]
+    )
+    expect(row).toEqual({
+      province_code: '330000',
+      province_name: '浙江省',
+      city_code: '330100',
+      city_name: '杭州市',
+    })
+  })
+
+  it('城市不属于省份时拒绝开通', async () => {
+    const platform = await loginPlatform()
+    const res = await request
+      .authed('post', '/admin/platform/tenants', platform.token)
+      .send(provisionBody(nextSeq(), { provinceCode: '330000', cityCode: '440100' }))
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toContain('城市不属于所选省份')
+  })
+
+  it('调整地区会更新名称并写入审计，清空也留痕', async () => {
+    const platform = await loginPlatform()
+    const n = nextSeq()
+    const provisioned = await provision(platform.token, n)
+
+    const updated = await request
+      .authed('put', `/admin/platform/tenants/${provisioned.tenantId}`, platform.token)
+      .send({ provinceCode: '440000', cityCode: '440300' })
+      .expect(200)
+
+    expect(updated.body.data.regionLabel).toBe('广东省 / 深圳市')
+
+    const row = await db.queryOne(
+      "SELECT detail FROM operation_log WHERE action = 'tenant.update' ORDER BY id DESC LIMIT 1"
+    )
+    const detail = typeof row.detail === 'string' ? JSON.parse(row.detail) : row.detail
+    expect(detail.after).toMatchObject({
+      provinceCode: '440000',
+      provinceName: '广东省',
+      cityCode: '440300',
+      cityName: '深圳市',
+    })
+
+    const cleared = await request
+      .authed('put', `/admin/platform/tenants/${provisioned.tenantId}`, platform.token)
+      .send({ provinceCode: null, cityCode: null })
+      .expect(200)
+    expect(cleared.body.data.region).toBeNull()
+    expect(cleared.body.data.regionLabel).toBeNull()
+  })
+
+  it('老租户没有地区仍可正常读取，列表支持地区与未分配筛选', async () => {
+    const platform = await loginPlatform()
+    const tenant = await db.queryOne('SELECT id FROM tenant WHERE code = ?', ['default'])
+    const detail = await request
+      .authed('get', `/admin/platform/tenants/${tenant.id}`, platform.token)
+      .expect(200)
+    expect(detail.body.data.region).toBeNull()
+
+    // beforeEach 会清业务表，地区租户必须在同一个用例里现建
+    const regionTenant = await provision(platform.token, nextSeq(), {
+      provinceCode: '330000',
+      cityCode: '330100',
+    })
+
+    const unassigned = await request
+      .authed('get', '/admin/platform/tenants?unassigned=1', platform.token)
+      .expect(200)
+    expect(unassigned.body.data.list.some((item) => Number(item.id) === Number(tenant.id))).toBe(
+      true
+    )
+    expect(
+      unassigned.body.data.list.some((item) => Number(item.id) === regionTenant.tenantId)
+    ).toBe(false)
+
+    const regionList = await request
+      .authed('get', '/admin/platform/tenants?provinceCode=330000', platform.token)
+      .expect(200)
+    expect(regionList.body.data.list.map((item) => Number(item.id))).toEqual([
+      Number(regionTenant.tenantId),
+    ])
+    expect(regionList.body.data.list[0].region).toEqual({
+      provinceCode: '330000',
+      provinceName: '浙江省',
+      cityCode: '330100',
+      cityName: '杭州市',
+    })
+  })
+
+  it('地区筛选参数非法时返回 400', async () => {
+    const platform = await loginPlatform()
+
+    const cityOnly = await request
+      .authed('get', '/admin/platform/tenants?cityCode=440300', platform.token)
+    expect(cityOnly.status).toBe(400)
+
+    const conflict = await request
+      .authed('get', '/admin/platform/tenants?unassigned=1&provinceCode=330000', platform.token)
+    expect(conflict.status).toBe(400)
   })
 })

@@ -250,6 +250,86 @@ async function listByProject(projectId) {
 }
 
 /**
+ * 跨项目验收收件箱（C-3.1）。
+ *
+ * 按「当前用户是该项目 active 成员」聚合，而不是按单个项目查 ——
+ * 一个监理/业主可能同时参与多个项目，验收 tab 必须一次看到所有待办。
+ *
+ * 同时带出 `pm.role / pm.is_primary`：角色虽是账号级固定的，
+ * 但「待我处理」仍要确认用户在这个项目里是 active 成员，以及是否主工长 ——
+ * 成员关系可能被移除，不能只看账号角色。
+ */
+async function listInboxForUser(userId) {
+  return db.query(
+    `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
+            a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at,
+            a.resubmit_count, a.finished_at, a.signature_url, a.report_pdf_status, a.created_at,
+            p.tenant_id, t.name AS tenant_name,
+            p.name AS project_name, p.address AS project_address, p.status AS project_status,
+            s.name AS stage_name, s.seq AS stage_seq, s.progress AS stage_progress,
+            s.gate_status AS stage_gate_status,
+            i.name AS item_name,
+            u.nickname AS submitter_nickname,
+            fu.nickname AS foreman_nickname, fu.phone AS foreman_phone,
+            pm.role AS my_role, pm.is_primary AS my_primary,
+            (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count
+       FROM acceptance a
+       JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL
+       JOIN tenant t ON t.id = p.tenant_id AND t.deleted_at IS NULL
+       JOIN project_member pm ON pm.project_id = a.project_id AND pm.user_id = ?
+            AND pm.status = 'active' AND pm.deleted_at IS NULL
+       LEFT JOIN project_stage s ON s.id = a.project_stage_id
+       LEFT JOIN project_item i ON i.id = a.project_item_id
+       LEFT JOIN user u ON u.id = a.submitter_id
+       LEFT JOIN project_member fpm ON fpm.project_id = a.project_id AND fpm.role = 'foreman'
+            AND fpm.is_primary = 1 AND fpm.status = 'active' AND fpm.deleted_at IS NULL
+       LEFT JOIN user fu ON fu.id = fpm.user_id
+      WHERE a.deleted_at IS NULL
+      ORDER BY COALESCE(a.step_entered_at, a.created_at) DESC, a.id DESC`,
+    [userId]
+  )
+}
+
+/**
+ * 主工长可以发起验收的阶段（首页/验收收件箱的「可发起验收」）。
+ *
+ * 条件必须与 `acceptance.service.createAcceptance` 的校验一致：
+ * 阶段进度 100% + 门禁 pending_acceptance + 没有未终结验收单。
+ * 少查一个条件，前端就会给出一个点进去必然 409 的按钮。
+ */
+async function listInitiablesForUser(userId) {
+  const openPlaceholders = OPEN_STATUSES.map(() => '?').join(', ')
+
+  return db.query(
+    `SELECT ps.id AS stage_id, ps.project_id, ps.name AS stage_name, ps.seq AS stage_seq,
+            ps.progress AS stage_progress, ps.gate_status AS stage_gate_status,
+            p.tenant_id, t.name AS tenant_name,
+            p.name AS project_name, p.address AS project_address, p.status AS project_status,
+            u.nickname AS foreman_nickname, u.phone AS foreman_phone
+       FROM project_stage ps
+       JOIN project p ON p.id = ps.project_id AND p.deleted_at IS NULL
+       JOIN tenant t ON t.id = p.tenant_id AND t.deleted_at IS NULL
+       JOIN project_member pm ON pm.project_id = ps.project_id AND pm.user_id = ?
+            AND pm.status = 'active' AND pm.deleted_at IS NULL
+            AND pm.role = 'foreman' AND pm.is_primary = 1
+       JOIN user u ON u.id = pm.user_id
+      WHERE ps.deleted_at IS NULL
+        AND t.status = 'active'
+        AND (t.expires_at IS NULL OR t.expires_at > NOW())
+        AND ps.gate_status = 'pending_acceptance'
+        AND ps.progress >= 100
+        AND p.status <> 'archived'
+        AND NOT EXISTS (
+          SELECT 1 FROM acceptance a
+           WHERE a.project_stage_id = ps.id AND a.deleted_at IS NULL
+             AND a.status IN (${openPlaceholders})
+        )
+      ORDER BY ps.id DESC`,
+    [userId, ...OPEN_STATUSES]
+  )
+}
+
+/**
  * 扫描超时未处理的验收单（AC-A22：进入「待我处理」超过 48 小时）。
  *
  * 用 `step_entered_at` 而不是 `submitted_at` 作为起点 ——
@@ -300,5 +380,7 @@ module.exports = {
   currentRound,
   hasRejection,
   listByProject,
+  listInboxForUser,
+  listInitiablesForUser,
   listTimeoutCandidates,
 }

@@ -21,6 +21,18 @@ async function findById(id, { withPassword = false } = {}) {
 }
 
 /**
+ * 免密登录用：需要 locked_until 判断锁定，但不能把 password_hash 带进 service。
+ * 与 findById 的差别只有这一列。
+ */
+async function findByIdWithLock(id) {
+  return db.queryOne(
+    `SELECT ${PUBLIC_COLUMNS}, locked_until
+       FROM admin_user WHERE id = ? AND deleted_at IS NULL`,
+    [id]
+  )
+}
+
+/**
  * 登录用：需要密码哈希与锁定状态。
  *
  * 传了 tenantId 就限定在该租户（登录页带了 tenantCode）；
@@ -177,6 +189,7 @@ async function countCreatedBy(adminUserId) {
 module.exports = {
   PUBLIC_COLUMNS,
   findById,
+  findByIdWithLock,
   findByUsernameInTenant,
   findManyByUsername,
   findForLogin,

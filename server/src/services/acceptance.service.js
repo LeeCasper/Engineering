@@ -755,12 +755,13 @@ async function notifyPassed(acceptance) {
 async function getDetail(userId, acceptanceId) {
   const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
 
-  const [items, flow, stage, item, project] = await Promise.all([
+  const [items, flow, stage, item, project, supervisorCount] = await Promise.all([
     acceptanceModel.listItems(acceptanceId),
     acceptanceModel.listFlow(acceptanceId),
     acceptance.project_stage_id ? projectStageModel.findById(acceptance.project_stage_id) : null,
     acceptance.project_item_id ? projectItemModel.findById(acceptance.project_item_id) : null,
     projectModel.findByIdUnscoped(acceptance.project_id),
+    projectMemberModel.countByRole(acceptance.project_id, 'supervisor'),
   ])
 
   const photos = parseJson(acceptance.photos) || []
@@ -769,6 +770,8 @@ async function getDetail(userId, acceptanceId) {
     id: acceptance.id,
     projectId: acceptance.project_id,
     projectName: project ? project.name : null,
+    projectAddress: project ? project.address : null,
+    projectStatus: project ? project.status : null,
     type: acceptance.type,
     status: acceptance.status,
     statusLabel: STATUS_LABELS[acceptance.status],
@@ -776,13 +779,20 @@ async function getDetail(userId, acceptanceId) {
     currentStepLabel: acceptance.current_step ? STEP_LABELS[acceptance.current_step] : null,
     stageId: acceptance.project_stage_id,
     stageName: stage ? stage.name : null,
+    stageProgress: stage ? stage.progress : null,
+    stageGateStatus: stage ? stage.gate_status : null,
+    stageStatus: stage ? stage.status : null,
     itemId: acceptance.project_item_id,
     itemName: item ? item.name : null,
+    // 无监理时前端要把「监理审核」显示为「已跳过」，不能画成一个真实环节
+    hasSupervisor: supervisorCount > 0,
+    round: acceptanceModel.currentRound(acceptance),
     description: acceptance.description,
     photos: photos.map((p) => ({ url: p.watermarkUrl || p.url, originalUrl: p.watermarkUrl ? p.url : null })),
     submitterId: acceptance.submitter_id,
     submittedAt: acceptance.submitted_at,
     stepEnteredAt: acceptance.step_entered_at,
+    waitingHours: waitingHours(acceptance.step_entered_at, acceptance.status),
     resubmitCount: acceptance.resubmit_count,
     finishedAt: acceptance.finished_at,
     signatureUrl: acceptance.signature_url,
@@ -914,6 +924,166 @@ async function listAcceptances(userId, projectId) {
 }
 
 /**
+ * 跨项目验收收件箱（C-3.1）。
+ *
+ * 这是验收 tab 的默认视图：一个监理/业主可能同时参与多个项目，
+ * 不能要求他先选项目再看待办。所有项目混排，项目名只作为卡片归属信息。
+ *
+ * 返回的 `items` 同时包含两类对象：
+ *   - 已有验收单（kind = 'acceptance'）
+ *   - 主工长可以发起的阶段（kind = 'stage'，canInitiate = true）
+ *
+ * 四类 tab 的数量由同一份 items 计算，避免「tab 数字和列表条数不一致」
+ * （AC-A23 的同一口径要求）。
+ */
+async function inbox(userId) {
+  const [rows, initiables] = await Promise.all([
+    acceptanceModel.listInboxForUser(userId),
+    acceptanceModel.listInitiablesForUser(userId),
+  ])
+
+  const acceptanceItems = rows.map((row) => {
+    const viewer = { role: row.my_role, is_primary: row.my_primary }
+    return {
+      kind: 'acceptance',
+      id: row.id,
+      projectId: row.project_id,
+      tenantId: row.tenant_id,
+      tenantName: row.tenant_name,
+      projectName: row.project_name,
+      projectAddress: row.project_address,
+      projectStatus: row.project_status,
+      stageId: row.project_stage_id,
+      stageName: row.stage_name,
+      itemId: row.project_item_id,
+      itemName: row.item_name,
+      type: row.type,
+      status: row.status,
+      statusLabel: STATUS_LABELS[row.status],
+      round: acceptanceModel.currentRound(row),
+      isMine: isAwaitingMe(row, viewer),
+      canInitiate: false,
+      submittedAt: row.submitted_at,
+      stepEnteredAt: row.step_entered_at,
+      waitingHours: waitingHours(row.step_entered_at, row.status),
+      finishedAt: row.finished_at,
+      rejectCount: Number(row.reject_count),
+      hasSignature: Boolean(row.signature_url),
+      reportPdfStatus: row.report_pdf_status,
+      stageProgress: row.stage_progress,
+      stageGateStatus: row.stage_gate_status,
+      foremanName: memberDisplayName(row.foreman_nickname, row.foreman_phone, '待分配'),
+      submitterName: row.submitter_nickname || null,
+      myRole: row.my_role,
+    }
+  })
+
+  const initiateItems = initiables.map((row) => ({
+    kind: 'stage',
+    id: null,
+    projectId: row.project_id,
+    tenantId: row.tenant_id,
+    tenantName: row.tenant_name,
+    projectName: row.project_name,
+    projectAddress: row.project_address,
+    projectStatus: row.project_status,
+    stageId: row.stage_id,
+    stageName: row.stage_name,
+    itemId: null,
+    itemName: null,
+    type: 'stage',
+    status: 'can_initiate',
+    statusLabel: '可发起验收',
+    round: null,
+    // 「可发起」本身就是主工长待办的一种，计入「待我处理」
+    isMine: true,
+    canInitiate: true,
+    submittedAt: null,
+    stepEnteredAt: null,
+    waitingHours: null,
+    finishedAt: null,
+    rejectCount: 0,
+    hasSignature: false,
+    reportPdfStatus: null,
+    stageProgress: row.stage_progress,
+    stageGateStatus: row.stage_gate_status,
+    foremanName: memberDisplayName(row.foreman_nickname, row.foreman_phone, '待分配'),
+    submitterName: null,
+    myRole: 'foreman',
+  }))
+
+  const items = [...acceptanceItems, ...initiateItems].sort(compareInboxItems)
+
+  const counts = {
+    all: items.length,
+    todo: items.filter((item) => item.canInitiate || item.isMine).length,
+    inProgress: items.filter(
+      (item) => !item.canInitiate && !item.isMine && item.status !== STATUS.PASSED
+    ).length,
+    done: items.filter((item) => item.status === STATUS.PASSED).length,
+  }
+
+  // 筛选面板的项目来源。项目名只能出现在筛选里，不能占据主分类行
+  const projectMap = new Map()
+  for (const item of items) {
+    const entry = projectMap.get(item.projectId) || {
+      id: item.projectId,
+      name: item.projectName,
+      total: 0,
+      todo: 0,
+    }
+    entry.total += 1
+    if (item.canInitiate || item.isMine) entry.todo += 1
+    projectMap.set(item.projectId, entry)
+  }
+
+  return {
+    items,
+    counts,
+    projects: [...projectMap.values()].sort((a, b) => a.id - b.id),
+  }
+}
+
+/** 收件箱排序：待我处理 → 可发起 → 进行中 → 已完成；同优先级按进入环节时间倒序 */
+function compareInboxItems(a, b) {
+  const priority = (item) => {
+    if (item.canInitiate) return 1
+    if (item.status === STATUS.PASSED) return 3
+    if (item.isMine) return 0
+    return 2
+  }
+
+  const diff = priority(a) - priority(b)
+  if (diff !== 0) return diff
+
+  return String(b.stepEnteredAt || '').localeCompare(String(a.stepEnteredAt || ''))
+}
+
+/**
+ * 进入当前环节已等待的小时数。
+ * 草稿与已通过没有「等待某个角色处理」的语义，返回 null。
+ */
+function waitingHours(stepEnteredAt, status) {
+  if (!stepEnteredAt || status === STATUS.DRAFT || status === STATUS.PASSED) return null
+  const hours = datetime.diffHours(stepEnteredAt, datetime.now())
+  return Number.isFinite(hours) ? Math.max(0, Math.floor(hours)) : null
+}
+
+/** 成员展示名：昵称优先，其次脱敏手机号，最后回落到占位文案 */
+function memberDisplayName(nickname, phone, fallback) {
+  if (nickname) return nickname
+  return phone ? maskPhone(phone) : fallback
+}
+
+function maskPhone(phone) {
+  if (!phone) return null
+  const value = String(phone)
+  if (value.length === 11) return `${value.slice(0, 3)}****${value.slice(-4)}`
+  if (value.length <= 4) return '*'.repeat(value.length)
+  return `${value.slice(0, 2)}${'*'.repeat(Math.max(1, value.length - 4))}${value.slice(-2)}`
+}
+
+/**
  * 是否「待我处理」。
  *
  * 草稿只对提交者本人算待办吗？**不算** —— AC-A08 明确「草稿不计入任何角色的
@@ -998,6 +1168,7 @@ module.exports = {
   resubmit,
   getDetail,
   listAcceptances,
+  inbox,
   getFlow,
   resolveViewer,
   assertPrimaryForeman,

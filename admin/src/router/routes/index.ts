@@ -225,6 +225,17 @@ const appRoutes = [
     },
     children: [
       {
+        name: 'platform_dashboard',
+        path: '/platform/dashboard',
+        component: 'view.platform_dashboard',
+        meta: {
+          title: '数据看板',
+          icon: 'mdi:map-marker-radius-outline',
+          order: 1,
+          roles: ['platform']
+        }
+      },
+      {
         name: 'platform_tenant',
         // 与 elegant-router 依据 views/platform/tenant 生成的路径保持一致，
         // 否则页签按 path 反查路由名时会拿不到
@@ -233,7 +244,40 @@ const appRoutes = [
         meta: {
           title: '租户管理',
           icon: 'mdi:domain-plus',
-          order: 1,
+          order: 2,
+          roles: ['platform']
+        }
+      },
+      {
+        name: 'platform_config',
+        path: '/platform/config',
+        component: 'view.platform_config',
+        meta: {
+          title: '基础配置',
+          icon: 'mdi:cog-outline',
+          order: 3,
+          roles: ['platform']
+        }
+      },
+      {
+        name: 'platform_content',
+        path: '/platform/content',
+        component: 'view.platform_content',
+        meta: {
+          title: '基础内容页',
+          icon: 'mdi:file-document-edit-outline',
+          order: 4,
+          roles: ['platform']
+        }
+      },
+      {
+        name: 'platform_log',
+        path: '/platform/log',
+        component: 'view.platform_log',
+        meta: {
+          title: '平台日志中心',
+          icon: 'mdi:file-clock-outline',
+          order: 5,
           roles: ['platform']
         }
       }

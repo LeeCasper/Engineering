@@ -29,6 +29,7 @@ function shape(row) {
     ip: row.ip,
     result: row.result,
     failReason: row.fail_reason,
+    authMethod: row.auth_method,
   }
 }
 
@@ -53,4 +54,26 @@ async function list(req, res) {
   res.page(rows.map(shape), total, paging)
 }
 
-module.exports = { list }
+/**
+ * GET /admin/platform/logs/login —— 平台级登录记录。
+ *
+ * 平台账号的登录日志 `tenant_id` 为 NULL；用户名猜错、无法判定租户的
+ * 爆破痕迹也落在这一组，因此平台日志中心能看到完整的平台侧尝试记录。
+ */
+async function platformList(req, res) {
+  const query = validate(listQuerySchema, req.query)
+  const paging = parsePaging(req.query)
+
+  const { total, rows } = await loginLogModel.list({
+    offset: paging.offset,
+    limit: paging.limit,
+    tenantId: null,
+    adminUserId: query.adminUserId,
+    username: query.username,
+    result: query.result,
+  })
+
+  res.page(rows.map(shape), total, paging)
+}
+
+module.exports = { list, platformList }

@@ -177,6 +177,42 @@ export const generatedRoutes: GeneratedRoute[] = [
     },
     children: [
       {
+        name: 'platform_config',
+        path: '/platform/config',
+        component: 'view.platform_config',
+        meta: {
+          title: 'platform_config',
+          i18nKey: 'route.platform_config'
+        }
+      },
+      {
+        name: 'platform_content',
+        path: '/platform/content',
+        component: 'view.platform_content',
+        meta: {
+          title: 'platform_content',
+          i18nKey: 'route.platform_content'
+        }
+      },
+      {
+        name: 'platform_dashboard',
+        path: '/platform/dashboard',
+        component: 'view.platform_dashboard',
+        meta: {
+          title: 'platform_dashboard',
+          i18nKey: 'route.platform_dashboard'
+        }
+      },
+      {
+        name: 'platform_log',
+        path: '/platform/log',
+        component: 'view.platform_log',
+        meta: {
+          title: 'platform_log',
+          i18nKey: 'route.platform_log'
+        }
+      },
+      {
         name: 'platform_tenant',
         path: '/platform/tenant',
         component: 'view.platform_tenant',

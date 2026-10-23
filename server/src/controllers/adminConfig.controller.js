@@ -24,10 +24,21 @@ async function list(req, res) {
   res.ok({ list: await sysConfigService.describeAll(req.auth.tenantId) })
 }
 
-/** PUT /admin/sys-configs/:key —— 修改配置（仅超级管理员，路由层已拦） */
+/**
+ * PUT /admin/sys-configs/:key —— 修改配置（仅租户管理员，路由层已拦）
+ *
+ * 平台基础配置走 `/admin/platform/sys-configs/:key`，两条路由复用同一个
+ * service：目标作用域由 `req.auth` 决定，不能由请求体指定 tenantId ——
+ * 否则一个租户管理员就能改别人的配置。
+ */
 async function update(req, res) {
   const input = validate(updateSchema, req.body)
   res.ok(await sysConfigService.update(req.params.key, input.value, req.auth))
 }
 
-module.exports = { list, update }
+/** DELETE /admin/sys-configs/:key —— 恢复平台默认（删除本租户覆盖值） */
+async function reset(req, res) {
+  res.ok(await sysConfigService.reset(req.params.key, req.auth))
+}
+
+module.exports = { list, update, reset }

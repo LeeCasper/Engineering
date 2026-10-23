@@ -102,10 +102,8 @@ const archiveSchema = z.object({ confirm: z.boolean().optional().default(false) 
 const inviteSchema = z.object({
   phone: z.string().trim().min(1, '请输入手机号').max(20),
   role: z.enum(['foreman', 'supervisor', 'owner']),
-  // 仅在「该用户已是本项目成员、且角色不同」时需要确认替换（AC-AD20）。
-  // 工长可以有多个（Q11），因此邀请第二名工长不再需要这个标记 ——
-  // 首个工长会自动成为主工长，改指走单独的主工长接口
-  confirmReplace: z.boolean().optional().default(false),
+  // 角色是账号级固定的（v2.5）。不再接受 confirmReplace 来绕过固定角色；
+  // 若客户端仍传该字段，zod 默认 strip 掉，不影响请求
 })
 
 const paymentNodesSchema = z.object({

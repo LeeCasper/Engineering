@@ -87,4 +87,29 @@ async function filters(req, res) {
   res.ok({ modules: operationLog.listModules() })
 }
 
-module.exports = { list, filters }
+/**
+ * GET /admin/platform/logs/operation —— 平台日志中心的操作日志。
+ *
+ * 只返回 `tenant_id IS NULL` 的平台级事件：租户开通/停用、平台基础配置
+ * 与基础内容页修改等。租户业务日志不在平台默认视野内，需要时走排障授权。
+ */
+async function platformList(req, res) {
+  const query = validate(listQuerySchema, req.query)
+
+  if (query.module && !operationLog.isKnownModule(query.module)) {
+    throw AppError.badRequest('未知的模块')
+  }
+
+  const filters = { ...query, ...normalizeRange(query) }
+  const paging = parsePaging(req.query)
+  const result = await operationLog.listPlatform(filters, paging)
+
+  res.page(result.list, result.total, paging)
+}
+
+/** GET /admin/platform/logs/operation/filters —— 平台操作日志的筛选项 */
+async function platformFilters(req, res) {
+  res.ok({ modules: operationLog.listModules() })
+}
+
+module.exports = { list, filters, platformList, platformFilters }

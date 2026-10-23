@@ -48,6 +48,10 @@ declare module "@elegant-router/types" {
     "log_operation": "/log/operation";
     "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?";
     "platform": "/platform";
+    "platform_config": "/platform/config";
+    "platform_content": "/platform/content";
+    "platform_dashboard": "/platform/dashboard";
+    "platform_log": "/platform/log";
     "platform_tenant": "/platform/tenant";
     "project": "/project";
     "project_detail": "/project/detail/:id";
@@ -150,6 +154,10 @@ declare module "@elegant-router/types" {
     | "home"
     | "log_login"
     | "log_operation"
+    | "platform_config"
+    | "platform_content"
+    | "platform_dashboard"
+    | "platform_log"
     | "platform_tenant"
     | "project_detail"
     | "project_list"

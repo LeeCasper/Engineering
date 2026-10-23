@@ -105,7 +105,7 @@ describe('AC-U01 / AC-U02 个人资料与手机号脱敏', () => {
     const second = await setupMember('foreman', { userName: 'plain' })
 
     // 夹具直接插成员行，不会走「首个工长自动成为主工长」那段服务逻辑，
-    // 因此显式置位。两个项目里他各是不同的身份，正好验证按项目判定
+    // 因此显式置位。两个项目里他都是工长，但主工长标记按项目分别计算
     await db.query('UPDATE project_member SET is_primary = 1 WHERE project_id = ? AND user_id = ?', [
       first.projectId,
       first.userId,
@@ -120,24 +120,25 @@ describe('AC-U01 / AC-U02 个人资料与手机号脱敏', () => {
     const inA = await request.authed('get', `/auth/profile?projectId=${first.projectId}`, second.token)
     const inB = await request.authed('get', `/auth/profile?projectId=${second.projectId}`, second.token)
 
-    // AC-U05：同一个人在不同项目里角色元素不同，界面按**当前项目**渲染
+    // 固定角色不变，但主工长是项目级属性，界面按当前项目渲染
     expect(inA.body.data.isPrimaryForeman).toBe(false)
     expect(inB.body.data.isPrimaryForeman).toBe(true)
   })
 
-  it('AC-U05 同一账号在不同项目中担任不同角色，各项目返回各自的角色', async () => {
-    const login = await mini.login(`multi-role-${(seq += 1)}`)
+  it('AC-U05 固定角色在多个项目之间保持不变', async () => {
+    const login = await mini.login(`fixed-role-${(seq += 1)}`)
 
-    const p1 = await mini.createProject({ name: '业主项目', createdBy: 1 })
-    const p2 = await mini.createProject({ name: '工长项目', createdBy: 1 })
-    await mini.addMember({ projectId: p1, userId: login.userId, role: 'owner' })
+    const p1 = await mini.createProject({ name: '工长项目一', createdBy: 1 })
+    const p2 = await mini.createProject({ name: '工长项目二', createdBy: 1 })
+    await mini.addMember({ projectId: p1, userId: login.userId, role: 'foreman' })
     await mini.addMember({ projectId: p2, userId: login.userId, role: 'foreman' })
 
-    const asOwner = await request.authed('get', `/auth/profile?projectId=${p1}`, login.token)
-    const asForeman = await request.authed('get', `/auth/profile?projectId=${p2}`, login.token)
+    const inP1 = await request.authed('get', `/auth/profile?projectId=${p1}`, login.token)
+    const inP2 = await request.authed('get', `/auth/profile?projectId=${p2}`, login.token)
 
-    expect(asOwner.body.data.role).toBe('owner')
-    expect(asForeman.body.data.role).toBe('foreman')
+    // v2.5：角色是账号级固定值，不随项目切换
+    expect(inP1.body.data.role).toBe('foreman')
+    expect(inP2.body.data.role).toBe('foreman')
   })
 
   it('传了不是自己项目的 id 时角色为 null，而不是报错泄露项目是否存在（AC-P26）', async () => {
@@ -155,13 +156,60 @@ describe('AC-U01 / AC-U02 个人资料与手机号脱敏', () => {
   })
 })
 
+describe('v2.5 我的汇报跨项目汇总', () => {
+  it('未选择项目时统计全部项目，选择项目后只统计单个项目', async () => {
+    const login = await mini.login(`stats-all-${(seq += 1)}`)
+    await db.query("UPDATE user SET role = 'foreman' WHERE id = ?", [login.userId])
+
+    const p1 = await mini.createProject({ name: '统计项目一' })
+    const p2 = await mini.createProject({ name: '统计项目二' })
+    await mini.addMember({ projectId: p1, userId: login.userId, role: 'foreman' })
+    await mini.addMember({ projectId: p2, userId: login.userId, role: 'foreman' })
+
+    const tree1 = await addStageAndItem(p1, '工序一')
+    const tree2 = await addStageAndItem(p2, '工序二')
+
+    for (const [projectId, itemId, key] of [
+      [p1, tree1.itemId, 'stats-p1-1'],
+      [p1, tree1.itemId, 'stats-p1-2'],
+      [p2, tree2.itemId, 'stats-p2-1'],
+    ]) {
+      await db.query(
+        `INSERT INTO progress_report
+           (project_id, project_item_id, user_id, progress, content, client_request_id)
+         VALUES (?, ?, ?, 50, '汇总测试', ?)`,
+        [projectId, itemId, login.userId, key]
+      )
+    }
+
+    const all = await request.authed('get', '/projects/my-stats', login.token)
+    expect(all.status).toBe(200)
+    expect(all.body.data.scope).toBe('all')
+    expect(all.body.data.projectCount).toBe(2)
+    expect(all.body.data.monthReportCount).toBe(3)
+
+    const single = await request.authed('get', `/projects/${p1}/my-stats`, login.token)
+    expect(single.status).toBe(200)
+    expect(single.body.data.scope).toBe('project')
+    expect(single.body.data.monthReportCount).toBe(2)
+  })
+
+  it('非工长不能调用跨项目汇总', async () => {
+    const login = await mini.login(`stats-owner-${(seq += 1)}`)
+    await db.query("UPDATE user SET role = 'owner' WHERE id = ?", [login.userId])
+
+    const res = await request.authed('get', '/projects/my-stats', login.token)
+    expect(res.status).toBe(403)
+  })
+})
+
 describe('AC-U03 项目切换不串数据', () => {
   it('每个项目的数据只从各自的项目上下文取', async () => {
     const login = await mini.login(`switch-${(seq += 1)}`)
     const p1 = await mini.createProject({ name: '项目甲', createdBy: 1 })
     const p2 = await mini.createProject({ name: '项目乙', createdBy: 1 })
     await mini.addMember({ projectId: p1, userId: login.userId, role: 'foreman' })
-    await mini.addMember({ projectId: p2, userId: login.userId, role: 'owner' })
+    await mini.addMember({ projectId: p2, userId: login.userId, role: 'foreman' })
 
     const d1 = await request.authed('get', `/projects/${p1}`, login.token)
     const d2 = await request.authed('get', `/projects/${p2}`, login.token)
@@ -169,7 +217,7 @@ describe('AC-U03 项目切换不串数据', () => {
     expect(d1.body.data.name).toBe('项目甲')
     expect(d1.body.data.myRole).toBe('foreman')
     expect(d2.body.data.name).toBe('项目乙')
-    expect(d2.body.data.myRole).toBe('owner')
+    expect(d2.body.data.myRole).toBe('foreman')
   })
 })
 
@@ -368,7 +416,8 @@ describe('AC-U16 监理的可见边界', () => {
 
 describe('AC-U11 ~ AC-U13 订阅消息授权', () => {
   /**
-   * 订阅模板是按租户配置的，因此测试用户必须先成为某个租户的成员 ——
+   * 订阅模板 ID 是平台统一配置的（来自小程序主体），但订阅授权记录仍按租户隔离。
+   * 因此测试用户必须先成为某个租户的成员 ——
    * 不属于任何租户的用户本来就不该能配置订阅（他没有可订阅的消息）。
    */
   async function tenantUser(code) {
@@ -379,7 +428,7 @@ describe('AC-U11 ~ AC-U13 订阅消息授权', () => {
   }
 
   async function configureTemplate(type, value) {
-    await sysConfigService.update(`subscribe_template_${type}`, value, { type: 'admin', id: 1, role: 'owner', tenantId: 1 })
+    await sysConfigService.update(`subscribe_template_${type}`, value, { type: 'admin', id: 1, role: 'platform', tenantId: null })
   }
 
   it('未配置模板 ID 的分类标记为不可申请', async () => {
@@ -395,6 +444,8 @@ describe('AC-U11 ~ AC-U13 订阅消息授权', () => {
     // 未配置时状态必须是 null 而不是 'rejected' ——
     // 后者会让用户以为自己拒绝过，而他根本没被问过
     expect(res.body.data.list.every((i) => i.status === null)).toBe(true)
+    // 没有模板就不能给客户端下发 templateId，否则页面会尝试发起一次必然失败的授权
+    expect(res.body.data.list.every((i) => i.templateId === null)).toBe(true)
   })
 
   it('AC-U13 授权后状态可查，并支持重新授权', async () => {
@@ -409,6 +460,8 @@ describe('AC-U11 ~ AC-U13 订阅消息授权', () => {
     const first = await request.authed('get', '/notifications/subscriptions', login.token)
     const item = first.body.data.list.find((i) => i.type === 'acceptance')
     expect(item.status).toBe('accepted')
+    // 客户端需要用模板 ID 调 wx.requestSubscribeMessage；它不是密钥
+    expect(item.templateId).toBe('TPL-ACC-001')
     expect(first.body.data.acceptedCount).toBe(1)
 
     // 重新授权（用户改主意）
@@ -862,7 +915,7 @@ describe('AC-U19 / AC-U20 注销账号', () => {
 
   it('注销会清掉订阅授权记录', async () => {
     const login = await mini.login(`deact-sub-${(seq += 1)}`)
-    await sysConfigService.update('subscribe_template_acceptance', 'TPL-X', { type: 'admin', id: 1, role: 'owner', tenantId: 1 })
+    await sysConfigService.update('subscribe_template_acceptance', 'TPL-X', { type: 'admin', id: 1, role: 'platform', tenantId: null })
     await request
       .authed('post', '/notifications/subscriptions', login.token)
       .send({ type: 'acceptance', status: 'accepted' })

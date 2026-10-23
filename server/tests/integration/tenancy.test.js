@@ -806,7 +806,7 @@ describe('P1 · C 端跨租户：项目分组与消息筛选', () => {
 
     const user = await mini.login(`tenancy-c-end-${nextSeq()}`)
     await mini.addMember({ projectId: projA, userId: user.userId, role: 'foreman' })
-    await mini.addMember({ projectId: projB, userId: user.userId, role: 'owner' })
+    await mini.addMember({ projectId: projB, userId: user.userId, role: 'foreman' })
 
     const all = await request.authed('get', '/projects', user.token).expect(200)
     const items = all.body.data.groups.flatMap((g) => g.items)

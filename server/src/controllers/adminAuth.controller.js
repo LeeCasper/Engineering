@@ -13,6 +13,11 @@ const adminAuthService = require('../services/adminAuth.service')
 const captchaService = require('../services/captcha.service')
 const adminUserModel = require('../models/adminUser.model')
 
+const captchaQuerySchema = z.object({
+  // 小程序不能稳定渲染 SVG；网页继续使用默认 SVG，行为不变
+  format: z.enum(['svg', 'png']).optional(),
+})
+
 const loginSchema = z.object({
   username: z.string().trim().min(1, '请输入用户名').max(50, '用户名过长'),
   // 密码不设长度下限：登录时的长度由策略决定是「注册时」的事，
@@ -37,7 +42,8 @@ const changePasswordSchema = z.object({
 
 /** GET /admin/auth/captcha —— 获取图形验证码（登录前调用，无需鉴权） */
 async function getCaptcha(req, res) {
-  res.ok(await captchaService.generate())
+  const { format } = validate(captchaQuerySchema, req.query)
+  res.ok(await captchaService.generate({ format: format || 'svg' }))
 }
 
 /** POST /admin/auth/login */
@@ -47,7 +53,9 @@ async function login(req, res) {
 
   res.ok({
     token: result.token,
+    issuedAt: result.issuedAt,
     expiresIn: result.expiresIn,
+    authMethod: result.authMethod,
     mustChangePassword: result.mustChangePassword,
     admin: result.admin,
   })
@@ -69,8 +77,14 @@ async function profile(req, res) {
     status: admin.status,
     // 平台账号为 null。前端据此区分三层身份与「排障访问」的租户上下文
     tenantId: admin.tenant_id ?? null,
+    // 由 requireAdmin 在已加载租户时写入；平台账号为 null
+    tenantName: req.auth.tenantName ?? null,
+    tenantCode: req.auth.tenantCode ?? null,
     mustChangePassword: admin.must_change_password === 1,
     passwordChangedAt: admin.password_changed_at,
+    // 小程序管理端据此判断是否还允许创建新的微信绑定
+    authMethod: req.auth.authMethod || 'password',
+    tokenIssuedAt: req.auth.tokenIssuedAt ?? null,
   })
 }
 

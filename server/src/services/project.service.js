@@ -11,6 +11,7 @@ const AppError = require('../utils/AppError')
 const datetime = require('../utils/datetime')
 const logger = require('../utils/logger')
 const progress = require('../utils/progress')
+const { lockedReasonFor } = require('../utils/stage')
 const money = require('../utils/money')
 const dataScope = require('./dataScope.service')
 const projectAccess = require('./projectAccess.service')
@@ -19,6 +20,7 @@ const db = require('../db/pool')
 const projectModel = require('../models/project.model')
 const projectStageModel = require('../models/projectStage.model')
 const projectMemberModel = require('../models/projectMember.model')
+const userModel = require('../models/user.model')
 const stageTemplateModel = require('../models/stageTemplate.model')
 const paymentNodeModel = require('../models/paymentNode.model')
 const sysConfigService = require('./sysConfig.service')
@@ -49,7 +51,14 @@ async function myProjects(userId, { tenantId } = {}) {
   const stages = await projectModel.listStagesOfProjects(rows.map((r) => r.id))
   const stagesByProject = groupBy(stages, 'project_id')
 
-  const items = rows.map((row) => toProjectSummary(row, stagesByProject.get(row.id) || []))
+  // 首页卡片要展示业主/工长，但不该把整份成员列表带进列表响应。
+  // 只取 active 的 owner/foreman，展示名在服务层脱敏（见 memberDisplayName）。
+  const keyMembers = await projectMemberModel.listKeyMembersOfProjects(rows.map((r) => r.id))
+  const membersByProject = groupBy(keyMembers, 'project_id')
+
+  const items = rows.map((row) =>
+    toProjectSummary(row, stagesByProject.get(row.id) || [], membersByProject.get(row.id) || [])
+  )
 
   const groups = [
     { key: 'managed', label: '我负责的', items: items.filter((it) => it.myRole === 'foreman') },
@@ -97,9 +106,12 @@ async function myProjects(userId, { tenantId } = {}) {
  * 项目总进度用与阶段详情、后台看板**同一个** progress.projectProgress 计算 ——
  * 三处各算一遍是「看板数字和详情对不上」的经典来源（AC-AD38 要求同源）。
  */
-function toProjectSummary(row, stages) {
+function toProjectSummary(row, stages, members = []) {
   const total = progress.projectProgress(stages.map((s) => ({ progress: s.progress, weight: s.weight })))
   const current = pickCurrentStage(stages)
+  const owner = members.find((m) => m.role === 'owner')
+  const primaryForeman = members.find((m) => m.role === 'foreman' && Number(m.is_primary) === 1)
+  const foreman = primaryForeman || members.find((m) => m.role === 'foreman')
 
   return {
     id: row.id,
@@ -111,16 +123,40 @@ function toProjectSummary(row, stages) {
     statusLabel: STATUS_LABELS[row.status] || row.status,
     myRole: row.my_role,
     myRoleLabel: ROLE_LABELS[row.my_role] || row.my_role,
+    // 首页卡片的「业主 / 工长」展示位。没有成员时返回「待分配」，
+    // 让前端不必自己判断 null；昵称为空时用脱敏手机号（AC-U02）。
+    ownerName: memberDisplayName(owner, '待分配'),
+    foremanName: memberDisplayName(foreman, '待分配'),
     area: row.area,
     progress: total,
     currentStageName: current ? current.name : null,
     currentStageGateStatus: current ? current.gate_status : null,
+    // 首页只展示 3 个阶段胶囊，但阶段数量随模板变化；
+    // 完整摘要交给前端按 seq 取「当前阶段起连续 3 个」。
+    stages: stages.map((stage) => ({
+      id: stage.id,
+      name: stage.name,
+      seq: stage.seq,
+      progress: stage.progress,
+      status: stage.status,
+      gateStatus: stage.gate_status,
+    })),
     hasCoordinates: row.longitude !== null && row.latitude !== null,
     startDate: row.start_date,
     planEndDate: row.plan_end_date,
     actualEndDate: row.actual_end_date,
     isOverdue: isOverdue(row),
   }
+}
+
+/**
+ * 成员展示名：昵称优先，其次脱敏手机号，最后回落到角色占位文案。
+ * 项目列表里**不能**出现完整手机号 —— 那是成员管理页的权限范围。
+ */
+function memberDisplayName(member, fallback) {
+  if (!member) return fallback
+  if (member.nickname) return member.nickname
+  return member.phone ? maskPhone(member.phone) : fallback
 }
 
 /** 当前阶段 = 第一个尚未结清的阶段 */
@@ -152,6 +188,38 @@ function isOverdue(row) {
 async function confirmInvitation(userId, memberId) {
   const member = await projectMemberModel.findPendingById(memberId, userId)
   if (!member) throw AppError.notFound('邀请不存在或已处理')
+
+  // 角色是账号级固定的。邀请发出时已经写进 user.role；确认时再校验一次，
+  // 防止历史数据或并发邀请把同一个账号放进不同角色。
+  const user = await userModel.findById(userId)
+  if (!user) throw AppError.notFound('用户不存在')
+
+  if (!user.role) {
+    // 历史数据可能没有 user.role，但已经在别的项目里是另一个角色。
+    // 此时不能凭这一条邀请就把账号「选定」成新角色，否则会制造新的不一致。
+    const otherRoles = await db.query(
+      `SELECT DISTINCT role FROM project_member
+        WHERE user_id = ? AND status IN ('pending', 'active') AND deleted_at IS NULL AND id <> ?`,
+      [userId, memberId]
+    )
+    if (otherRoles.some((row) => row.role !== member.role)) {
+      throw AppError.conflict('该账号历史数据中存在多个角色，无法确认邀请，请联系平台处理', {
+        detail: { roleConflict: true },
+      })
+    }
+    await db.query('UPDATE user SET role = ? WHERE id = ? AND role IS NULL', [member.role, userId])
+    const locked = await userModel.findById(userId)
+    if (!locked || locked.role !== member.role) {
+      throw AppError.conflict('该账号已被另一个项目锁定为其他角色，无法确认邀请', {
+        detail: { roleLocked: true, currentRole: locked ? locked.role : null },
+      })
+    }
+  } else if (user.role !== member.role) {
+    throw AppError.conflict(
+      `该账号已固定为${ROLE_LABELS[user.role]}，不能确认${ROLE_LABELS[member.role]}项目的邀请`,
+      { detail: { roleLocked: true, currentRole: user.role } }
+    )
+  }
 
   const done = await projectMemberModel.confirm(member.project_id, userId)
   if (!done) throw AppError.conflict('邀请已被处理')
@@ -188,10 +256,24 @@ async function getProjectForMember(userId, projectId) {
   const project = await projectModel.findByIdUnscoped(projectId)
   if (!project) throw AppError.notFound('项目不存在')
 
-  const tree = await projectStageModel.findTreeByProject(projectId)
+  // 详情页头部要展示「业主 / 主工长」，与首页卡片保持同一套脱敏规则。
+  // 成员数量与「是否有监理」供快捷入口展示，避免前端为两个数字再发两次请求。
+  const [tree, keyMembers, memberCount, supervisorCount] = await Promise.all([
+    projectStageModel.findTreeByProject(projectId),
+    projectMemberModel.listKeyMembersOfProjects([projectId]),
+    projectMemberModel.countByRole(projectId),
+    projectMemberModel.countByRole(projectId, 'supervisor'),
+  ])
+
+  const owner = keyMembers.find((m) => m.role === 'owner')
+  const foreman =
+    keyMembers.find((m) => m.role === 'foreman' && Number(m.is_primary) === 1) ||
+    keyMembers.find((m) => m.role === 'foreman')
+  const currentStage = pickCurrentStage(tree)
 
   return {
     id: project.id,
+    tenantId: project.tenant_id,
     name: project.name,
     address: project.address,
     status: project.status,
@@ -205,8 +287,17 @@ async function getProjectForMember(userId, projectId) {
     hasCoordinates: project.longitude !== null && project.latitude !== null,
     myRole: role.role,
     myRoleLabel: ROLE_LABELS[role.role] || role.role,
+    // Q11：主工长才能发起验收。详情页据此决定「发起验收」是否出现
+    isPrimaryForeman: Number(role.is_primary) === 1,
+    ownerName: memberDisplayName(owner, '待分配'),
+    foremanName: memberDisplayName(foreman, '待分配'),
+    memberCount,
+    hasSupervisor: supervisorCount > 0,
     progress: progress.projectProgress(tree.map((s) => ({ progress: s.progress, weight: s.weight }))),
-    currentStageName: (pickCurrentStage(tree) || {}).name || null,
+    currentStageId: currentStage ? currentStage.id : null,
+    currentStageName: currentStage ? currentStage.name : null,
+    currentStageGateStatus: currentStage ? currentStage.gate_status : null,
+    currentStageProgress: currentStage ? currentStage.progress : null,
     isOverdue: isOverdue(project),
     stages: tree.map((stage) => ({
       id: stage.id,
@@ -228,15 +319,6 @@ async function getProjectForMember(userId, projectId) {
       })),
     })),
   }
-}
-
-/**
- * 锁定原因（C-2.13：如「水电阶段未结清」）。
- * 取该阶段前一个阶段的名称 —— 锁定的直接原因总是「上一阶段没结清」。
- */
-function lockedReasonFor(stages, stage) {
-  const previous = stages.filter((s) => s.seq < stage.seq).sort((a, b) => b.seq - a.seq)[0]
-  return previous ? `${previous.name}未结清` : '上一阶段未结清'
 }
 
 // ─────────────────────────────────────────────────────────────

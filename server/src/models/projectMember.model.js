@@ -258,6 +258,32 @@ async function findPendingInvitations(userId, { tenantId } = {}) {
   )
 }
 
+/**
+ * 批量取多个项目的业主与工长（C 端首页卡片）。
+ *
+ * 首页要展示「业主：张先生 | 工长：李师傅」，但不要把整份成员列表带上 ——
+ * 手机号、邀请状态等都不该出现在项目列表的响应里。这里只取展示所需的
+ * nickname / phone，由服务层决定展示名（昵称为空时才回落到脱敏手机号）。
+ *
+ * 必须批量查询：首页一屏可能有 10 个项目，逐个项目查成员是典型的 N+1。
+ */
+async function listKeyMembersOfProjects(projectIds) {
+  if (projectIds.length === 0) return []
+
+  const placeholders = projectIds.map(() => '?').join(', ')
+  return db.query(
+    `SELECT pm.project_id, pm.role, pm.is_primary,
+            u.nickname, u.phone
+       FROM project_member pm
+       JOIN user u ON u.id = pm.user_id
+      WHERE pm.project_id IN (${placeholders})
+        AND pm.role IN ('owner', 'foreman')
+        AND pm.status = 'active' AND pm.deleted_at IS NULL
+      ORDER BY pm.project_id, FIELD(pm.role, 'foreman', 'owner'), pm.is_primary DESC, pm.id ASC`,
+    projectIds
+  )
+}
+
 module.exports = {
   ACTIVE,
   findActiveRole,
@@ -271,6 +297,7 @@ module.exports = {
   findPrimaryForeman,
   setPrimary,
   listByProject,
+  listKeyMembersOfProjects,
   findPendingById,
   findPendingInvitations,
 }

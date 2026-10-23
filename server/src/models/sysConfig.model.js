@@ -41,10 +41,13 @@ async function findGlobal(tenantId, key) {
  * 写入或更新一条全局配置。
  *
  * ── 为什么用 ON DUPLICATE KEY UPDATE 而不是「先查再决定插还是改」 ──
- * 唯一索引是 `(config_key, scope, project_id_key)`，而 `project_id_key`
- * 是生成列（`IFNULL(project_id, 0)`）—— 它存在的理由正是 MySQL 的唯一索引
- * 不约束 NULL（CLAUDE.md 第 2 条）。交给数据库做「存在就改、不存在就插」，
- * 既用上了这个索引，也不会有两个管理员同时保存时的竞态。
+ * 唯一索引是 `(tenant_key, config_key, scope, project_id_key)`，其中
+ * `tenant_key` 与 `project_id_key` 都是生成列（`IFNULL(..., 0)`）——
+ * 它们存在的理由正是 MySQL 的唯一索引不约束 NULL（CLAUDE.md 第 2 条）。
+ * 交给数据库做「存在就改、不存在就插」，既用上了这个索引，
+ * 也不会有两个管理员同时保存时的竞态。
+ *
+ * `tenantId = null` 写入的是**平台基础配置**，迁移 022 起 tenant_id 允许 NULL。
  */
 async function upsertGlobal({ tenantId, key, value, description, updatedBy }, tx = db) {
   await tx.query(
@@ -59,4 +62,23 @@ async function upsertGlobal({ tenantId, key, value, description, updatedBy }, tx
   )
 }
 
-module.exports = { listGlobal, findGlobal, upsertGlobal }
+/**
+ * 软删除某租户的覆盖值，使配置重新继承平台基础版本。
+ *
+ * 只允许删 `scope='global' AND project_id IS NULL` 的行：项目级覆盖属于
+ * 另一个模块，这个入口不能顺手把它们清掉。
+ *
+ * 记录 `updated_by` 便于回答「是谁把租户覆盖恢复成平台默认的」。
+ */
+async function softDeleteGlobalOverride({ tenantId, key, updatedBy }, tx = db) {
+  const result = await tx.query(
+    `UPDATE sys_config
+        SET deleted_at = NOW(), updated_by = ?
+      WHERE tenant_id = ? AND config_key = ? AND scope = 'global'
+        AND project_id IS NULL AND deleted_at IS NULL`,
+    [updatedBy ?? null, tenantId, key]
+  )
+  return result.affectedRows > 0
+}
+
+module.exports = { listGlobal, findGlobal, upsertGlobal, softDeleteGlobalOverride }

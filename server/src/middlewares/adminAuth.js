@@ -57,6 +57,8 @@ async function requireAdmin(req, res, next) {
     // 账号本身正常，但所属租户被停用或已到期时，后台一律拒绝。
     // 顺序刻意放在密码校验与账号状态之后：先确认「你是这个账号」，
     // 再告诉他「你们公司停用了」，避免用响应差异探测租户状态。
+    let tenantName = null
+    let tenantCode = null
     if (admin.tenant_id != null) {
       const tenant = await tenantModel.findById(admin.tenant_id)
       if (!tenant) throw AppError.forbidden('租户不存在或已退租')
@@ -64,6 +66,8 @@ async function requireAdmin(req, res, next) {
       if (tenant.expires_at && datetime.parse(tenant.expires_at).valueOf() < Date.now()) {
         throw AppError.forbidden('租户服务已到期，请联系服务商续费')
       }
+      tenantName = tenant.name
+      tenantCode = tenant.code
     }
 
     const alive = await sessions.touch(admin.id, payload.iat)
@@ -88,6 +92,13 @@ async function requireAdmin(req, res, next) {
       grantedTenantId: null,
       platformGrantId: null,
       tokenIssuedAt: payload.iat,
+      // 登录方式只用于「是否允许创建新的微信绑定」，不参与授权。
+      // 旧 token 没有 amr 时按密码登录处理。
+      authMethod: payload.amr === 'wechat' ? 'wechat' : 'password',
+      // 已加载的租户展示信息，供 profile 与小程序管理端使用。
+      // 平台账号（tenant_id null）保持 null；平台持授权进入时这是目标租户。
+      tenantName,
+      tenantCode,
       // 审计用。放在这里而不是让每个 service 再接收一个 context 参数：
       // operation_log 要记 IP 与 requestId（AC-AD09），而 service 层拿到的
       // 就是 req.auth —— 参数从 3 个变成 4 个会牵动所有控制器，

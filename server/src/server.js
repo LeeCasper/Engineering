@@ -59,6 +59,7 @@ async function bootstrap() {
   // 否则集成测试跑几分钟就可能被定时器插入的提醒打乱断言
   require('./jobs/staleReportReminder').start()
   require('./jobs/acceptanceTimeout').start()
+  require('./jobs/reportMediaCleanup').start()
 
   const server = app.listen(config.server.port, () => {
     logger.info('服务已启动', {

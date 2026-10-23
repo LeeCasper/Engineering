@@ -3,12 +3,15 @@ export default {
   onLaunch() {
     // 登录页是入口；不在这里做静默跳转 ——
     // 用户可能是第一次打开，也可能是被邀请后回来确认。
-    // 由登录页统一决定去邀请列表、角色选择还是项目列表。
+    // 由登录页根据 /projects 的结果决定去邀请列表还是项目列表。
+    // 角色由管理员邀请时固定，不在登录主路径上；登录后直接按项目成员关系进入。
   },
 }
 </script>
 
 <style lang="scss">
+@import './styles/admin.scss';
+
 page {
   min-height: 100%;
   background: $color-canvas;

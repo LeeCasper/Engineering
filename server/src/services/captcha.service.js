@@ -33,9 +33,11 @@ function key(id) {
  *
  * 开发环境下额外返回答案明文（见下方 debugAnswer），生产环境绝不会带上。
  *
- * @returns {Promise<{captchaId: string, svg: string, debugAnswer?: string}>}
+ * @param {object} [options]
+ * @param {'svg'|'png'} [options.format='svg'] 小程序不支持稳定的 SVG 渲染，需要 PNG
+ * @returns {Promise<{captchaId: string, svg?: string, pngDataUrl?: string, debugAnswer?: string}>}
  */
-async function generate() {
+async function generate({ format = 'svg' } = {}) {
   const captcha = svgCaptcha.create({
     size: 4,
     noise: 3,
@@ -52,14 +54,27 @@ async function generate() {
   const answer = captcha.text.toLowerCase()
   await cache.set(key(captchaId), answer, TTL_SECONDS)
 
-  const result = { captchaId, svg: captcha.data }
-
   // 开发环境回显答案，否则用 curl 手工调登录接口时永远拿不到正确的验证码。
   // 只认 config.isDev（即 NODE_ENV=development）—— 测试环境不需要它（测试直接读缓存），
   // 生产环境即便误配也拿不到。启动时会打一条醒目告警（见 server.js）。
-  if (config.isDev) result.debugAnswer = answer
+  const debugAnswer = config.isDev ? answer : undefined
 
-  return result
+  if (format === 'png') {
+    // sharp 是重依赖，只有小程序登录页取 PNG 时才加载，避免拖慢服务启动
+    const sharp = require('sharp')
+    const png = await sharp(Buffer.from(captcha.data)).png().toBuffer()
+    return {
+      captchaId,
+      pngDataUrl: `data:image/png;base64,${png.toString('base64')}`,
+      ...(debugAnswer ? { debugAnswer } : {}),
+    }
+  }
+
+  return {
+    captchaId,
+    svg: captcha.data,
+    ...(debugAnswer ? { debugAnswer } : {}),
+  }
 }
 
 /**

@@ -32,6 +32,7 @@ const sessions = require('./session.service')
 const adminUserModel = require('../models/adminUser.model')
 const tenantModel = require('../models/tenant.model')
 const loginLogModel = require('../models/adminLoginLog.model')
+const adminWechatBindingModel = require('../models/adminWechatBinding.model')
 
 /** AC-AD03 的阈值。写死为常量而非配置项：这是安全策略，不该由后台随手改 */
 const MAX_FAILED_ATTEMPTS = 5
@@ -214,6 +215,19 @@ async function login({ username, password: plainPassword, captchaId, captchaAnsw
   await adminUserModel.resetLoginFailure(admin.id)
   await loginLogModel.record({ adminUserId: admin.id, tenantId: admin.tenant_id, username, ip, result: 'success' })
 
+  return startAdminSession(admin, 'password')
+}
+
+/**
+ * 签发管理员 token 并建立会话。
+ *
+ * 密码登录与微信免密登录共用这一段 —— token 载荷、会话键、首登改密标记
+ * 任何一处抄错都会造成「某一种登录方式绕过安全限制」。
+ *
+ * @param {object} admin admin_user 行
+ * @param {'password'|'wechat'} authMethod
+ */
+async function startAdminSession(admin, authMethod = 'password') {
   const mustChangePassword = admin.must_change_password === 1
   const { token, issuedAt, expiresIn } = jwt.signAdmin({
     sub: admin.id,
@@ -226,6 +240,8 @@ async function login({ username, password: plainPassword, captchaId, captchaAnsw
     tv: admin.token_version,
     // 首登强制改密标记，由 adminAuth 中间件限制可访问的接口（AC-AD06）
     mcp: mustChangePassword ? 1 : 0,
+    // 登录方式只用于「是否允许绑定新的微信」，不参与授权
+    amr: authMethod,
   })
 
   // 建立会话，支撑 B-1.7 的空闲超时
@@ -235,6 +251,7 @@ async function login({ username, password: plainPassword, captchaId, captchaAnsw
     token,
     issuedAt,
     expiresIn,
+    authMethod,
     mustChangePassword,
     admin: {
       id: admin.id,
@@ -285,6 +302,10 @@ async function changePassword(adminId, { oldPassword, newPassword, requireOldPas
   const passwordHash = await password.hash(newPassword)
   await adminUserModel.updatePassword(adminId, passwordHash)
 
+  // 改密后所有微信免密绑定立即失效。token_version 失配是兜底，
+  // 这里主动撤销是为了让「小程序管理入口」立刻消失，而不是等用户点进去才发现失败。
+  await adminWechatBindingModel.revokeAllForAdmin(adminId, 'password_changed')
+
   return { id: adminId }
 }
 
@@ -311,6 +332,7 @@ module.exports = {
   LOCK_MINUTES,
   INVALID_CREDENTIALS,
   login,
+  startAdminSession,
   logout,
   changePassword,
   isLocked,

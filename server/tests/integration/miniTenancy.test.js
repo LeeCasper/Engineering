@@ -48,13 +48,22 @@ function nextSeq() {
   return seq
 }
 
-/** 直接写一条租户配置并清掉进程内缓存（CLAUDE.md 第 17 条） */
+/**
+ * 直接写一条配置并清掉进程内缓存（CLAUDE.md 第 17 条）。
+ *
+ * 订阅消息模板 ID 自 v2.6 起是**平台专属配置**：模板来自小程序主体，
+ * 各租户共用同一个 ID。这里仍保留 tenantId 参数，是为了让调用点表达
+ * 「这个租户要用模板」，但实际写入平台基础行。
+ */
 async function setConfig(tenantId, key, value) {
+  const targetTenant = key.startsWith('subscribe_template_') ? null : tenantId
   await db.query(
-    "INSERT INTO sys_config (tenant_id, config_key, config_value, scope) VALUES (?, ?, ?, 'global')",
-    [tenantId, key, value]
+    `INSERT INTO sys_config (tenant_id, config_key, config_value, scope)
+     VALUES (?, ?, ?, 'global')
+     ON DUPLICATE KEY UPDATE config_value = VALUES(config_value), deleted_at = NULL`,
+    [targetTenant, key, value]
   )
-  sysConfigService.invalidate(tenantId)
+  sysConfigService.invalidate(targetTenant ?? undefined)
 }
 
 async function setupTwoTenantsWithProjects() {
@@ -80,7 +89,7 @@ describe('P5 · 订阅授权按租户隔离', () => {
 
     const user = await mini.login(`p5-sub-${n}`)
     await mini.addMember({ projectId: projA, userId: user.userId, role: 'foreman' })
-    await mini.addMember({ projectId: projB, userId: user.userId, role: 'owner' })
+    await mini.addMember({ projectId: projB, userId: user.userId, role: 'foreman' })
 
     // 不指定租户 → 400（绝不猜）
     const ambiguous = await mini
@@ -132,7 +141,7 @@ describe('P5 · 订阅授权按租户隔离', () => {
 
     const user = await mini.login(`p5-push-${n}`)
     await mini.addMember({ projectId: projA, userId: user.userId, role: 'foreman' })
-    await mini.addMember({ projectId: projB, userId: user.userId, role: 'owner' })
+    await mini.addMember({ projectId: projB, userId: user.userId, role: 'foreman' })
     await mini
       .authed('post', '/notifications/subscriptions', user.token)
       .send({ type: 'progress', tenantId: 1, status: 'accepted' })

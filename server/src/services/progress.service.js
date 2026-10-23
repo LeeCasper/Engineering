@@ -22,6 +22,7 @@
 
 const AppError = require('../utils/AppError')
 const progressUtil = require('../utils/progress')
+const { lockedReasonFor } = require('../utils/stage')
 const db = require('../db/pool')
 const projectModel = require('../models/project.model')
 const projectStageModel = require('../models/projectStage.model')
@@ -79,7 +80,15 @@ async function getProjectStages(userId, projectId) {
   const project = await projectModel.findByIdUnscoped(projectId)
   if (!project) throw AppError.notFound('项目不存在')
 
-  const tree = await projectStageModel.findTreeByProject(projectId)
+  const [tree, gateStrength] = await Promise.all([
+    projectStageModel.findTreeByProject(projectId),
+    sysConfigService.getGateStrength(project.tenant_id),
+  ])
+
+  // 能否汇报由「角色 + 项目状态 + 门禁状态 + 门禁强度」共同决定。
+  // 把这段判断放在服务端，是为了避免前端各页面各写一遍：
+  // 严格档下锁定阶段不可汇报，标准/宽松档下可汇报但必须给出提示（AC-S09）。
+  const canReportBase = role.role === 'foreman' && project.status !== 'archived' && project.status !== 'finished'
 
   return {
     projectId,
@@ -87,12 +96,19 @@ async function getProjectStages(userId, projectId) {
     progress: progressUtil.projectProgress(tree.map((s) => ({ progress: s.progress, weight: s.weight }))),
     myRole: role.role,
     // Q11：仅主工长能发起验收，前端据此决定验收按钮是否可用
-    isPrimaryForeman: role.is_primary === 1,
-    stages: tree.map(toStageView),
+    isPrimaryForeman: Number(role.is_primary) === 1,
+    gateStrength,
+    stages: tree.map((stage) => toStageView(stage, { tree, gateStrength, canReportBase })),
   }
 }
 
-function toStageView(stage) {
+function toStageView(stage, { tree, gateStrength, canReportBase }) {
+  const locked = stage.gate_status === 'locked'
+  // settled 是终态，不允许再汇报；locked 在严格档下也不允许。
+  // 其余状态（含 accepted / disputed）允许「补充说明」，与 §4.7.1 的表一致
+  const canReport =
+    canReportBase && stage.gate_status !== 'settled' && !(locked && gateStrength === 'strict')
+
   return {
     id: stage.id,
     name: stage.name,
@@ -107,6 +123,10 @@ function toStageView(stage) {
     planEnd: stage.plan_end,
     actualStart: stage.actual_start,
     actualEnd: stage.actual_end,
+    // C-2.13 / C-7.2：锁定阶段必须能说明原因，前端直接展示这句话
+    lockedReason: locked ? lockedReasonFor(tree, stage) : null,
+    // 前端据此决定是否显示「汇报」入口；具体提交时后端仍会再校验一次
+    canReport,
     items: stage.items.map((item) => ({
       id: item.id,
       name: item.name,

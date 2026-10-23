@@ -24,5 +24,7 @@ router.use(requireAdmin, requireTenant)
 router.get('/', asyncHandler(controller.list))
 // AC-AD67：项目管理员修改系统配置返回 403
 router.put('/:key', requireTenantOwner, asyncHandler(controller.update))
+// 删除本租户覆盖值，重新继承平台基础配置
+router.delete('/:key', requireTenantOwner, asyncHandler(controller.reset))
 
 module.exports = router

@@ -32,7 +32,9 @@ const MAX_BATCH_SIZE = 100
  * 逐条处理并逐条报告结果。工长的邀请走 `projectMemberModel.invite`，
  * 但**不在这里做「首个工长自动成为主工长」**的判断 —— 那段逻辑在
  * projectMember.service 里，这里若复制一份，两处迟早分叉。
- * 因此批量分配只处理「替换已有的工长」这一种情况，其余交给常态化接口。
+ * 批量分配只按「工长」身份发起邀请。角色是账号级固定的：若该手机号
+ * 已被固定为业主 / 监理，或在本项目已是其他角色，这个项目会失败并在结果里
+ * 单独返回原因，不影响其他项目。
  */
 async function batchAssignForeman(operator, { projectIds, phone }) {
   validateBatchInput(projectIds)
@@ -50,9 +52,6 @@ async function batchAssignForeman(operator, { projectIds, phone }) {
       const result = await memberService.invite(operator, projectId, {
         phone: normalized,
         role: 'foreman',
-        // 批量分配是「明确要换人」的动作，因此直接确认替换；
-        // 若某项目已有工长，替换会发生在这一次调用里，并在结果里体现
-        confirmReplace: true,
       })
 
       results.push({ projectId, ok: true, memberId: result.memberId, status: result.status })

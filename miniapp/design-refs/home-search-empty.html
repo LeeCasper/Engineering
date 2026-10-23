@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>工程宝 - 项目管理</title>
+<!-- Tailwind CSS v3 with plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#165DFF',
+            'primary-light': '#E8F3FF',
+            'status-blue': '#165DFF',
+            'status-orange': '#FF7D00',
+            'status-green': '#00B42A',
+            'bg-gray': '#F4F7FC',
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- BEGIN: Custom Styles -->
+<style data-purpose="base-styling">
+    body {
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, sans-serif;
+    }
+    /* Hide scrollbars for slick mobile view */
+    ::-webkit-scrollbar {
+      display: none;
+    }
+  </style>
+<style data-purpose="illustration-background">
+    /* Subtle city and crane silhouette decoration in header */
+    .header-bg-art {
+      background: linear-gradient(180deg, #1875FF 0%, #3B8FFF 45%, #76AFFF 75%, #F4F7FC 100%);
+      position: relative;
+    }
+    .city-silhouette {
+      position: absolute;
+      right: 0;
+      bottom: 24px;
+      width: 100%;
+      height: 110px;
+      opacity: 0.16;
+      pointer-events: none;
+      background-repeat: no-repeat;
+      background-position: right bottom;
+      background-size: cover;
+    }
+  </style>
+<!-- END: Custom Styles -->
+</head>
+<body class="bg-[#F4F7FC] text-[#1D2129] antialiased flex justify-center min-h-screen">
+<!-- Mobile Screen Container (iPhone Frame Profile) -->
+<div class="w-full max-w-[430px] min-h-screen bg-[#F4F7FC] relative pb-28 flex flex-col shadow-2xl">
+<!-- BEGIN: HeaderSection -->
+<header class="header-bg-art pt-3 px-4 pb-6 text-white relative select-none" data-purpose="top-header">
+<!-- iOS Status Bar -->
+<div class="flex justify-between items-center text-[14px] font-semibold tracking-tight px-1 mb-3 text-white" data-purpose="ios-status-bar">
+<span>9:41</span>
+<div class="flex items-center space-x-1.5">
+<!-- Signal Icon -->
+<svg class="w-4 h-3.5 fill-current" viewbox="0 0 17 12">
+<path d="M1 9.5h2v2.5H1v-2.5zm4-3h2v5.5H5v-5.5zm4-3h2v8.5H9v-8.5zm4-3h2v11.5h-2V.5z"></path>
+</svg>
+<!-- Wifi Icon -->
+<svg class="w-4 h-3.5 fill-current" viewbox="0 0 16 12">
+<path d="M8 2.5a11.96 11.96 0 017.3 2.5.75.75 0 01-.1 1.15l-1.3 1.05a.75.75 0 01-.98-.06A9.45 9.45 0 008 5.5c-1.9 0-3.66.57-5 1.54a.75.75 0 01-.98.06L.72 6.05a.75.75 0 01-.1-1.15A11.96 11.96 0 018 2.5zm0 4.5a7.46 7.46 0 014.5 1.53.75.75 0 01-.06 1.18l-1.3 1.05a.75.75 0 01-.98-.06 4.96 4.96 0 00-4.32 0 .75.75 0 01-.98.06L3.56 9.7a.75.75 0 01-.06-1.18A7.46 7.46 0 018 7zm0 4.5a2 2 0 110-4 2 2 0 010 4z"></path>
+</svg>
+<!-- Battery Icon -->
+<div class="w-6 h-3 border border-white rounded-[4px] p-0.5 flex items-center relative">
+<div class="h-full bg-white w-full rounded-[1px]"></div>
+<div class="w-0.5 h-1.5 bg-white absolute -right-1 rounded-r-sm top-[2.5px]"></div>
+</div>
+</div>
+</div>
+<!-- Background Construction Skyline Art -->
+<svg class="city-silhouette" fill="white" preserveaspectratio="none" viewbox="0 0 400 120">
+<path d="M260,20 L310,20 L310,5 L314,5 L314,20 L380,20 L380,23 L314,23 L314,80 L310,80 L310,23 L260,23 Z M310,23 L285,45 L290,45 L310,27 Z M314,27 L335,45 L340,45 L314,23 Z"></path>
+<rect height="55" width="22" x="230" y="65"></rect>
+<rect height="75" width="28" x="255" y="45"></rect>
+<rect height="50" width="30" x="288" y="70"></rect>
+<rect height="65" width="35" x="322" y="55"></rect>
+<rect height="80" width="40" x="360" y="40"></rect>
+</svg>
+<!-- App Brand & Mini-program Capsule -->
+<div class="flex items-center justify-between mt-2 pr-1 relative z-10" data-purpose="app-branding">
+<div class="flex items-center space-x-3">
+<!-- Logo Tile -->
+<div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-md">
+<svg class="w-8 h-8 text-[#165DFF]" fill="currentColor" viewbox="0 0 24 24">
+<path d="M12 3L2 12h3v8h6v-5h2v5h6v-8h3L12 3zm0 2.85l6 5.4V18h-2v-5H8v5H6v-6.75l6-5.4z"></path>
+</svg>
+</div>
+<!-- Title & Subtitle -->
+<div>
+<h1 class="text-2xl font-bold tracking-wide">工程宝</h1>
+<p class="text-[12px] text-white/80 font-normal">让装修工程更透明、更可控</p>
+</div>
+</div>
+<!-- WeChat Mini Program Header Capsule Controls -->
+<div class="flex items-center bg-black/25 backdrop-blur-md rounded-full px-3 py-1.5 space-x-3.5 border border-white/20">
+<button aria-label="小程序操作" class="flex items-center space-x-1 focus:outline-none">
+<span class="w-1 h-1 bg-white rounded-full"></span>
+<span class="w-1.5 h-1.5 bg-white rounded-full"></span>
+<span class="w-1 h-1 bg-white rounded-full"></span>
+</button>
+<div class="w-[1px] h-3.5 bg-white/30"></div>
+<button aria-label="关闭小程序" class="focus:outline-none">
+<div class="w-4 h-4 rounded-full border-[1.8px] border-white flex items-center justify-center">
+<div class="w-1.5 h-1.5 bg-white rounded-full"></div>
+</div>
+</button>
+</div>
+</div>
+</header>
+<!-- END: HeaderSection -->
+<!-- BEGIN: SearchAndFilters -->
+<section class="px-4 -mt-3 relative z-20 space-y-3" data-purpose="search-and-filters">
+<!-- Search Bar -->
+<div class="bg-white rounded-full h-11 px-4 flex items-center shadow-sm border border-gray-100"><svg class="w-5 h-5 text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" x2="21" y1="16.5" y2="21"></line></svg><input class="w-full text-sm bg-transparent border-none p-0 focus:ring-0 text-gray-800 font-medium" type="text" value="天通苑"/><button aria-label="清除搜索" class="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 flex-shrink-0 ml-1"><svg class="w-3 h-3 stroke-current" fill="none" stroke-width="2.5" viewbox="0 0 24 24"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg></button></div>
+<!-- Filter Tabs Bar -->
+<div class="flex items-center justify-between text-xs font-medium pt-1">
+<div class="flex items-center space-x-2">
+<!-- Tab Active -->
+<button class="bg-[#165DFF] text-white px-3.5 py-1.5 rounded-full flex items-center space-x-1 shadow-sm">
+<span>全部项目</span>
+<svg class="w-3 h-3 ml-0.5 fill-current" viewbox="0 0 20 20">
+<path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"></path>
+</svg>
+</button>
+<!-- Normal Tabs -->
+<button class="bg-[#EBF0FA] text-[#4E5969] px-3.5 py-1.5 rounded-full">进行中</button>
+<button class="bg-[#EBF0FA] text-[#4E5969] px-3.5 py-1.5 rounded-full">已完工</button>
+<button class="bg-[#EBF0FA] text-[#4E5969] px-3.5 py-1.5 rounded-full">已暂停</button>
+</div>
+<!-- Filter Icon Button -->
+<button class="flex items-center text-[#4E5969] space-x-1 text-xs px-1">
+<svg class="w-3.5 h-3.5 stroke-current" fill="none" stroke-width="2" viewbox="0 0 24 24">
+<path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span>筛选</span>
+</button>
+</div>
+</section>
+<!-- END: SearchAndFilters -->
+<!-- BEGIN: ProjectCardsList -->
+<main class="px-4 mt-3.5 space-y-3.5" data-purpose="project-list"><div class="flex flex-col items-center justify-center pt-16 pb-12 px-6 text-center select-none"><div class="w-20 h-20 rounded-full bg-[#E8F3FF] flex items-center justify-center mb-4 text-[#165DFF]"><svg class="w-10 h-10" fill="none" stroke="currentColor" stroke-width="1.8" viewbox="0 0 48 48"><circle cx="22" cy="22" r="13"></circle><line stroke-linecap="round" stroke-width="2.5" x1="31.5" x2="41" y1="31.5" y2="41"></line><path d="M16 23v-5l6-4.5 6 4.5v5" stroke-linecap="round" stroke-linejoin="round"></path><rect height="6" rx="0.5" width="6" x="19" y="20"></rect></svg></div><h3 class="text-[17px] font-semibold text-[#1D2129] tracking-tight mb-2">未找到相关项目</h3><p class="text-[13px] text-[#4E5969] leading-relaxed max-w-[280px] mb-6 font-normal">没有找到与“天通苑”匹配的项目，请检查关键词或清除筛选条件</p><button class="inline-flex items-center justify-center px-6 py-2 h-10 bg-white border border-[#165DFF] text-[#165DFF] text-sm font-semibold rounded-lg shadow-sm active:scale-95 transition-transform">清空搜索条件</button></div></main>
+<!-- END: ProjectCardsList -->
+<!-- BEGIN: FloatingActionButton -->
+<!-- Floating '新建项目' FAB -->
+<aside class="fixed bottom-24 right-5 flex flex-col items-center z-30 pointer-events-auto" data-purpose="floating-action-button">
+<button aria-label="新建项目" class="w-12 h-12 bg-[#165DFF] rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform">
+<svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24">
+<line x1="12" x2="12" y1="5" y2="19"></line>
+<line x1="5" x2="19" y1="12" y2="12"></line>
+</svg>
+</button>
+<span class="text-[11px] font-medium text-gray-700 mt-1">新建项目</span>
+</aside>
+<!-- END: FloatingActionButton -->
+<!-- BEGIN: BottomTabBar -->
+<!-- TabBar & iOS Home Bar Navigation -->
+<nav class="fixed bottom-0 left-0 right-0 max-w-[430px] mx-auto bg-white/95 backdrop-blur-md border-t border-gray-100 z-40" data-purpose="bottom-tab-bar">
+<div class="grid grid-cols-4 pt-2 pb-1 text-center">
+<!-- Tab: 项目 (Active) -->
+<a class="flex flex-col items-center text-[#165DFF] space-y-1" href="javascript:void(0)">
+<svg class="w-6 h-6 fill-current" viewbox="0 0 24 24">
+<path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"></path>
+</svg>
+<span class="text-[11px] font-semibold">项目</span>
+</a>
+<!-- Tab: 验收 -->
+<a class="flex flex-col items-center text-[#86909C] space-y-1" href="javascript:void(0)">
+<svg class="w-6 h-6 fill-current" viewbox="0 0 24 24">
+<path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"></path>
+</svg>
+<span class="text-[11px] font-medium">验收</span>
+</a>
+<!-- Tab: 记账 -->
+<a class="flex flex-col items-center text-[#86909C] space-y-1" href="javascript:void(0)">
+<div class="w-6 h-6 rounded-full border-[1.8px] border-[#86909C] flex items-center justify-center font-bold text-xs leading-none">
+            ¥
+          </div>
+<span class="text-[11px] font-medium">记账</span>
+</a>
+<!-- Tab: 我的 -->
+<a class="flex flex-col items-center text-[#86909C] space-y-1" href="javascript:void(0)">
+<svg class="w-6 h-6 fill-current" viewbox="0 0 24 24">
+<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
+</svg>
+<span class="text-[11px] font-medium">我的</span>
+</a>
+</div>
+<!-- iOS Home Indicator -->
+<div class="w-full flex justify-center pb-2 pt-1.5" data-purpose="ios-home-indicator">
+<div class="w-36 h-1 bg-black rounded-full"></div>
+</div>
+</nav>
+<!-- END: BottomTabBar -->
+</div>
+</body></html>

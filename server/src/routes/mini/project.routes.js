@@ -24,7 +24,10 @@ router.use(requireMini)
 router.use('/:id', tenantWriteGuard({ resource: 'project' }))
 
 router.get('/', asyncHandler(controller.myProjects))
+// 跨项目汇总必须放在 /:id 之前，否则会被当成项目 id
+router.get('/my-stats', asyncHandler(profile.myStatsAll))
 router.get('/:id', asyncHandler(controller.detail))
+router.get('/:id/location', asyncHandler(controller.location))
 
 // 阶段工序树单列一个接口（§7.3）。它与项目详情的 stages 字段内容一致，
 // 但进度页需要单独刷新（提交汇报后只刷时间轴，不重拉整个项目详情）
@@ -32,8 +35,7 @@ router.get('/:id/stages', asyncHandler(progress.stages))
 router.get('/:id/items/:itemId/history', asyncHandler(progress.itemHistory))
 
 // 个人中心里与项目相关的两块（C-5.5 工长统计 / C-5.6 业主联系入口）。
-// 挂在项目下而不是顶层 `/my-stats`：两者都要 projectId 才能算，
-// 放进路径比放进 query 更能说明「这是某个项目的视图」
+// 单项目统计挂在项目下；未选项目时的跨项目汇总走上面的 `/my-stats`。
 router.get('/:id/my-stats', asyncHandler(profile.myStats))
 router.get('/:id/contacts', asyncHandler(profile.contacts))
 

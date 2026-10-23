@@ -15,6 +15,7 @@
 const AppError = require('../utils/AppError')
 const password = require('../utils/password')
 const adminUserModel = require('../models/adminUser.model')
+const adminWechatBindingModel = require('../models/adminWechatBinding.model')
 const dataScope = require('./dataScope.service')
 const operationLog = require('./operationLog.service')
 const tenantService = require('./tenant.service')
@@ -149,6 +150,10 @@ async function updateStatus(operator, targetId, status) {
 
   await adminUserModel.updateStatus(targetId, status)
 
+  // 禁用/启用都会自增 token_version，旧微信绑定随之失效；显式撤销让
+  // 小程序的管理入口立即消失，而不是等用户点进去才发现 401。
+  await adminWechatBindingModel.revokeAllForAdmin(targetId, `admin_${status}`)
+
   await operationLog.record({
     ...operationLog.fromOperator(operator),
     action: operationLog.ACTIONS.ADMIN_USER_STATUS,
@@ -201,6 +206,8 @@ async function resetPassword(operator, targetId, newPassword) {
       tx
     )
   })
+
+  await adminWechatBindingModel.revokeAllForAdmin(targetId, 'password_reset')
 
   return { id: targetId }
 }

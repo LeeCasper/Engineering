@@ -475,6 +475,24 @@ describe('AC-S09 门禁强度对进度汇报的影响', () => {
     expect(result.warning.gateStrength).toBe('loose')
   })
 
+  it('阶段树返回门禁强度、canReport 与可读的锁定原因', async () => {
+    const { projectId, foreman } = await setupProject()
+    await db.query("UPDATE project_stage SET gate_status = 'locked' WHERE project_id = ?", [projectId])
+
+    await setGateStrength('standard')
+    let res = await mini.authed('get', `/projects/${projectId}/stages`, foreman.token)
+    expect(res.status).toBe(200)
+    expect(res.body.data.gateStrength).toBe('standard')
+    // 标准档：锁定阶段仍可汇报，但前端应展示 lockedReason 的提示
+    expect(res.body.data.stages[0].canReport).toBe(true)
+    expect(res.body.data.stages[0].lockedReason).toBe('上一阶段未结清')
+
+    await setGateStrength('strict')
+    res = await mini.authed('get', `/projects/${projectId}/stages`, foreman.token)
+    expect(res.body.data.gateStrength).toBe('strict')
+    expect(res.body.data.stages[0].canReport).toBe(false)
+  })
+
   it('未锁定阶段不产生提示', async () => {
     const { projectId, foreman, items } = await setupProject()
     const result = await setProgress(projectId, items[0].id, foreman.userId, 50)

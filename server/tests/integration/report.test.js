@@ -17,6 +17,8 @@ const cache = require('../../src/cache')
 const config = require('../../config')
 const sysConfigService = require('../../src/services/sysConfig.service')
 const staleReportReminder = require('../../src/jobs/staleReportReminder')
+const reportMediaCleanup = require('../../src/jobs/reportMediaCleanup')
+const datetime = require('../../src/utils/datetime')
 const { prepareDatabase } = require('./helpers/db')
 const request = require('./helpers/request')
 const auth = require('./helpers/auth')
@@ -95,6 +97,21 @@ function submit(projectId, token, fields = {}, files = []) {
   }
   for (const file of files) {
     req.attach('files', file.buffer, { filename: file.name || 'photo.jpg', contentType: file.mime || 'image/jpeg' })
+  }
+  return req
+}
+
+/** 单文件暂存。小程序端一次只能传一个文件，测试也按这个形态走 */
+function stage(projectId, token, fields = {}, file) {
+  const req = request.post(`/projects/${projectId}/reports/media`).set('Authorization', `Bearer ${token}`)
+  for (const [key, value] of Object.entries(fields)) {
+    req.field(key, typeof value === 'string' ? value : JSON.stringify(value))
+  }
+  if (file) {
+    req.attach('files', file.buffer, {
+      filename: file.name || 'photo.jpg',
+      contentType: file.mime || 'image/jpeg',
+    })
   }
   return req
 }
@@ -187,6 +204,20 @@ describe('AC-P05 / AC-P08 提交前置校验', () => {
     })
     expect(res.status).toBe(403)
     expect(res.body.message).toContain('归档')
+  })
+
+  it('已结清阶段不再接受新的进度汇报（§4.7.1 终态）', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    await db.query("UPDATE project_stage SET gate_status = 'settled' WHERE project_id = ?", [projectId])
+
+    const res = await submit(projectId, foreman.token, {
+      itemId: String(itemId),
+      progress: '40',
+      content: '说明',
+      clientRequestId: nextRequestId(),
+    })
+    expect(res.status).toBe(409)
+    expect(res.body.message).toContain('已结清')
   })
 
   it('非工长（业主）提交返回 403', async () => {
@@ -544,6 +575,10 @@ describe('AC-P09 / AC-P20 汇报记录流', () => {
     expect(list.body.data.list[0].id).toBe(submitted.body.data.id)
     expect(list.body.data.list[0].content).toBe('第二条')
     expect(list.body.data.list[1].content).toBe('第一条')
+    // 详情页要展示「40% → 60%」与作者角色，数据必须来自同一条汇报
+    expect(list.body.data.list[0].fromProgress).toBe('40.00')
+    expect(list.body.data.list[0].author.role).toBe('foreman')
+    expect(list.body.data.list[0].author.roleLabel).toBe('工长')
   })
 
   it('AC-P20 每页 20 条、按时间倒序、有总数', async () => {
@@ -930,5 +965,168 @@ describe('AC-P17 汇报提交与进度汇总的联动', () => {
     expect(await db.count('FROM progress_report WHERE project_id = ?', [projectId])).toBe(2)
     // 同值不变更，因此只有第一条产生留痕
     expect(await db.count('FROM progress_log WHERE project_item_id = ?', [items[0].id])).toBe(1)
+  })
+})
+
+describe('小程序逐文件上传：暂存 → 提交（迁移 017）', () => {
+  it('单文件暂存返回 mediaId，图片带服务端水印', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    const image = await makeJpeg(200, 150)
+
+    const res = await stage(projectId, foreman.token, { itemId: String(itemId) }, { buffer: image })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.mediaId).toBeGreaterThan(0)
+    expect(res.body.data.type).toBe('image')
+    expect(res.body.data.url).toContain('/uploads/reports/')
+    // 原图与水印图分开存，前端默认拿带水印的那份
+    expect(res.body.data.originalUrl).toBeTruthy()
+    expect(res.body.data.originalUrl).not.toBe(res.body.data.url)
+  })
+
+  it('暂存后提交汇报，附件进入正式报告并被标记 used', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    const staged = await stage(projectId, foreman.token, { itemId: String(itemId) }, { buffer: await makeJpeg() })
+    const mediaId = staged.body.data.mediaId
+
+    const res = await submit(projectId, foreman.token, {
+      itemId: String(itemId),
+      progress: '40',
+      content: '逐文件上传的汇报',
+      clientRequestId: nextRequestId(),
+      mediaIds: [mediaId],
+    })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.media).toHaveLength(1)
+    expect(res.body.data.media[0].url).toBe(staged.body.data.url)
+
+    const row = await db.queryOne(
+      'SELECT status, report_id FROM report_media_staging WHERE id = ?',
+      [mediaId]
+    )
+    expect(row.status).toBe('used')
+    expect(row.report_id).toBe(res.body.data.id)
+  })
+
+  it('同一份暂存附件不能被第二条汇报重复使用', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    const staged = await stage(projectId, foreman.token, { itemId: String(itemId) }, { buffer: await makeJpeg() })
+    const mediaId = staged.body.data.mediaId
+
+    await submit(projectId, foreman.token, {
+      itemId: String(itemId),
+      progress: '40',
+      content: '第一次',
+      clientRequestId: nextRequestId(),
+      mediaIds: [mediaId],
+    })
+
+    const second = await submit(projectId, foreman.token, {
+      itemId: String(itemId),
+      progress: '45',
+      content: '第二次',
+      clientRequestId: nextRequestId(),
+      mediaIds: [mediaId],
+    })
+
+    expect(second.status).toBe(400)
+    expect(second.body.message).toContain('附件')
+    expect(await db.count('FROM progress_report WHERE project_id = ?', [projectId])).toBe(1)
+  })
+
+  it('不能消费别人暂存的附件', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    const other = await mini.login('code-other-foreman')
+    await db.query(
+      `INSERT INTO project_member (project_id, user_id, role, status, is_primary, confirmed_at, joined_at)
+       VALUES (?, ?, 'foreman', 'active', 0, NOW(), NOW())`,
+      [projectId, other.userId]
+    )
+
+    const staged = await stage(projectId, foreman.token, { itemId: String(itemId) }, { buffer: await makeJpeg() })
+
+    const res = await submit(projectId, other.token, {
+      itemId: String(itemId),
+      progress: '40',
+      content: '试图使用别人的附件',
+      clientRequestId: nextRequestId(),
+      mediaIds: [staged.body.data.mediaId],
+    })
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toContain('附件')
+  })
+
+  it('一次暂存请求带多个文件时直接拒绝', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    const image = await makeJpeg()
+
+    const req = request
+      .post(`/projects/${projectId}/reports/media`)
+      .set('Authorization', `Bearer ${foreman.token}`)
+      .field('itemId', String(itemId))
+      .attach('files', image, { filename: 'a.jpg', contentType: 'image/jpeg' })
+      .attach('files', image, { filename: 'b.jpg', contentType: 'image/jpeg' })
+
+    const res = await req
+    expect(res.status).toBe(400)
+    expect(res.body.message).toContain('一个文件')
+  })
+
+  it('严格门禁下锁定阶段不允许暂存附件', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    await db.query("UPDATE project_stage SET gate_status = 'locked' WHERE project_id = ?", [projectId])
+    await db.query(
+      `INSERT INTO sys_config (tenant_id, config_key, config_value, scope, description)
+       VALUES (1, 'gate_strength', 'strict', 'global', 'test')
+       ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`
+    )
+    sysConfigService.invalidate()
+
+    const res = await stage(projectId, foreman.token, { itemId: String(itemId) }, { buffer: await makeJpeg() })
+    expect(res.status).toBe(409)
+    expect(res.body.message).toContain('未结清')
+  })
+
+  it('两种附件提交方式不能混用', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    const staged = await stage(projectId, foreman.token, { itemId: String(itemId) }, { buffer: await makeJpeg() })
+
+    const res = await submit(
+      projectId,
+      foreman.token,
+      {
+        itemId: String(itemId),
+        progress: '40',
+        content: '混用',
+        clientRequestId: nextRequestId(),
+        mediaIds: [staged.body.data.mediaId],
+      },
+      [{ buffer: await makeJpeg() }]
+    )
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toContain('不能同时')
+  })
+
+  it('超过 24 小时未提交的暂存附件会被清理（先认领再删文件）', async () => {
+    const { projectId, foreman, itemId } = await setup()
+    const staged = await stage(projectId, foreman.token, { itemId: String(itemId) }, { buffer: await makeJpeg() })
+
+    const markedKey = staged.body.data.url.split(`${config.upload.publicPath}/`)[1]
+    const originalKey = staged.body.data.originalUrl.split(`${config.upload.publicPath}/`)[1]
+    const markedPath = path.join(config.upload.dir, markedKey)
+    const originalPath = path.join(config.upload.dir, originalKey)
+    expect(fs.existsSync(markedPath)).toBe(true)
+    expect(fs.existsSync(originalPath)).toBe(true)
+
+    const result = await reportMediaCleanup.runOnce({ now: datetime.now().add(25, 'hour') })
+
+    expect(result.claimed).toBe(1)
+    expect(result.removed).toBe(1)
+    expect(fs.existsSync(markedPath)).toBe(false)
+    expect(fs.existsSync(originalPath)).toBe(false)
+    expect(await db.count('FROM report_media_staging')).toBe(0)
   })
 })

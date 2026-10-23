@@ -49,12 +49,17 @@ const ACTIONS = {
   ADMIN_USER_STATUS: 'admin_user.status',
   ADMIN_USER_PASSWORD: 'admin_user.reset_password',
   ADMIN_USER_GRANT: 'admin_user.grant_projects',
+  // 小程序管理端：微信免密绑定是持久凭据，绑定/解绑/免密登录都要留痕
+  ADMIN_WECHAT_BIND: 'admin_user.wechat_bind',
+  ADMIN_WECHAT_UNBIND: 'admin_user.wechat_unbind',
+  ADMIN_WECHAT_LOGIN: 'admin_user.wechat_login',
   TEMPLATE_CREATE: 'stage_template.create',
   TEMPLATE_UPDATE: 'stage_template.update',
   TEMPLATE_DELETE: 'stage_template.delete',
   TEMPLATE_DUPLICATE: 'stage_template.duplicate',
   TEMPLATE_SET_DEFAULT: 'stage_template.set_default',
   SYS_CONFIG_UPDATE: 'sys_config.update',
+  SYS_CONFIG_RESET: 'sys_config.reset',
   // M11（个人中心 / C-5.x）：账号注销是**不可逆**的动作，必须留痕；
   // 内容页与反馈处理是后台日常动作，同样要能回答「谁改的 / 谁处理的」
   ACCOUNT_DEACTIVATE: 'account.deactivate',
@@ -295,6 +300,26 @@ async function list(auth, filters = {}, paging) {
   return { list: rows.map(shapeLog), total }
 }
 
+/**
+ * 平台日志中心：只看**平台级事件**（`tenant_id IS NULL`）。
+ *
+ * 这些事件包括租户开通/停用、平台基础配置与基础内容页的修改、
+ * 平台账号的跨租户操作等。它们不属于任何单个租户的审计流，
+ * 租户后台看不到，只有平台能查。
+ *
+ * 刻意不查租户业务日志：平台默认不能横向浏览各租户的合同、门锁等操作。
+ * 需要看某租户的具体日志时，走租户授予的临时只读窗口，并且每次访问留痕。
+ */
+async function listPlatform(filters = {}, paging) {
+  const { total, rows } = await operationLogModel.list({
+    scope: { clause: 'ol.tenant_id IS NULL', params: [] },
+    filters,
+    paging,
+  })
+
+  return { list: rows.map(shapeLog), total }
+}
+
 module.exports = {
   ACTIONS,
   MODULE_LABELS,
@@ -302,6 +327,7 @@ module.exports = {
   contextFrom,
   fromOperator,
   list,
+  listPlatform,
   listModules,
   isKnownModule,
   moduleOf,

@@ -20,15 +20,16 @@ const logger = require('../utils/logger')
  * @param {string} entry.ip
  * @param {'success'|'failed'} entry.result
  * @param {string} [entry.failReason]
+ * @param {'password'|'wechat'} [entry.authMethod='password']
  */
-async function record({ adminUserId, tenantId, username, ip, result, failReason }) {
+async function record({ adminUserId, tenantId, username, ip, result, failReason, authMethod = 'password' }) {
   try {
     await db.query(
-      `INSERT INTO admin_login_log (admin_user_id, tenant_id, username, ip, result, fail_reason)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO admin_login_log (admin_user_id, tenant_id, username, ip, result, fail_reason, auth_method)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       // tenantId 可为 null：用户名猜错时根本不知道是哪个租户，
       // 而这种「不属于任何租户」的失败恰恰是爆破的典型特征，不能丢
-      [adminUserId ?? null, tenantId ?? null, username || '', ip || '', result, failReason || null]
+      [adminUserId ?? null, tenantId ?? null, username || '', ip || '', result, failReason || null, authMethod]
     )
   } catch (err) {
     logger.warn('写入登录日志失败（不影响登录结果）', { username, result, err })
@@ -41,8 +42,13 @@ async function list({ offset, limit, adminUserId, tenantId, username, result }) 
   const params = []
 
   // 租户管理员只看本租户的登录日志。tenant_id IS NULL 的那些（用户名猜错）
-  // 不归任何租户，只对平台可见 —— 否则等同于把全平台的爆破痕迹分散到各家
-  if (tenantId !== undefined) {
+  // 不归任何租户，只对平台可见 —— 否则等同于把全平台的爆破痕迹分散到各家。
+  //
+  // `tenantId === null` 是平台日志中心的入口：只查平台级登录记录。
+  // `undefined` 才表示「不加租户条件」，供运维脚本使用。
+  if (tenantId === null) {
+    where.push('tenant_id IS NULL')
+  } else if (tenantId !== undefined) {
     where.push('tenant_id = ?')
     params.push(tenantId)
   }
@@ -63,7 +69,7 @@ async function list({ offset, limit, adminUserId, tenantId, username, result }) 
   const clause = `FROM admin_login_log WHERE ${where.join(' AND ')}`
   const total = await db.count(clause, params)
   const rows = await db.query(
-    `SELECT id, admin_user_id, username, login_at, ip, result, fail_reason
+    `SELECT id, admin_user_id, username, login_at, ip, result, fail_reason, auth_method
        ${clause} ORDER BY id DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset]
   )

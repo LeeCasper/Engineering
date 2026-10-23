@@ -78,6 +78,8 @@ describe('配置注册表自身的自洽性', () => {
     const notificationService = require('../../src/services/notification.service')
     for (const type of notificationService.FILTERABLE_TYPES) {
       expect(sysConfig.SCHEMA).toHaveProperty(`subscribe_template_${type}`)
+      // 模板 ID 来自小程序主体，只有平台能配置；租户后台必须只读
+      expect(sysConfig.SCHEMA[`subscribe_template_${type}`].platformOnly).toBe(true)
     }
   })
 

@@ -67,9 +67,9 @@ async function bindPhone(req, res) {
 /**
  * GET /auth/profile —— 当前用户（C-5.1 / AC-U01 / AC-U02）。
  *
- * AC-U01 要求资料里含「所属角色」，而本系统的角色**按项目判定**
- * （同一个人可以在 A 项目当业主、在 B 项目当工长），因此传了 projectId
- * 就回该项目里的角色与是否主工长（Q11）。不传则为 null。
+ * AC-U01 要求资料里含「所属角色」。v2.5 起角色是账号级固定的：
+ * 工长 / 监理不会因切换项目而变化，业主可参与多个项目。传了 projectId
+ * 就回该项目里的角色与是否主工长（Q11）；accountRole 始终返回固定角色。
  */
 async function profile(req, res) {
   const query = validate(profileQuerySchema, req.query)

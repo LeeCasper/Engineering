@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>工程动态</title>
+<!-- Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#F0F5FF',
+              100: '#E1EDFF',
+              500: '#165DFF',
+              600: '#0E4CD4',
+            },
+            surface: '#F5F7FA',
+            emeraldBadge: '#E8F7F0',
+            emeraldText: '#00B42A'
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"PingFang SC"', '"Hiragino Sans GB"', '"Microsoft YaHei"', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+<!-- Custom UI tweaks -->
+<style data-purpose="custom-layout">
+    /* 隐藏水平滚动条 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* iOS 细微阴影系统与交互反馈 */
+    .card-shadow {
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+    }
+  </style>
+</head>
+<body class="bg-surface font-sans text-gray-900 antialiased selection:bg-brand-500 selection:text-white pb-28">
+<!-- BEGIN: iOSStatusBar -->
+<!-- 顶部系统状态栏模拟 9:41 / 信号 / WiFi / 电池 -->
+<div class="sticky top-0 z-50 bg-surface/95 backdrop-blur-md pt-3 px-6 pb-2 flex justify-between items-center text-sm font-semibold text-black select-none tracking-tight">
+<span>9:41</span>
+<div class="flex items-center space-x-1.5">
+<!-- 信号图标 -->
+<svg class="w-4 h-3 fill-current" viewbox="0 0 17 12">
+<rect height="4" rx="0.5" width="3" x="0" y="8"></rect>
+<rect height="6.5" rx="0.5" width="3" x="4.5" y="5.5"></rect>
+<rect height="9" rx="0.5" width="3" x="9" y="3"></rect>
+<rect height="11.5" rx="0.5" width="3" x="13.5" y="0.5"></rect>
+</svg>
+<!-- WiFi 图标 -->
+<svg class="w-3.5 h-3.5 fill-current" viewbox="0 0 24 24">
+<path d="M12 4C7.31 4 3.07 5.9 0 8.98L12 21 24 8.98C20.93 5.9 16.69 4 12 4zm0 3.5c3.73 0 7.12 1.48 9.63 3.9L12 19.14 2.37 11.4C4.88 8.98 8.27 7.5 12 7.5z"></path>
+</svg>
+<!-- 电池图标 -->
+<div class="w-6 h-3 border border-black rounded-[3px] p-[1px] relative flex items-center">
+<div class="h-full bg-black w-[90%] rounded-[1.5px]"></div>
+<div class="absolute -right-1 top-0.5 bottom-0.5 w-[2px] bg-black rounded-r-sm"></div>
+</div>
+</div>
+</div>
+<!-- END: iOSStatusBar -->
+<!-- BEGIN: NavigationBar -->
+<!-- 页面标题导航条与项目切换 -->
+<header class="px-4 pt-1 pb-3 flex items-center justify-between sticky top-[34px] z-40 bg-surface/95 backdrop-blur-md">
+<!-- 返回按钮 -->
+<button aria-label="返回" class="p-1 -ml-1 text-gray-800 hover:text-gray-600 active:scale-95 transition-transform" type="button">
+<svg class="w-6 h-6 stroke-[2.5]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+<!-- 中间项目标题及下拉切换 -->
+<div class="flex flex-col items-center justify-center cursor-pointer">
+<h1 class="text-[17px] font-bold text-gray-900 leading-tight">工程动态</h1>
+<div class="flex items-center text-xs text-gray-600 font-medium mt-0.5 space-x-1">
+<span>阳光花园 · 演示项目</span>
+<svg class="w-3 h-3 text-gray-500 fill-current mt-0.5" viewbox="0 0 20 20">
+<path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"></path>
+</svg>
+</div>
+</div>
+<!-- 右侧筛选按钮 -->
+<button class="flex items-center space-x-0.5 text-brand-500 font-medium text-sm hover:opacity-80 active:scale-95 transition-all" type="button">
+<svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span>筛选</span>
+</button>
+</header>
+<!-- END: NavigationBar -->
+<main class="px-3.5 space-y-3.5">
+<!-- BEGIN: BannerCard -->
+<!-- 顶部概览数据卡片 -->
+<section class="bg-white rounded-2xl p-3.5 shadow-sm card-shadow flex items-center justify-between border border-gray-100/60" data-purpose="project-summary">
+<!-- 项目立面图缩略图 -->
+<div class="w-20 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 shadow-inner">
+<img alt="阳光花园建筑立面" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjDk2jC6eqd2r2B31FhzncwNvbgjhTJJFOCKMhho9YcEFY5ny86bEyw64oDG8X8LqrT__buZeo8692k8QyEwMfrX75v3pUNFYVNmUMsvNmYoA6rGqHkyyAJSuTYAqxLcdUB0VX51dCiXwbrgsi6fxe5RZqgOCY67vkoizJbLpmdfk7EW6mEuW-CYdzRPOYaYi7Oz-85Idtp53DT2WaoeIOsGOsLq7NVKYSoAy365VwfeyGCijuXp7o"/>
+</div>
+<!-- 统计指标列 1 -->
+<div class="flex-1 pl-3.5 flex flex-col justify-center">
+<span class="text-[11px] text-gray-400 font-normal">最近汇报</span>
+<div class="text-[15px] font-bold text-gray-800 tracking-tight mt-0.5">
+<span class="text-base font-extrabold text-gray-900">2</span> 小时前
+        </div>
+</div>
+<!-- 竖部分隔线 -->
+<div class="w-[1px] h-8 bg-gray-100"></div>
+<!-- 统计指标列 2 -->
+<div class="flex-1 pl-3 flex flex-col justify-center">
+<span class="text-[11px] text-gray-400 font-normal">近 7 天</span>
+<div class="text-[15px] font-bold text-gray-800 tracking-tight mt-0.5">
+<span class="text-base font-extrabold text-gray-900">6</span> 条动态
+        </div>
+</div>
+<!-- 竖部分隔线 -->
+<div class="w-[1px] h-8 bg-gray-100"></div>
+<!-- 统计指标列 3 -->
+<div class="flex-1 pl-3 flex flex-col justify-center">
+<span class="text-[11px] text-gray-400 font-normal">当前阶段</span>
+<div class="text-[15px] font-bold text-brand-500 tracking-tight mt-0.5">
+          水电工程
+        </div>
+</div>
+</section>
+<!-- END: BannerCard -->
+<!-- BEGIN: FilterTabs -->
+<!-- 标签过滤胶囊栏 -->
+<nav aria-label="动态筛选" class="flex items-center space-x-2 overflow-x-auto no-scrollbar py-0.5 text-xs font-medium">
+<!-- 全部 (选中态) -->
+<button class="flex-shrink-0 px-4 py-1.5 rounded-full bg-brand-500 text-white font-semibold shadow-sm">
+        全部
+      </button>
+<!-- 水电工程 -->
+<button class="flex-shrink-0 px-3.5 py-1.5 rounded-full bg-brand-50/70 text-gray-700 hover:bg-gray-100 transition-colors">
+        水电工程
+      </button>
+<!-- 泥瓦工程 -->
+<button class="flex-shrink-0 px-3.5 py-1.5 rounded-full bg-brand-50/70 text-gray-700 hover:bg-gray-100 transition-colors">
+        泥瓦工程
+      </button>
+<!-- 仅看图片 -->
+<button class="flex-shrink-0 px-3 py-1.5 rounded-full bg-brand-50/70 text-gray-700 flex items-center space-x-1 hover:bg-gray-100 transition-colors">
+<svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<rect height="18" rx="2" stroke-width="2" width="18" x="3" y="3"></rect>
+<circle cx="8.5" cy="8.5" r="1.5" stroke-width="2"></circle>
+<path d="M21 15l-5-5L5 21" stroke-linecap="round" stroke-width="2"></path>
+</svg>
+<span>仅看图片</span>
+</button>
+<!-- 最近7天 -->
+<button class="flex-shrink-0 px-3 py-1.5 rounded-full bg-brand-50/70 text-gray-700 flex items-center space-x-1 hover:bg-gray-100 transition-colors">
+<svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span>最近7天</span>
+</button>
+</nav>
+<!-- END: FilterTabs -->
+<!-- BEGIN: FeedCard1 -->
+<!-- 动态卡片 1: 李师傅 · 工长 (开槽布线) -->
+<article class="bg-white rounded-2xl p-4 shadow-sm card-shadow border border-gray-100/60 flex flex-col space-y-3" data-purpose="feed-item">
+<!-- 头部：工长头像、姓名、时间、标签、更多 -->
+<div class="flex items-start justify-between">
+<div class="flex space-x-3 items-center">
+<!-- 头像及在线绿点 -->
+<div class="relative w-11 h-11 flex-shrink-0">
+<img alt="李师傅工长头像" class="w-full h-full rounded-full object-cover border border-gray-200" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCp2PLDUobSGYqUVCC4wED2vJHTncfp2RWXL0siZolAqdYVhmtf4wE0_EA-1fAskrLxpN4BW3bQ-d7xgSi2PUxiXVlqYb4rEcFkfj5G2iKnYjJblCTVLHEuD7r0QFHNLC7CNc8dkVW378oqPFiOakgkf7dyfZjGXVrskvzYDmrNluV-DBYa9pJk2JPaVl9V1qObzHFY4WNBGpPZhqTskT8cR1ZWAPQaInvBwUhmsRfZtKul8_MPDo6d"/>
+<span class="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></span>
+</div>
+<!-- 用户名称 & 标签行 -->
+<div class="flex flex-col space-y-1">
+<div class="flex items-center space-x-2">
+<span class="text-sm font-bold text-gray-900 tracking-tight">李师傅 · 工长</span>
+<span class="text-xs text-gray-400">2 小时前</span>
+</div>
+<!-- 胶囊阶段与进度状态 -->
+<div class="flex items-center space-x-1.5 flex-wrap">
+<!-- 阶段与施工部位 -->
+<span class="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+<svg class="w-2.5 h-2.5 text-gray-400 mr-0.5" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" fill-rule="evenodd"></path>
+</svg>
+                水电工程 · 开槽布线
+              </span>
+<!-- 施工完成度 -->
+<span class="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-emeraldBadge text-emeraldText font-bold">
+<span class="mr-0.5 text-xs font-black">↑</span> 80% → 100%
+              </span>
+</div>
+</div>
+</div>
+<!-- 更多操作 ... -->
+<button aria-label="更多选项" class="text-gray-400 hover:text-gray-600 p-1 -mr-1" type="button">
+<svg class="w-5 h-5 fill-current" viewbox="0 0 24 24">
+<circle cx="5" cy="12" r="2"></circle>
+<circle cx="12" cy="12" r="2"></circle>
+<circle cx="19" cy="12" r="2"></circle>
+</svg>
+</button>
+</div>
+<!-- 动态内容文字汇报 -->
+<p class="text-[13.5px] leading-relaxed text-gray-800">
+        今天完成开槽和水管打压，线路布置基本完成，后续准备进行线管固定。
+      </p>
+<!-- 现场施工九宫格/3联排图片展示 -->
+<div class="grid grid-cols-3 gap-2 pt-0.5">
+<div class="aspect-square rounded-lg overflow-hidden bg-gray-100 shadow-sm border border-gray-100">
+<img alt="室内开槽排管现场1" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcf61uMaAK3qWpY6oosxDDuCdAcFiez3D4k038aN_tt7LXmK_A6jkHtQ0rdxpjGNbGQ1-Iy7MMP3LRhQ2zU27A-VNhqIRNGiQ-N4RFwFL4T62F2lQyBVoXzQp3vkRAow7YeQ_i1vc_eBSt78bUXlDT6XZDvwikdPenlmF2tXv5QKIAgP4TYdaGfhZvcr_Oyo5MkzhO3bGmKAQ1RM_8Y__FQHcbxy94rvgSU26nhnMmEI5HdP0dnuMe"/>
+</div>
+<div class="aspect-square rounded-lg overflow-hidden bg-gray-100 shadow-sm border border-gray-100">
+<img alt="室内开槽排管现场2" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD3ceqkaz0LRG9r48liw2UCYupi5_H4wpeeOvczLeMquHp4Me1jbTfA5459xP0MxWwg-PO5U-d4vY6tOcXRraeq1MlVnvL6uwlrBXBqMTIYfuUkrXjrbrQIPgwCxa00lWV1O6EFmcMitnbYIoNlPbF_XWjaLISNtLCTK3TvYXJta5GkOvSm2TAVtq25YwjVcuwLDYh28d8bVBmIT7ioZh0iJTLrnnL1ywLCSgz5P2FuvVfEbnqkY2MR"/>
+</div>
+<div class="aspect-square rounded-lg overflow-hidden bg-gray-100 shadow-sm border border-gray-100">
+<img alt="室内开槽排管现场3" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBffmWSdZUPc1FH3ySWgx_QyUjKUZJbxMZu8tgi7IisfEP6oXPPE1YFINnEi3ouOLMVEAoRQ6AtmIODG7FLfskmZ7l6JQY4-zpqCWAbCQiz-0XllAvlArDJb-OEz0lAhD8xt2SiXpV3aSI6i2B03a-b8Az7fFZfGCiFesY1Y9vpr4jWPPv3y560lZOA-aVvwBmeYFlI_R8nGKFhApTPkLl15QHlJwU9u1t46fgCSgRQdAhOaEo87jk5"/>
+</div>
+</div>
+<!-- 卡片底部交互栏 -->
+<div class="flex items-center justify-between pt-1 text-xs">
+<!-- 评论互动 -->
+<button class="flex items-center space-x-1.5 text-gray-600 hover:text-gray-900 transition-colors" type="button">
+<svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="font-medium">评论 3</span>
+</button>
+<!-- 查看大图链接 -->
+<button class="flex items-center space-x-1 text-brand-500 font-medium hover:text-brand-600 transition-colors" type="button">
+<svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<rect height="18" rx="2" width="18" x="3" y="3"></rect>
+<circle cx="8" cy="8" r="1.5"></circle>
+<path d="M21 15l-5-5L5 21"></path>
+</svg>
+<span>查看大图</span>
+<svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+</article>
+<!-- END: FeedCard1 -->
+<!-- BEGIN: FeedCard2 -->
+<!-- 动态卡片 2: 李师傅 · 工长 (水路改造进度及视频) -->
+<article class="bg-white rounded-2xl p-4 shadow-sm card-shadow border border-gray-100/60 flex flex-col space-y-3" data-purpose="feed-item">
+<!-- 头部：工长头像、姓名、时间、标签、更多 -->
+<div class="flex items-start justify-between">
+<div class="flex space-x-3 items-center">
+<!-- 头像及在线绿点 -->
+<div class="relative w-11 h-11 flex-shrink-0">
+<img alt="李师傅工长头像" class="w-full h-full rounded-full object-cover border border-gray-200" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC9-FVFMDcB0ayk0G8wiXmbyNek8zQQ_G4K7pTEK5hK2wkyx1rl1xgDJiBbJ0rqMXNGHmI16RSUUrXEVVigQeElHYCBU8wA07BgeFdRcmcKNRpsE3RsUKlWubQmlilFoKxVnjDQ3KOCKGMfwCCs-v5niubgxpBm7FHEHC5a66Sdb4sIWpJF-ab9Gs42H6YfoA914dhySnS2SmT23JlH0yP-bpdQGcgDr0-oVZKtbpgYaZVq2HdwEhYq"/>
+<span class="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></span>
+</div>
+<!-- 用户名称 & 标签行 -->
+<div class="flex flex-col space-y-1">
+<div class="flex items-center space-x-2">
+<span class="text-sm font-bold text-gray-900 tracking-tight">李师傅 · 工长</span>
+<span class="text-xs text-gray-400">1 天前</span>
+</div>
+<!-- 胶囊阶段与进度状态 -->
+<div class="flex items-center space-x-1.5 flex-wrap">
+<span class="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+<svg class="w-2.5 h-2.5 text-gray-400 mr-0.5" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" fill-rule="evenodd"></path>
+</svg>
+                水电工程 · 水路改造
+              </span>
+<span class="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-emeraldBadge text-emeraldText font-bold">
+<span class="mr-0.5 text-xs font-black">↑</span> 60% → 80%
+              </span>
+</div>
+</div>
+</div>
+<!-- 更多操作 ... -->
+<button aria-label="更多选项" class="text-gray-400 hover:text-gray-600 p-1 -mr-1" type="button">
+<svg class="w-5 h-5 fill-current" viewbox="0 0 24 24">
+<circle cx="5" cy="12" r="2"></circle>
+<circle cx="12" cy="12" r="2"></circle>
+<circle cx="19" cy="12" r="2"></circle>
+</svg>
+</button>
+</div>
+<!-- 动态内容文字汇报 -->
+<p class="text-[13.5px] leading-relaxed text-gray-800">
+        水管铺设已完成 80%，明天继续进行打压测试，并整理现场材料。
+      </p>
+<!-- 现场施工 3 联排（含绿色打压管道与视频播放覆盖层） -->
+<div class="grid grid-cols-3 gap-2 pt-0.5">
+<!-- 绿色打压管线图 -->
+<div class="aspect-square rounded-lg overflow-hidden bg-gray-100 shadow-sm border border-gray-100">
+<img alt="打压管道铺设实景" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLzpr5iU3jFjPSe3M_GsEEkFVbd3qYT3RtIIuACr_JlyXktlk3XZ_RAh1KjQMMWtwRQ6YCYAaNcVddRp6SqkvubGXWymMq147CE6e_1qkNRUabnJK38xj_Ix0P3khF04aHPbTyTGc5qZgvgBZ6b1tafYmAUW0mgOdLM4p18ZJVYk_dOTe5yIPTLGryH3aUdEUkUuyUQt9hiFpXWflrXkso7k36EOwjPlk4ekw1rkEyZIihFIEe-WkV"/>
+</div>
+<!-- 水电拐角实景 -->
+<div class="aspect-square rounded-lg overflow-hidden bg-gray-100 shadow-sm border border-gray-100">
+<img alt="施工现场实景" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwtGbXeth09Zoi578EGU__jGycbsvdwo8jx3KwpaoKGxPMlg9iLsn5c9pAwJCMdouz2Ibyb7PF-XyxUS2987Jk-mvADPc367qo-WiFWIiTNdjUfDt5DOiUhdLgFkeAd0wtCjqhIVgqiu5ddLm_nIWBOIv2Ex-vesfAT2yTPKvC6pjQmqmvA8LpX2c41TXx9lEHctmM8kP6YFM4_fubS5xkkHE_yhCawoQUf60cbSLaFI6hG9WqpfXs"/>
+</div>
+<!-- 视频封面含播放按钮与时间徽章 -->
+<div class="aspect-square rounded-lg overflow-hidden relative bg-black shadow-sm group cursor-pointer border border-gray-100">
+<img alt="施工视频" class="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQWcskAqPEReunLdx0ClvG1vLnDFhhtyJPITw5f3Y_jPJRWd8ekxobmfPIySLxCRpQROyLAd8jasGMHRqCAA2QEC4EFuYZ2Cg2CAnte4OV6X6R4rVS7ud--e8BHnsKRigURYt2Lxwm6LVdSP0jX5csCSUkIRpCaAQPIdIfiU0yWOlZMebaRKoTk1McAkZr4JW26MWgfgRz9QUH3tPB1e2z_CMClwS_8NtwtRGpP8KSXYlvpy8FGXQ7"/>
+<!-- 居中毛玻璃半透明播放键 -->
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-white/50 flex items-center justify-center pl-0.5 shadow-md">
+<svg class="w-4 h-4 text-white fill-current" viewbox="0 0 24 24">
+<polygon points="5 3 19 12 5 21 5 3"></polygon>
+</svg>
+</div>
+</div>
+<!-- 视频时长角标 -->
+<span class="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white/95 backdrop-blur-xs tracking-tight">
+            00:28
+          </span>
+</div>
+</div>
+<!-- 卡片底部交互栏 -->
+<div class="flex items-center justify-between pt-1 text-xs">
+<button class="flex items-center space-x-1.5 text-gray-600 hover:text-gray-900 transition-colors" type="button">
+<svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="font-medium">评论 5</span>
+</button>
+<button class="flex items-center space-x-1 text-brand-500 font-medium hover:text-brand-600 transition-colors" type="button">
+<!-- 列表清单图标 -->
+<svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span>查看详情</span>
+<svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+</article>
+<!-- END: FeedCard2 -->
+<!-- BEGIN: FeedCard3 -->
+<!-- 动态卡片 3: 王监理 · 监理 (巡检记录) -->
+<article class="bg-white rounded-2xl p-4 shadow-sm card-shadow border border-gray-100/60 flex flex-col space-y-3" data-purpose="feed-item">
+<!-- 头部：监理头像、姓名、时间、更多 -->
+<div class="flex items-start justify-between">
+<div class="flex space-x-3 items-center">
+<!-- 白色安全帽监理头像 -->
+<div class="w-11 h-11 flex-shrink-0">
+<img alt="王监理头像" class="w-full h-full rounded-full object-cover border border-gray-200" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_JPZGkK-_IxZWtXSv0a61n7-sIL3ZkL5OOV8YXIiIual1jTIGqDYlhlXfpSpzazj8vI9nCxDtA94CR-0yOwHVs8KX4neYwZtO_hCLc80yV1uzV97Mf8r57axKTtnB3vvsle6cBf_jDfmY-bZYtLLbDnLucqv65UGNOYIZcVCmg0w2tuFiuA5SvGPdL8msaYFa_0XB0lNFu34wh7Noh91WGSOO1BiWJHWiCbDD6RL1-0zKODM28OxI"/>
+</div>
+<div class="flex flex-col space-y-0.5">
+<div class="flex items-center space-x-2">
+<span class="text-sm font-bold text-gray-900 tracking-tight">王监理 · 监理</span>
+<span class="text-xs text-gray-400">3 天前</span>
+</div>
+</div>
+</div>
+<button aria-label="更多选项" class="text-gray-400 hover:text-gray-600 p-1 -mr-1" type="button">
+<svg class="w-5 h-5 fill-current" viewbox="0 0 24 24">
+<circle cx="5" cy="12" r="2"></circle>
+<circle cx="12" cy="12" r="2"></circle>
+<circle cx="19" cy="12" r="2"></circle>
+</svg>
+</button>
+</div>
+<!-- 内嵌浅蓝洗色通知卡片 (Notice Banner) -->
+<div class="bg-[#EFF6FF] rounded-xl p-3 flex items-start space-x-2.5 cursor-pointer hover:bg-blue-100/60 transition-colors border border-blue-100/50">
+<!-- 蓝色盾牌对勾图标 -->
+<div class="w-8 h-8 rounded-full bg-brand-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+<svg class="w-5 h-5 text-brand-500 fill-current" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM13.707 8.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path>
+</svg>
+</div>
+<!-- 文本内容 -->
+<div class="flex-1 space-y-1">
+<h4 class="text-[13px] font-bold text-gray-900 leading-snug">
+            监理已完成阶段巡检，现场照片已归档。
+          </h4>
+<p class="text-[11.5px] leading-relaxed text-gray-500 line-clamp-2">
+            本次巡检主要检查水电施工质量、管线固定及现场安全，目前整体符合施工规范，质量良好。
+          </p>
+</div>
+<!-- 详情右指示箭头 -->
+<svg class="w-4 h-4 text-brand-500 flex-shrink-0 mt-1 stroke-[2.5]" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</article>
+<!-- END: FeedCard3 -->
+</main>
+<!-- BEGIN: BottomActionBar -->
+<!-- 底部固定悬浮操作栏（含联系工长主按钮 & iPhone Home Indicator） -->
+<footer class="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-gray-100 px-4 pt-3 pb-7 flex flex-col items-center">
+<!-- 联系工长 主按钮 -->
+<button class="w-full bg-brand-500 hover:bg-brand-600 active:scale-[0.98] transition-all text-white font-semibold py-3.5 rounded-full shadow-lg shadow-brand-500/25 flex items-center justify-center space-x-2 text-[15px]" type="button">
+<svg class="w-5 h-5 fill-current" viewbox="0 0 24 24">
+<path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"></path>
+</svg>
+<span>联系工长</span>
+</button>
+<!-- iOS 底部指示黑条 (Home Indicator Bar) -->
+<div class="w-32 h-1 bg-gray-300 rounded-full mt-3"></div>
+</footer>
+<!-- END: BottomActionBar -->
+</body></html>

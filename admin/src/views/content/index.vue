@@ -1,18 +1,29 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
   fetchContentPage,
   fetchContentPages,
   fetchSaveContentPage,
-  type ContentPageSummary
+  type ContentPageSummary,
+  type ContentScope
 } from '@/service/api/content';
 import { useTenantReadOnly } from '@/hooks/common/tenant';
 import { formatDateTime } from '@/utils/format';
 
 defineOptions({ name: 'ContentPage' });
 
-const readOnly = useTenantReadOnly();
+const props = withDefaults(
+  defineProps<{
+    /** tenant=租户覆盖版本；platform=平台基础版本 */
+    scope?: ContentScope;
+  }>(),
+  { scope: 'tenant' }
+);
+
+const isPlatformScope = computed(() => props.scope === 'platform');
+const tenantReadOnly = useTenantReadOnly();
+const readOnly = computed(() => !isPlatformScope.value && tenantReadOnly.value);
 const loading = ref(false);
 const list = ref<ContentPageSummary[]>([]);
 
@@ -36,7 +47,7 @@ async function load() {
   loading.value = true;
 
   try {
-    const { data, error } = await fetchContentPages();
+    const { data, error } = await fetchContentPages(props.scope);
 
     if (!error && data) list.value = data.list;
   } finally {
@@ -53,7 +64,7 @@ async function openEditor(row: ContentPageSummary) {
   editor.loading = true;
 
   try {
-    const { data, error } = await fetchContentPage(row.pageKey);
+    const { data, error } = await fetchContentPage(row.pageKey, props.scope);
 
     if (error || !data) return;
 
@@ -80,7 +91,7 @@ async function save(publish: boolean) {
       content: form.content,
       version: form.version.trim() || undefined,
       publish
-    });
+    }, props.scope);
 
     if (error || !data) return;
 
@@ -93,13 +104,27 @@ async function save(publish: boolean) {
 }
 
 function statusText(row: ContentPageSummary) {
-  if (!row.exists) return '未创建';
-  return row.publishedAt ? '已发布' : '未发布（草稿）';
+  if (isPlatformScope.value) {
+    if (!row.exists) return '未创建';
+    return row.publishedAt ? '已发布' : '未发布（草稿）';
+  }
+
+  if (!row.exists) return row.inheritsPlatform ? '继承平台版本' : '未创建';
+  if (!row.publishedAt) {
+    return row.inheritsPlatform ? '草稿 · 继承平台' : '未发布（草稿）';
+  }
+  return '已发布';
 }
 
 function statusType(row: ContentPageSummary) {
-  if (!row.exists) return 'info';
-  return row.publishedAt ? 'success' : 'warning';
+  if (isPlatformScope.value) {
+    if (!row.exists) return 'info';
+    return row.publishedAt ? 'success' : 'warning';
+  }
+
+  if (!row.exists) return row.inheritsPlatform ? 'success' : 'info';
+  if (!row.publishedAt) return row.inheritsPlatform ? 'warning' : 'warning';
+  return 'success';
 }
 
 onMounted(load);
@@ -110,9 +135,13 @@ onMounted(load);
     <ElCard shadow="never">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-8px">
-          <span class="font-600">内容页</span>
+          <span class="font-600">{{ isPlatformScope ? '平台基础内容页' : '内容页' }}</span>
           <span class="text-12px text-#86909c">
-            用户协议与隐私政策在登录前即可阅读；未发布时 C 端返回 404，而不是空白页
+            {{
+              isPlatformScope
+                ? '登录前与租户未发布时的兜底版本；所有租户共享'
+                : '本租户已发布时优先使用；未发布时 C 端继承平台基础版本'
+            }}
           </span>
         </div>
       </template>
@@ -128,9 +157,15 @@ onMounted(load);
 
         <ElTableColumn prop="title" label="标题" min-width="180" show-overflow-tooltip />
 
-        <ElTableColumn label="状态" width="130">
+        <ElTableColumn label="状态" width="150">
           <template #default="{ row }">
             <ElTag :type="statusType(row)" size="small">{{ statusText(row) }}</ElTag>
+            <div
+              v-if="!isPlatformScope && row.inheritsPlatform && row.platformPublishedAt"
+              class="mt-4px text-11px text-#86909c"
+            >
+              平台发布于 {{ formatDateTime(row.platformPublishedAt) }}
+            </div>
           </template>
         </ElTableColumn>
 
@@ -164,7 +199,11 @@ onMounted(load);
         :closable="false"
         show-icon
         title="发布前请确认内容是正式文本"
-        description="种子数据里的页面只是未发布的骨架。直接发布占位内容，比不发布更危险 —— 它会让「我们已经有隐私政策了」变成一句看起来成立的话。"
+        :description="
+          isPlatformScope
+            ? '平台基础内容会作为所有租户未发布时的兜底。用户协议与隐私政策必须由法务确认后再发布；直接发布占位内容比不发布更危险。'
+            : '种子数据里的页面只是未发布的骨架。直接发布占位内容，比不发布更危险 —— 它会让「我们已经有隐私政策了」变成一句看起来成立的话。'
+        "
       />
     </ElCard>
 

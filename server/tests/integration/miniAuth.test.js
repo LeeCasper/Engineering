@@ -216,28 +216,93 @@ describe('占位账号合并（§5.2 按手机号邀请的必然结果）', () =
   })
 })
 
+describe('v2.5 账号固定角色', () => {
+  it('确认邀请时会锁定账号角色；之后不能确认另一角色的邀请', async () => {
+    const login = await mini.login('fixed-role-confirm')
+    const projectId = await mini.createProject()
+    const memberId = await mini.addMember({
+      projectId,
+      userId: login.userId,
+      role: 'foreman',
+      status: 'pending',
+    })
+
+    const confirmed = await mini.authed('post', `/invitations/${memberId}/confirm`, login.token)
+    expect(confirmed.status).toBe(200)
+
+    const user = await db.queryOne('SELECT role FROM user WHERE id = ?', [login.userId])
+    expect(user.role).toBe('foreman')
+
+    // 另一个项目发来监理邀请，不能确认
+    const otherProject = await mini.createProject({ name: '监理项目' })
+    const otherMember = await mini.addMember({
+      projectId: otherProject,
+      userId: login.userId,
+      role: 'supervisor',
+      status: 'pending',
+    })
+    const conflict = await mini.authed('post', `/invitations/${otherMember}/confirm`, login.token)
+    expect(conflict.status).toBe(409)
+    expect(conflict.body.data.roleLocked).toBe(true)
+    expect(conflict.body.message).toContain('固定为工长')
+  })
+
+  it('手机号合并时角色不一致会被拒绝', async () => {
+    const placeholderId = await mini.createPlaceholderUser('13700009999')
+    await db.query("UPDATE user SET role = 'owner' WHERE id = ?", [placeholderId])
+
+    const login = await mini.login('role-merge-conflict')
+    await db.query("UPDATE user SET role = 'foreman' WHERE id = ?", [login.userId])
+
+    const bind = await mini.authed('post', '/auth/bind-phone', login.token).send({ phone: '13700009999' })
+    expect(bind.status).toBe(409)
+    expect(bind.body.message).toContain('角色')
+  })
+
+  it('手机号合并时保留占位账号的固定角色', async () => {
+    const placeholderId = await mini.createPlaceholderUser('13700008888')
+    await db.query("UPDATE user SET role = 'supervisor' WHERE id = ?", [placeholderId])
+    const projectId = await mini.createProject()
+    await mini.addMember({ projectId, userId: placeholderId, role: 'supervisor', status: 'pending' })
+
+    const login = await mini.login('role-merge-invitee')
+    const bind = await mini.authed('post', '/auth/bind-phone', login.token).send({ phone: '13700008888' })
+    expect(bind.status).toBe(200)
+    expect(bind.body.data.merged).toBe(true)
+
+    // 响应不返回 mergedIntoUserId，这里按手机号 + openid 查合并后的账号
+    const byOpenid = await db.queryOne(
+      'SELECT role FROM user WHERE openid IS NOT NULL AND phone = ?',
+      ['13700008888']
+    )
+    expect(byOpenid).toBeTruthy()
+    expect(byOpenid.role).toBe('supervisor')
+  })
+})
+
 describe('C-1.2 我的项目列表按角色分组', () => {
   it('按「我负责的 / 我参与的」分组', async () => {
-    const { token, userId } = await mini.login('code-groups')
+    // 角色是账号级固定的，因此「负责的」和「参与的」用两个固定角色账号验证
+    const foreman = await mini.login('code-groups-foreman')
+    const owner = await mini.login('code-groups-owner')
 
     const p1 = await mini.createProject({ name: '我当工长的项目' })
-    const p2 = await mini.createProject({ name: '我当监理的项目' })
-    const p3 = await mini.createProject({ name: '我当业主的项目' })
-    await mini.addMember({ projectId: p1, userId, role: 'foreman' })
-    await mini.addMember({ projectId: p2, userId, role: 'supervisor' })
-    await mini.addMember({ projectId: p3, userId, role: 'owner' })
+    const p2 = await mini.createProject({ name: '我当业主的项目一' })
+    const p3 = await mini.createProject({ name: '我当业主的项目二' })
+    await mini.addMember({ projectId: p1, userId: foreman.userId, role: 'foreman' })
+    await mini.addMember({ projectId: p2, userId: owner.userId, role: 'owner' })
+    await mini.addMember({ projectId: p3, userId: owner.userId, role: 'owner' })
 
     // 多租户下「管理方联系方式」是按租户配置的，因此要指明是哪个租户
-    const res = await mini.authed('get', '/projects?tenantId=1', token)
-    const groups = res.body.data.groups
-
-    const managed = groups.find((g) => g.key === 'managed')
-    const participating = groups.find((g) => g.key === 'participating')
-
+    const foremanRes = await mini.authed('get', '/projects?tenantId=1', foreman.token)
+    const managed = foremanRes.body.data.groups.find((g) => g.key === 'managed')
     expect(managed.label).toBe('我负责的')
     expect(managed.items.map((i) => i.name)).toEqual(['我当工长的项目'])
-    expect(participating.items.map((i) => i.name).sort()).toEqual(['我当业主的项目', '我当监理的项目'].sort())
-    expect(res.body.data.total).toBe(3)
+
+    const ownerRes = await mini.authed('get', '/projects?tenantId=1', owner.token)
+    const participating = ownerRes.body.data.groups.find((g) => g.key === 'participating')
+    expect(participating.items.map((i) => i.name).sort()).toEqual(['我当业主的项目一', '我当业主的项目二'].sort())
+    expect(ownerRes.body.data.total).toBe(2)
   })
 
   it('列表项带角色标签与项目总进度', async () => {
@@ -259,6 +324,98 @@ describe('C-1.2 我的项目列表按角色分组', () => {
     // 当前阶段 = 第一个未结清的阶段
     expect(item.currentStageName).toBe('水电工程')
     expect(item.currentStageGateStatus).toBe('active')
+  })
+
+  it('列表项带业主/主工长与阶段摘要（首页卡片）', async () => {
+    const { token, userId } = await mini.login('code-home-card')
+    const projectId = await mini.createProject({ name: '首页卡片项目' })
+
+    const ownerId = await mini.createWechatUser('owner-home-card')
+    const foremanId = await mini.createWechatUser('foreman-home-card')
+    await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['张先生', ownerId])
+    await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['李师傅', foremanId])
+
+    // 当前用户是监理，避免和业主/工长抢展示位
+    await mini.addMember({ projectId, userId, role: 'supervisor' })
+    await mini.addMember({ projectId, userId: ownerId, role: 'owner' })
+    await mini.addMember({ projectId, userId: foremanId, role: 'foreman' })
+    await db.query('UPDATE project_member SET is_primary = 1 WHERE project_id = ? AND user_id = ?', [
+      projectId,
+      foremanId,
+    ])
+
+    await mini.createStage({
+      projectId,
+      name: '水电工程',
+      seq: 1,
+      progress: '60.00',
+      weight: 1,
+      gateStatus: 'active',
+    })
+    await mini.createStage({
+      projectId,
+      name: '泥瓦工程',
+      seq: 2,
+      progress: '0.00',
+      weight: 1,
+      gateStatus: 'locked',
+    })
+
+    // 多租户下「管理方联系方式」是按租户配置的，因此要指明是哪个租户
+    const res = await mini.authed('get', '/projects?tenantId=1', token)
+    const item = res.body.data.groups.find((g) => g.key === 'participating').items[0]
+
+    expect(item.ownerName).toBe('张先生')
+    expect(item.foremanName).toBe('李师傅')
+    expect(item.stages.map((s) => s.name)).toEqual(['水电工程', '泥瓦工程'])
+    expect(item.stages[0]).toMatchObject({ progress: '60.00', gateStatus: 'active' })
+  })
+
+  it('C-2.1 项目详情返回业主/主工长、当前阶段与主工长标记', async () => {
+    const { token, userId } = await mini.login('code-project-detail')
+    await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['李师傅', userId])
+
+    const projectId = await mini.createProject({ name: '详情项目' })
+    await mini.addMember({ projectId, userId, role: 'foreman' })
+    await db.query('UPDATE project_member SET is_primary = 1 WHERE project_id = ? AND user_id = ?', [
+      projectId,
+      userId,
+    ])
+
+    const ownerId = await mini.createWechatUser('detail-owner')
+    await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['张先生', ownerId])
+    await mini.addMember({ projectId, userId: ownerId, role: 'owner' })
+
+    const supervisorId = await mini.createWechatUser('detail-supervisor')
+    await mini.addMember({ projectId, userId: supervisorId, role: 'supervisor' })
+
+    const stageId = await mini.createStage({
+      projectId,
+      name: '水电工程',
+      seq: 1,
+      progress: '60.00',
+      gateStatus: 'active',
+    })
+
+    const res = await mini.authed('get', `/projects/${projectId}`, token)
+    expect(res.status).toBe(200)
+    expect(res.body.data).toMatchObject({
+      id: projectId,
+      tenantId: 1,
+      name: '详情项目',
+      ownerName: '张先生',
+      foremanName: '李师傅',
+      myRole: 'foreman',
+      isPrimaryForeman: true,
+      currentStageId: stageId,
+      currentStageName: '水电工程',
+      currentStageGateStatus: 'active',
+      currentStageProgress: '60.00',
+      progress: '60.00',
+      memberCount: 3,
+      hasSupervisor: true,
+    })
+    expect(res.body.data.hasCoordinates).toBe(false)
   })
 
   it('延期判定遵循 §5.4 的统计口径', async () => {

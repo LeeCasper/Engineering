@@ -16,6 +16,25 @@ async function detail(req, res) {
   res.ok(await projectService.getProjectForMember(req.auth.id, Number(req.params.id)))
 }
 
+/**
+ * GET /projects/:id/location —— 项目坐标与导航所需信息（§7.3）。
+ *
+ * 详情接口已经带了坐标，这个接口单独存在是为了让「单点导航」页面
+ * 能只取导航所需的字段，也避免把静态地图 / 坐标能力耦合进项目详情响应。
+ * 不返回地图 Key（AC-N13）。
+ */
+async function location(req, res) {
+  const project = await projectService.getProjectForMember(req.auth.id, Number(req.params.id))
+  res.ok({
+    projectId: project.id,
+    name: project.name,
+    address: project.address,
+    longitude: project.longitude,
+    latitude: project.latitude,
+    hasCoordinates: project.hasCoordinates,
+  })
+}
+
 /** POST /invitations/:memberId/confirm —— 确认项目邀请（AC-AD18 → AC-AD19） */
 async function confirmInvitation(req, res) {
   const memberId = Number(req.params.memberId)
@@ -28,4 +47,4 @@ async function rejectInvitation(req, res) {
   res.ok(await projectService.rejectInvitation(req.auth.id, memberId))
 }
 
-module.exports = { myProjects, detail, confirmInvitation, rejectInvitation }
+module.exports = { myProjects, detail, location, confirmInvitation, rejectInvitation }

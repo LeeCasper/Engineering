@@ -20,6 +20,15 @@ export const API_BASE =
  */
 export const DEV_WX_CODE = 'gongchengbao-h5-dev'
 
+/**
+ * 是否允许开发环境直接输入手机号绑定。
+ *
+ * 只有后端 WX_MOCK=true（没有真实 AppID/Secret）时才应该打开；
+ * 现在已配置真实微信凭据，默认走 getPhoneNumber。
+ * 需要临时调试 mock 绑定时，在环境变量里设置 VITE_DEV_PHONE_BIND=true。
+ */
+export const DEV_PHONE_BIND = import.meta.env.VITE_DEV_PHONE_BIND === 'true'
+
 /** 角色展示文案与顺序 */
 export const ROLES = [
   {
@@ -27,7 +36,7 @@ export const ROLES = [
     name: '工长',
     subtitle: '现场施工负责人',
     description: '汇报进度、登记支出、发起验收、提交结算',
-    avatarBg: '#1e83f0',
+    avatarBg: '#eb5c20',
     avatarIcon: '/static/images/icon-user-white.png',
     image: '/static/images/role-foreman.jpg',
   },
@@ -45,7 +54,7 @@ export const ROLES = [
     name: '业主',
     subtitle: '项目出资方',
     description: '查看进度、确认验收、核对账目',
-    avatarBg: '#f97316',
+    avatarBg: '#d97706',
     avatarIcon: '/static/images/icon-user-white.png',
     image: '/static/images/role-owner.jpg',
   },

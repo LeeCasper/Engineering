@@ -1,5 +1,5 @@
 {
-  "name": "工程宝",
+  "name": "柏总管",
   "appid": "__UNI__GONGCHENGBAO",
   "description": "室内装修协同系统 · 微信小程序",
   "versionName": "0.1.0",
@@ -7,7 +7,7 @@
   "transformPx": false,
   "vueVersion": "3",
   "mp-weixin": {
-    "appid": "",
+    "appid": "wxcae10f2824a5193d",
     "setting": {
       "urlCheck": false,
       "es6": true,
@@ -15,12 +15,18 @@
       "postcss": true
     },
     "usingComponents": true,
+    "permission": {
+      "scope.userLocation": {
+        "desc": "用于规划考察路线、从当前位置出发以及到达工地后的现场签到"
+      }
+    },
+    "requiredPrivateInfos": ["getLocation", "chooseLocation"],
     "optimization": {
       "subPackages": true
     }
   },
   "h5": {
-    "title": "工程宝",
+    "title": "柏总管",
     "router": {
       "mode": "hash"
     }

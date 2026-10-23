@@ -48,8 +48,9 @@ async function list(userId, tenantId) {
       return {
         type,
         typeLabel: TYPE_LABELS[type] || type,
-        // 不回显完整模板 ID：它对外没有用处（客户端申请授权时用的是**服务端下发的列表**，
-        // 而不是让前端自己拼），回显只是把内部配置暴露给终端
+        // 客户端要用这个 ID 调 wx.requestSubscribeMessage；模板 ID 不是密钥，
+        // 它随小程序前端下发是微信订阅消息的正常用法。
+        templateId: templateId || null,
         available: Boolean(templateId),
         // 未配置模板时状态恒为 null —— 报 'rejected' 会让用户以为
         // 「我拒绝过这一类」，而他根本没有被问过

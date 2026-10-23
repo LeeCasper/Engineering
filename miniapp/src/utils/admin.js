@@ -1,0 +1,173 @@
+import { PROJECT_STATUS_LABELS } from '../config'
+import {
+  getAdminToken,
+  setAdminUser,
+  clearAdminSession,
+} from '../store/adminSession'
+import { fetchAdminProfile } from '../api/admin/auth'
+import { redirectToAdminLogin } from '../api/admin/request'
+
+export const ADMIN_ROLE_LABELS = {
+  owner: '租户管理员',
+  admin: '项目管理员',
+  platform: '平台运营',
+}
+
+export const MEMBER_ROLE_LABELS = {
+  owner: '业主',
+  foreman: '工长',
+  supervisor: '监理',
+}
+
+export const MEMBER_STATUS_LABELS = {
+  pending: '待确认',
+  active: '已加入',
+  removed: '已移除',
+}
+
+export const NODE_STATUS_LABELS = {
+  not_started: '未开始',
+  unlocked: '已解锁',
+  paid: '已付款',
+  confirmed: '已确认',
+}
+
+export const TRIGGER_LABELS = {
+  manual: '手动解锁',
+  stage_acceptance: '阶段验收后解锁',
+}
+
+export const BIND_FRESH_MS = 30 * 60 * 1000
+
+export function formatMoney(value) {
+  if (value === null || value === undefined || value === '') return '0'
+  const text = String(value)
+  const negative = text.startsWith('-')
+  const unsigned = negative ? text.slice(1) : text
+  const parts = unsigned.split('.')
+  const integer = (parts[0] || '0').replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const decimal = (parts[1] || '').padEnd(2, '0').slice(0, 2)
+  const fraction = Number(decimal) === 0 ? '' : `.${decimal}`
+  return `${negative ? '-' : ''}${integer}${fraction}`
+}
+
+export function formatDate(value) {
+  if (!value) return ''
+  const text = String(value)
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10)
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return text
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+export function formatDateTime(value) {
+  if (!value) return ''
+  const text = String(value).replace('T', ' ')
+  return text.length >= 16 ? text.slice(0, 16) : text
+}
+
+export function percent(value) {
+  const number = Number(value) || 0
+  return Math.max(0, Math.min(100, Math.round(number)))
+}
+
+export function statusLabel(status) {
+  return PROJECT_STATUS_LABELS[status] || status || '未知'
+}
+
+export function memberRoleLabel(role) {
+  return MEMBER_ROLE_LABELS[role] || role || '成员'
+}
+
+export function nodeStatusLabel(status) {
+  return NODE_STATUS_LABELS[status] || status || '未知'
+}
+
+export function triggerLabel(triggerType) {
+  return TRIGGER_LABELS[triggerType] || triggerType || '未知'
+}
+
+export function isAdminFresh(profile) {
+  if (!profile || profile.authMethod !== 'password' || !profile.tokenIssuedAt) return false
+  return Date.now() - Number(profile.tokenIssuedAt) * 1000 <= BIND_FRESH_MS
+}
+
+export function sanitizeAdminRedirect(path) {
+  if (typeof path !== 'string' || !path.startsWith('/pages/admin/')) {
+    return '/pages/admin/projects/index'
+  }
+  // 登录页与改密页不能作为登录后的目标，否则会绕回自己
+  if (path.startsWith('/pages/admin/login') || path.startsWith('/pages/admin/change-password')) {
+    return '/pages/admin/projects/index'
+  }
+  return path
+}
+
+export function goCProjects() {
+  uni.switchTab({ url: '/pages/projects/index' })
+}
+
+export function goAdminProjects() {
+  uni.redirectTo({ url: '/pages/admin/projects/index' })
+}
+
+export function adminBack(fallback = '/pages/admin/projects/index') {
+  const pages = getCurrentPages()
+  if (pages && pages.length > 1) {
+    uni.navigateBack()
+    return
+  }
+  uni.redirectTo({ url: fallback })
+}
+
+export function redirectToAdminChangePassword(first = false) {
+  uni.redirectTo({ url: `/pages/admin/change-password/index${first ? '?first=1' : ''}` })
+}
+
+/**
+ * 管理页统一守卫。
+ *
+ * 每次进入管理页都回库确认账号状态、租户与首登改密标记；
+ * 不依赖本地缓存的 role/tenantId 做权限判断。
+ *
+ * @returns {Promise<object|null>} profile；返回 null 表示已经跳转，调用方停止加载
+ */
+export async function requireAdminSession() {
+  if (!getAdminToken()) {
+    redirectToAdminLogin('login_required')
+    return null
+  }
+
+  let profile
+  try {
+    profile = await fetchAdminProfile()
+  } catch (err) {
+    // adminRequest 对 401 已清会话并跳登录；这里不再重复跳
+    if (err && err.statusCode === 401) return null
+    throw err
+  }
+
+  if (!profile || profile.tenantId == null || profile.role === 'platform') {
+    clearAdminSession()
+    uni.showToast({ title: '该账号不能进入租户管理端', icon: 'none' })
+    redirectToAdminLogin('invalid_tenant')
+    return null
+  }
+
+  setAdminUser(profile)
+
+  if (profile.mustChangePassword) {
+    redirectToAdminChangePassword(true)
+    return null
+  }
+
+  return profile
+}
+
+export function showAdminError(err, fallback = '操作失败') {
+  if (!err) return
+  if (err.statusCode === 401) return
+  uni.showToast({ title: err.message || fallback, icon: 'none', duration: 2600 })
+}

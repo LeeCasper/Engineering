@@ -1,0 +1,595 @@
+<!DOCTYPE html><html lang="zh-CN" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport">
+<title>阳光花园项目进度总览</title>
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            pageBg: '#F5F7FA',
+            brandBlue: '#1677FF',
+            brandBlueLight: '#E6F4FF',
+            brandOrange: '#FA8C16',
+            brandOrangeLight: '#FFF7E6',
+            brandGreen: '#52C41A',
+            brandGreenLight: '#F6FFED',
+            brandPurple: '#722ED1',
+            brandPurpleLight: '#F9F0FF',
+            textMain: '#1F2937',
+            textMuted: '#8C8C8C',
+            textSub: '#595959'
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', '"SF Pro Display"', '"PingFang SC"', '"Helvetica Neue"', 'Helvetica', 'Arial', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="custom-scroll-and-resets">
+    /* Remove default tap highlight on mobile devices */
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    body {
+      background-color: #F5F7FA;
+      color: #1F2937;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[#F5F7FA] text-textMain flex justify-center selection:bg-brandBlue selection:text-white">
+<!-- Mobile Device Shell / Viewport Container -->
+<div class="w-full max-w-[480px] min-h-screen flex flex-col bg-[#F5F7FA] pb-10 shadow-sm relative">
+<!-- BEGIN: StatusBar -->
+<header class="w-full pt-3 px-6 pb-2 flex justify-between items-center text-sm font-semibold tracking-tight text-black sticky top-0 bg-[#F5F7FA]/95 backdrop-blur z-50" data-purpose="status-bar">
+<span class="">9:41</span>
+<div class="flex items-center space-x-1.5">
+<!-- Cellular Signal -->
+<svg class="w-4 h-3 fill-current" viewBox="0 0 17 11">
+<rect height="3" rx="0.5" width="3" x="0" y="8"></rect>
+<rect height="5.5" rx="0.5" width="3" x="4.5" y="5.5"></rect>
+<rect height="8" rx="0.5" width="3" x="9" y="3"></rect>
+<rect height="11" rx="0.5" width="3" x="13.5" y="0"></rect>
+</svg>
+<!-- Wifi -->
+<svg class="w-4 h-3.5 fill-current" viewBox="0 0 16 12">
+<path d="M8 2.8c2.4 0 4.6 0.9 6.2 2.5l1.4-1.4C13.6 1.9 10.9 0.8 8 0.8 5.1 0.8 2.4 1.9 0.4 3.9l1.4 1.4C3.4 3.7 5.6 2.8 8 2.8zm0 4c1.3 0 2.5 0.5 3.4 1.4l1.4-1.4C11.6 5.6 9.9 5 8 5c-1.9 0-3.6 0.6-4.8 1.8l1.4 1.4C5.5 7.3 6.7 6.8 8 6.8zm0 4a1.8 1.8 0 100 3.6 1.8 1.8 0 000-3.6z"></path>
+</svg>
+<!-- Battery -->
+<div class="w-6 h-3 border border-current rounded-[3px] p-[1px] flex items-center relative">
+<div class="w-full h-full bg-current rounded-[1.5px]"></div>
+<div class="absolute -right-1 top-0.8 w-0.5 h-1.5 bg-current rounded-r-[1px]"></div>
+</div>
+</div>
+</header>
+<!-- END: StatusBar -->
+<!-- BEGIN: NavigationBar -->
+<nav class="px-4 py-2 flex items-center justify-between text-base" data-purpose="app-navbar">
+<div class="flex items-center space-x-2">
+<!-- Back Icon -->
+<button class="p-1 -ml-1 text-gray-800 hover:text-black">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+<path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+<!-- Project Title Dropdown -->
+<div class="flex items-center space-x-1 cursor-pointer">
+<span class="font-bold text-lg text-gray-900 tracking-tight">阳光花园 · 演示项目</span>
+
+</div>
+</div>
+<!-- More Actions (WeChat Style dots) -->
+<button class="text-gray-800 p-1">
+<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+<path d="M6 12a2 2 0 11-4 0 2 2 0 014 0zm8 0a2 2 0 11-4 0 2 2 0 014 0zm8 0a2 2 0 11-4 0 2 2 0 014 0z"></path>
+</svg>
+</button>
+</nav>
+<!-- END: NavigationBar -->
+<!-- BEGIN: MainContent -->
+<main class="px-3.5 space-y-3.5 mt-1">
+<!-- BEGIN: ProjectOverviewCard -->
+<section class="bg-white rounded-2xl p-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100/80" data-purpose="project-overview-card">
+<div class="flex items-start gap-3">
+<!-- Project Thumbnail -->
+<div class="w-20 h-28 rounded-xl overflow-hidden shrink-0 shadow-inner bg-gray-100">
+<img alt="阳光花园建筑外观" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQXMOZHENJ0PIXEHBTh_ExnsLAZFLGtWMx5Yc1cAZKrUfDoD-D7EuFHDd_b4tFwGPYYmB5FHInlsory-FxbpyMYz3L5ChCOOsIzc_Wk7smJZAIeNXQEK_FoGtA24nT4sftzS6oFC0vbzDQPalImuyEHAzBKO2nEZhUykR0-qKoasH5cG7aKh4AWxaUwOo6aZ5k77IRMs_m5jjQaNLF-lP-7IY3Q6OO-08ojNKhGZGNRN6HawBuljp5">
+</div>
+<!-- Project Details Right Column -->
+<div class="flex-1 min-w-0">
+<!-- Badges Row -->
+<div class="flex justify-between items-center mb-1">
+<span class="inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">施工中</span>
+<span class="inline-block px-2.5 py-0.5 text-xs font-normal rounded-full bg-blue-50 text-brandBlue border border-blue-100">我是业主</span>
+</div>
+<!-- Main Progress Indicator -->
+<div class="flex items-center gap-2 mb-1.5">
+<span class="text-2xl font-bold text-brandBlue tracking-tight leading-none">65%</span>
+<div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+<div class="h-full bg-brandBlue rounded-full" style="width: 65%;"></div>
+</div>
+</div>
+<!-- Address and Navigation Button -->
+<div class="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+<div class="flex items-center truncate max-w-[170px]">
+<svg class="w-3.5 h-3.5 text-gray-400 mr-1 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+<path clip-rule="evenodd" d="M9.69 18.933l.003.001C9.89 19.02 10 19 10 19s.11.02.308-.066l.002-.001.006-.003.018-.008a5.741 5.741 0 00.281-.14c.186-.096.446-.24.757-.433.62-.384 1.445-.966 2.274-1.765C15.302 14.988 17 12.493 17 9A7 7 0 103 9c0 3.492 1.698 5.988 3.355 7.588a13.77 13.77 0 003.03 2.198l.019.009.006.003.002.001zm.31-7.933a2 2 0 110-4 2 2 0 010 4z" fill-rule="evenodd"></path>
+</svg>
+<span class="truncate">杭州市西湖区文一西路 128 号</span>
+</div>
+<button class="flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-brandBlue text-[11px] font-medium shrink-0 ml-1">
+<svg class="w-2.5 h-2.5 mr-1 transform rotate-45 -mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+<path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path>
+</svg>
+                导航
+              </button>
+</div>
+<!-- Current Stage & Delay Indicator -->
+<div class="text-xs font-bold text-gray-800">当前阶段：水电工程</div>
+<div class="flex items-center justify-between text-[11px] text-gray-400 mt-0.5">
+<span class="">10月01日 开工 · 11月20日 计划完工</span>
+<div class="flex items-center text-red-500 font-medium">
+<span class="">延期 5 天</span>
+<span class="ml-1 text-[10px] text-red-400">✕</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: ProjectOverviewCard -->
+<!-- BEGIN: ActionRequiredSection -->
+<section class="bg-white rounded-2xl p-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100/80" data-purpose="actions-pending-section">
+<!-- Header -->
+<div class="flex items-center justify-between mb-3">
+<div class="flex items-center space-x-1.5">
+<span class="text-amber-500">
+<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+<path clip-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" fill-rule="evenodd"></path>
+</svg>
+</span>
+<h2 class="font-bold text-sm text-gray-900 tracking-tight">待我处理 (2)</h2>
+</div>
+<button class="text-xs text-amber-600 flex items-center font-medium">
+            查看全部
+            <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+<div class="space-y-3">
+<!-- Pending Task 1 -->
+<div class="p-3 bg-[#FFFDF9] rounded-xl border border-amber-100/70">
+<div class="flex items-start justify-between">
+<div class="flex items-start space-x-2">
+<!-- Doc Icon -->
+<div class="w-5 h-5 rounded-md bg-amber-100/80 flex items-center justify-center text-amber-600 shrink-0 mt-0.5">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<div>
+<div class="font-bold text-xs text-gray-900 leading-snug">水电工程验收待您签名</div>
+<div class="text-[11px] text-gray-400 flex items-center mt-0.5">
+<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+                    已等待 1 天
+                  </div>
+</div>
+</div>
+<button class="px-3 py-1 rounded-full bg-brandBlue text-white text-xs font-medium shrink-0 active:scale-95 transition-transform">
+                去签名
+              </button>
+</div>
+<div class="mt-2 text-[11px] text-gray-400 pl-7 leading-relaxed">
+              签字后解锁本阶段付款节点；下一阶段仍需结算后解锁。
+            </div>
+</div>
+<!-- Pending Task 2 -->
+<div class="p-3.5 bg-[#FFFDF9] rounded-xl border border-amber-100/70">
+  <!-- Top: Icon + Title & Amount & Tag -->
+  <div class="flex items-center justify-between gap-2">
+    <div class="flex items-center space-x-2 min-w-0">
+      <div class="w-6 h-6 rounded-md bg-amber-500 text-white flex items-center justify-center text-xs font-bold shrink-0">
+        ¥
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="font-bold text-xs text-gray-900">水电验收款</span>
+        <span class="font-bold text-xs text-amber-600">¥30,000</span>
+        <span class="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-50 text-amber-600 border border-amber-200 leading-none">待确认</span>
+      </div>
+    </div>
+    <!-- Quick Action Buttons -->
+    <div class="flex items-center space-x-1.5 shrink-0">
+      <button class="px-2.5 py-1 rounded-full bg-brandBlue text-white text-[11px] font-medium active:scale-95 transition-transform">
+        确认已支付
+      </button>
+      <button class="px-2.5 py-1 rounded-full bg-white text-gray-600 border border-gray-200 text-[11px] font-medium active:scale-95 transition-transform">
+        暂不确认
+      </button>
+    </div>
+  </div>
+  <!-- Middle Status Info Row -->
+  <div class="flex items-center text-xs text-gray-500 mt-2 pl-8">
+    <svg class="w-3 h-3 mr-1 text-gray-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+    <span class="">工长已登记收到 ¥30,000 线下转账</span>
+  </div>
+  <!-- Bottom Notice -->
+  <div class="mt-2 pt-2 border-t border-amber-100/50 text-[11px] text-gray-400 pl-8 leading-relaxed">
+    请确认您是否已经支付。系统内不发生任何资金划转。
+  </div>
+</div>
+</div>
+</section>
+<!-- END: ActionRequiredSection -->
+<!-- BEGIN: StageProgressSection -->
+<section class="bg-white rounded-2xl p-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100/80" data-purpose="stage-progress-timeline">
+<!-- Section Header -->
+<div class="flex items-center justify-between mb-3">
+<h2 class="font-bold text-sm text-gray-900 tracking-tight">阶段进度</h2>
+<button class="text-xs text-gray-400 flex items-center">
+            查看全部
+            <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+<!-- Stage Timeline List -->
+<div class="relative pl-6 space-y-4 before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-3 before:w-[2px] before:bg-gray-100">
+<!-- Stage 1: Finished -->
+<div class="relative">
+<!-- Node Icon -->
+<div class="absolute -left-6 top-0 w-[22px] h-[22px] rounded-full bg-emerald-500 text-white flex items-center justify-center ring-4 ring-white">
+<svg class="w-3 h-3 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<div class="flex items-center justify-between">
+<div>
+<div class="flex items-center space-x-2">
+<span class="font-bold text-xs text-gray-900">开工准备</span>
+<span class="px-1.5 py-0.2 text-[10px] rounded bg-emerald-50 text-emerald-600 border border-emerald-100">已结清</span>
+</div>
+<div class="text-[11px] text-gray-400 mt-0.5">10月01日 - 10月05日</div>
+</div>
+<div class="text-xs font-semibold text-brandBlue flex items-center">
+                100%
+                <svg class="w-3.5 h-3.5 ml-0.5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</div>
+</div>
+<!-- Stage 2: Active / Expanded -->
+<div class="relative">
+<!-- Active Node Icon -->
+<div class="absolute -left-6 top-0.5 w-[22px] h-[22px] rounded-full border-2 border-brandBlue bg-white flex items-center justify-center ring-4 ring-white">
+<div class="w-2 h-2 rounded-full bg-brandBlue"></div>
+</div>
+<div class="flex items-center justify-between">
+<div>
+<div class="flex items-center space-x-2">
+<span class="font-bold text-xs text-gray-900">水电工程</span>
+<span class="px-1.5 py-0.2 text-[10px] rounded bg-amber-50 text-amber-600 border border-amber-200">待您签字</span>
+</div>
+<div class="text-[11px] text-gray-400 mt-0.5">10月06日 - 10月20日</div>
+</div>
+<div class="text-xs font-semibold text-brandBlue flex items-center">
+                100%
+                <svg class="w-3.5 h-3.5 ml-0.5 text-brandBlue" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+<path d="M5 15l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</div>
+<!-- Sub Items in Active Stage -->
+<div class="mt-2.5 space-y-2 pl-3 py-2.5 pr-2 bg-blue-50/40 rounded-xl">
+<!-- Subtask 1 -->
+<div class="flex items-center justify-between text-xs">
+<span class="text-gray-700 w-16 text-[11px]">开槽布线</span>
+<div class="flex items-center space-x-2 flex-1 px-2">
+<span class="text-[11px] text-brandBlue font-medium">100%</span>
+<div class="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+<div class="h-full bg-brandBlue rounded-full w-full"></div>
+</div>
+</div>
+<button class="text-[11px] text-gray-400 flex items-center">
+                  历史
+                  <svg class="w-2.5 h-2.5 ml-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+<!-- Subtask 2 -->
+<div class="flex items-center justify-between text-xs">
+<span class="text-gray-700 w-16 text-[11px]">水路改造</span>
+<div class="flex items-center space-x-2 flex-1 px-2">
+<span class="text-[11px] text-brandBlue font-medium">100%</span>
+<div class="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+<div class="h-full bg-brandBlue rounded-full w-full"></div>
+</div>
+</div>
+<button class="text-[11px] text-gray-400 flex items-center">
+                  历史
+                  <svg class="w-2.5 h-2.5 ml-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+</div>
+</div>
+<!-- Stage 3: Locked -->
+<div class="relative">
+<!-- Locked Node Icon -->
+<div class="absolute -left-6 top-0.5 w-[22px] h-[22px] rounded-full bg-gray-100 text-gray-400 flex items-center justify-center ring-4 ring-white border border-gray-200">
+<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+<path clip-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" fill-rule="evenodd"></path>
+</svg>
+</div>
+<div class="flex items-center justify-between">
+<div>
+<div class="flex items-center space-x-2">
+<span class="font-bold text-xs text-gray-700">泥瓦工程</span>
+<span class="px-1.5 py-0.2 text-[10px] rounded bg-gray-100 text-gray-500">未解锁</span>
+</div>
+<div class="text-[11px] text-gray-400 mt-0.5">10月21日 - 11月10日</div>
+</div>
+<div class="text-xs font-semibold text-gray-700 flex items-center">
+                0%
+                <svg class="w-3.5 h-3.5 ml-0.5 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M5 15l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</div>
+<!-- Unlock Warning Message -->
+<div class="mt-2 flex items-center text-[11px] text-gray-400 bg-gray-50 py-1.5 px-2.5 rounded-lg justify-between">
+<div class="flex items-center">
+<svg class="w-3 h-3 text-gray-400 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+<path clip-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" fill-rule="evenodd"></path>
+</svg>
+<span class="">上一阶段「水电工程」未结清</span>
+</div>
+<svg class="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</div>
+</div>
+</section>
+<!-- END: StageProgressSection -->
+<!-- BEGIN: EngineeringUpdatesSection -->
+<section class="bg-white rounded-2xl p-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100/80" data-purpose="engineering-updates">
+<!-- Header -->
+<div class="flex items-center justify-between mb-3">
+<div class="flex items-center space-x-2">
+<h2 class="font-bold text-sm text-gray-900 tracking-tight">工程动态</h2>
+<span class="text-[11px] text-gray-400">最近汇报：2 小时前</span>
+</div>
+<button class="text-xs text-gray-400 flex items-center">
+            全部
+            <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+<!-- Post Card -->
+<div class="p-2">
+<!-- Author Info -->
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center space-x-2">
+<div class="w-9 h-9 rounded-full overflow-hidden bg-gray-200 border border-gray-200 shrink-0">
+<img alt="工长头像" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA1VBjkj2Z0H1my_CIMzB-QZq4_6xq2WfUY_85Icq2WZQWslf-JT8tlPptYcr8oX5iF4lm-yJVuUIFUg2qZ-4dkMLCdFJgc3wD-QZlcEqHty0efxQSuBtRxs76l5l7dfs4y7pC2GxdPyP4L-vZWR-DG5_00AomNrQmrHzI-rJKIxADa7bBZrYxd1I2bijBxDream2y5LaIW_aRJm3OjowC8uIj23AH6yof2IvZ_WGcICpfQSNoRsdxs">
+</div>
+<div>
+<div class="font-bold text-xs text-gray-900">李师傅 · 工长</div>
+<div class="text-[11px] text-gray-500">
+                  水电工程 · 开槽布线 <span class="text-gray-400">80% →</span> <span class="text-brandBlue font-semibold">100%</span>
+</div>
+</div>
+</div>
+<div class="flex items-center space-x-1.5 text-gray-400 text-xs">
+<span class="">2 小时前</span>
+<button class="text-gray-400 hover:text-gray-600 p-0.5">
+<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+<path d="M6 12a2 2 0 11-4 0 2 2 0 014 0zm8 0a2 2 0 11-4 0 2 2 0 014 0zm8 0a2 2 0 11-4 0 2 2 0 014 0z"></path>
+</svg>
+</button>
+</div>
+</div>
+<!-- Post Text -->
+<p class="text-xs text-gray-700 leading-relaxed mb-2.5">
+            今天完成开槽和水管打压，现场已清理干净，下一步准备封槽。
+          </p>
+<!-- Post Media Photos 4-Grid -->
+<div class="grid grid-cols-4 gap-1.5 mb-2.5">
+<div class="aspect-square rounded-lg overflow-hidden bg-gray-100">
+<img alt="水电布线图1" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCKArpCxqRI4_fLe7P03OmzaQY6kmieYVO-Do3BDmHrkhEdvzFIRwkd8qog15SvQ0KZrMIyaCkaGNMwHvtY1HvJkLjcs7-IG1LeNCkZdv4j1e2YZDHpxzMeLpLi4DjGiuvSwpRBWAssbYeMGuKpzXAcIBQ3eb2urKmEpqMe93AXrqV-FT5qYmwHBPL81Of_RD_Rh50rQutf7bQ4c-gFiMmPb0sxyO6smhYQIxiJK83JveQDPtdVZW3M">
+</div>
+<div class="aspect-square rounded-lg overflow-hidden bg-gray-100">
+<img alt="水电布线图2" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAoLGnhpZao8Sm57Y6I56ozWdSLG5uckwKA6nPnzG6SzQV8m4k6T9EywjxxNfSMKxzUXOzNjUiQMR2RUEtZEPPRS0WWFWXu3NXfwB-AGpLVwCCSog-haJpCdhw5pkLR6Bo7o4huHI8yhqCsw6JSJSrvarDuM5sCoR3WJfF3IbKuzEZ8HH6lnC3zo7hUFYLatD1jHqLNfadId_YVApeSucveAx4fwlPHjH_kVcOrEjOr96sLIbq9weBK">
+</div>
+<div class="aspect-square rounded-lg overflow-hidden bg-gray-100">
+<img alt="水电打压图3" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDbKvnxKWH8LgzlaOtf-C_BO4GCuTiERhY_cw2Xsf31ExR0bMct2mWddz5OH8I9yWB6iLDpDKMqvVS3TfVVcYLTN2ne874RfvEbfig4MX9rPys8L46BYTePgptaGy0p09FTxu7oqPycdYw6QW87sQmMEwS6tAij4eKTg9q1rb-gTw09el4PYwkZPGl1oXmCZlgr7tOG3yyHPTZMPM3P89N-roFmN-fin6ZeDySBdCfIiwixHU_l05OC">
+</div>
+<!-- Extra Count Overlay Image -->
+<div class="aspect-square rounded-lg overflow-hidden relative bg-gray-200">
+<img alt="水电现场图4" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA_n2JEjq_jCgg3DlUs0oPl2-qh-kk1bFchW5shBQb1wzK3IjcG81mhTtDKqucoZ2PtIeC-Uld3LAkik6VZSPGqVNn-LO-xfkGh7o3Kf4DG2BVSdcqkv9YZTc93tPkOsLQsTQ_LrIhs2xZEbqhoJ2dHrPte6PhgA4QiIiQSLKWrrgqaC4GE4Zrv2o-zXZbykx9bfqG_LBc_1oYHsQo96PziQMgtSKfqhCeVzegu7xgGUSPTZx3Rg8se">
+<div class="absolute inset-0 bg-black/40 flex items-center justify-center text-white font-bold text-sm backdrop-blur-[1px]">
+                +6
+              </div>
+</div>
+</div>
+<!-- Bottom Comment Counter -->
+<div class="flex justify-end items-center pt-1">
+<button class="flex items-center space-x-1 text-xs text-gray-500 hover:text-brandBlue">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="">评论 3</span>
+</button>
+</div>
+</div>
+</section>
+<!-- END: EngineeringUpdatesSection -->
+<!-- BEGIN: FinancialOverviewSection -->
+<section class="bg-white rounded-2xl p-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100/80" data-purpose="financial-summary">
+<!-- Header -->
+<div class="flex items-center justify-between mb-3">
+<div class="flex items-center space-x-2">
+<h2 class="font-bold text-sm text-gray-900 tracking-tight">账目概览</h2>
+<span class="px-2 py-0.5 text-[10px] rounded-full bg-amber-50 text-amber-600 font-medium">有 1 笔付款待您确认</span>
+</div>
+<button class="text-xs text-brandBlue flex items-center">
+            查看详情
+            <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+<!-- 2x2 Metric Cards Grid -->
+<div class="grid grid-cols-2 gap-2.5 mb-3">
+<!-- Metric 1: Total Contract -->
+<div class="p-2.5 bg-blue-50/40 rounded-xl flex items-center space-x-2.5">
+<div class="w-8 h-8 rounded-lg bg-brandBlue flex items-center justify-center text-white shrink-0">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<div>
+<div class="text-[11px] text-gray-500">合同总额</div>
+<div class="font-bold text-xs text-gray-900 tracking-tight">¥ 200,000</div>
+</div>
+</div>
+<!-- Metric 2: Received -->
+<div class="p-2.5 bg-emerald-50/40 rounded-xl flex items-center space-x-2.5">
+<div class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white shrink-0">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<div>
+<div class="text-[11px] text-gray-500">已收款</div>
+<div class="font-bold text-xs text-gray-900 tracking-tight">¥ 80,000</div>
+</div>
+</div>
+<!-- Metric 3: Spent -->
+<div class="p-2.5 bg-amber-50/40 rounded-xl flex items-center space-x-2.5">
+<div class="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-white shrink-0">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<div>
+<div class="text-[11px] text-gray-500">已支出</div>
+<div class="font-bold text-xs text-gray-900 tracking-tight">¥ 30,000</div>
+</div>
+</div>
+<!-- Metric 4: Balance -->
+<div class="p-2.5 bg-purple-50/40 rounded-xl flex items-center space-x-2.5">
+<div class="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<div>
+<div class="text-[11px] text-gray-500">当前余额</div>
+<div class="font-bold text-xs text-gray-900 tracking-tight">¥ 50,000</div>
+</div>
+</div>
+</div>
+<!-- Next Payment Banner -->
+<div class="flex items-center justify-between p-2.5 bg-amber-50/50 rounded-xl border border-amber-100">
+<div class="flex items-center space-x-2">
+<div class="w-4 h-4 rounded-full bg-amber-500 text-white flex items-center justify-center text-[10px] font-bold">
+              ¥
+            </div>
+<span class="text-xs text-gray-800 font-medium">下一节点：水电验收款 <strong class="font-bold">¥ 30,000</strong></span>
+</div>
+<svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+</section>
+<!-- END: FinancialOverviewSection -->
+<!-- BEGIN: ContactAndNavigationSection -->
+<section class="bg-white rounded-2xl p-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100/80" data-purpose="contacts-and-location">
+<h2 class="font-bold text-sm text-gray-900 tracking-tight mb-3">联系与导航</h2>
+<div class="space-y-3">
+<!-- Foreman Contact -->
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-2.5">
+<div class="w-6 h-6 rounded-full bg-blue-50 text-brandBlue flex items-center justify-center shrink-0">
+<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+<path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"></path>
+</svg>
+</div>
+<div class="flex items-center space-x-2 text-xs">
+<span class="text-gray-400 w-12">主工长</span>
+<span class="font-semibold text-gray-800">李师傅</span>
+<span class="text-gray-500 tracking-tight">138 1234 5678</span>
+</div>
+</div>
+<a class="flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-brandBlue text-xs font-medium active:scale-95 transition-transform" href="tel:13812345678">
+<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+<path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"></path>
+</svg>
+              拨打电话
+            </a>
+</div>
+<!-- Supervisor Contact -->
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-2.5">
+<div class="w-6 h-6 rounded-full bg-blue-50 text-brandBlue flex items-center justify-center shrink-0">
+<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+<path clip-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" fill-rule="evenodd"></path>
+</svg>
+</div>
+<div class="flex items-center space-x-2 text-xs">
+<span class="text-gray-400 w-12">监理</span>
+<span class="font-semibold text-gray-800">王监理</span>
+<span class="text-gray-500 tracking-tight">139 8765 4321</span>
+</div>
+</div>
+<a class="flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-brandBlue text-xs font-medium active:scale-95 transition-transform" href="tel:13987654321">
+<svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+<path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"></path>
+</svg>
+              拨打电话
+            </a>
+</div>
+<!-- Project Address Row -->
+<div class="flex items-center justify-between">
+<div class="flex items-center space-x-2.5 min-w-0 pr-2">
+<div class="w-6 h-6 rounded-full bg-blue-50 text-brandBlue flex items-center justify-center shrink-0">
+<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+<path clip-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" fill-rule="evenodd"></path>
+</svg>
+</div>
+<div class="flex items-center space-x-2 text-xs truncate">
+<span class="text-gray-400 shrink-0 w-12">项目地址</span>
+<span class="text-gray-800 font-medium truncate">杭州市西湖区文一西路 128 号</span>
+</div>
+</div>
+<button class="flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-brandBlue text-xs font-medium shrink-0 active:scale-95 transition-transform">
+<svg class="w-3 h-3 mr-1 transform rotate-45 -mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+<path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path>
+</svg>
+              导航
+            </button>
+</div>
+</div>
+</section>
+<!-- END: ContactAndNavigationSection -->
+</main>
+<!-- END: MainContent -->
+</div>
+
+
+</body></html>

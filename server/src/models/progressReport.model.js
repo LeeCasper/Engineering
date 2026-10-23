@@ -59,7 +59,10 @@ async function listByProject({ projectId, offset, limit, itemId }) {
   const fromClause = `FROM progress_report r
        JOIN project_item i ON i.id = r.project_item_id
        JOIN project_stage s ON s.id = i.project_stage_id
-       JOIN user u ON u.id = r.user_id`
+       JOIN user u ON u.id = r.user_id
+       LEFT JOIN project_member pm
+         ON pm.project_id = r.project_id AND pm.user_id = r.user_id
+        AND pm.status = 'active' AND pm.deleted_at IS NULL`
   const whereClause = `WHERE ${where.join(' AND ')}`
 
   const total = await db.count(`${fromClause} ${whereClause}`, params)
@@ -67,7 +70,12 @@ async function listByProject({ projectId, offset, limit, itemId }) {
   const rows = await db.query(
     `SELECT r.id, r.project_item_id, r.user_id, r.progress, r.content, r.created_at,
             i.name AS item_name, s.id AS stage_id, s.name AS stage_name,
-            u.nickname, u.avatar
+            u.nickname, u.avatar, pm.role AS author_role,
+            -- 汇报完成度变化：列表页要展示「80% → 100%」，
+            -- 但 progress_report 只存最终值；取同一次汇报产生的留痕
+            (SELECT pl.from_progress FROM progress_log pl
+              WHERE pl.report_id = r.id AND pl.deleted_at IS NULL
+              ORDER BY pl.id DESC LIMIT 1) AS from_progress
        ${fromClause}
        ${whereClause}
       ORDER BY r.created_at DESC, r.id DESC

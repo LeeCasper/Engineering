@@ -8,6 +8,13 @@ export interface TenantUsage {
   adminCount: number;
 }
 
+export interface TenantRegion {
+  provinceCode: string;
+  provinceName: string;
+  cityCode: string | null;
+  cityName: string | null;
+}
+
 export interface TenantItem {
   id: number;
   name: string;
@@ -24,6 +31,9 @@ export interface TenantItem {
   contactName: string | null;
   contactPhone: string | null;
   remark: string | null;
+  /** 平台运营统计用的省 / 市；历史租户可能为 null */
+  region: TenantRegion | null;
+  regionLabel: string | null;
   usage: TenantUsage;
   createdAt: string;
   updatedAt: string;
@@ -48,6 +58,9 @@ export interface TenantCreateInput {
   contactName?: string;
   contactPhone?: string;
   remark?: string;
+  /** 新建租户必填；名称由后端按代码派生 */
+  provinceCode: string;
+  cityCode: string;
   owner: {
     username: string;
     password: string;
@@ -64,6 +77,9 @@ export interface TenantUpdateInput {
   contactName?: string | null;
   contactPhone?: string | null;
   remark?: string | null;
+  /** 省、市必须成对传；都传 null 表示清空 */
+  provinceCode?: string | null;
+  cityCode?: string | null;
 }
 
 export interface TenantProvisionResult {

@@ -23,6 +23,7 @@ const tenantModel = require('../models/tenant.model')
 const adminUserModel = require('../models/adminUser.model')
 const stageTemplateModel = require('../models/stageTemplate.model')
 const operationLog = require('./operationLog.service')
+const region = require('../utils/region')
 const { DEFAULT_STAGE_TEMPLATE, CONTENT_PAGE_SKELETONS } = require('../data/tenantDefaults')
 
 const STATUSES = ['active', 'suspended', 'archived']
@@ -63,6 +64,19 @@ function shape(row) {
     contactName: row.contact_name,
     contactPhone: row.contact_phone,
     remark: row.remark,
+    region: row.province_code
+      ? {
+          provinceCode: row.province_code,
+          provinceName: row.province_name,
+          cityCode: row.city_code || null,
+          cityName: row.city_name || null,
+        }
+      : null,
+    regionLabel: row.province_code
+      ? row.city_code && row.city_code !== row.province_code
+        ? `${row.province_name} / ${row.city_name}`
+        : row.province_name
+      : null,
     usage: {
       projectCount: Number(row.project_count ?? 0),
       adminCount: Number(row.admin_count ?? 0),
@@ -80,6 +94,9 @@ async function list(operator, query, paging) {
   const { total, rows } = await tenantModel.list({
     status: query.status,
     keyword: query.keyword,
+    provinceCode: query.provinceCode,
+    cityCode: query.cityCode,
+    unassigned: query.unassigned,
     offset: paging.offset,
     limit: paging.limit,
   })
@@ -139,6 +156,11 @@ async function provision(operator, input) {
   // 密码哈希在事务外算：bcrypt 是 CPU 密集的，放进事务会拉长持锁时间
   const passwordHash = await password.hash(input.owner.password)
   const structure = buildDefaultStructure()
+  // 新建租户必须填地区；名称由代码派生，不信任前端传值
+  const resolvedRegion = region.resolveRegion({
+    provinceCode: input.provinceCode,
+    cityCode: input.cityCode,
+  })
 
   const result = await db.withTransaction(async (tx) => {
     const tenantId = await tenantModel.create(
@@ -153,6 +175,7 @@ async function provision(operator, input) {
         contactName: input.contactName,
         contactPhone: input.contactPhone,
         remark: input.remark,
+        ...resolvedRegion,
       },
       tx
     )
@@ -212,6 +235,7 @@ async function provision(operator, input) {
             maxProjects: input.maxProjects ?? 20,
             maxAdminUsers: input.maxAdminUsers ?? 5,
             expiresAt: input.expiresAt ?? null,
+            ...resolvedRegion,
             ownerUsername: input.owner.username,
             defaultTemplateId: templateId,
           },
@@ -244,6 +268,17 @@ async function updateTerms(operator, tenantId, input) {
   const before = await tenantModel.findById(tenantId)
   if (!before) throw AppError.notFound('租户不存在')
 
+  // 只把**实际出现**的键交给地区解析器：两个键都传 undefined 会被误判为
+  // 「显式清空地区」，而 updateTerms 的其它字段是同一种「不传就不改」的语义。
+  const regionInput = {}
+  if (Object.prototype.hasOwnProperty.call(input, 'provinceCode')) {
+    regionInput.provinceCode = input.provinceCode
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'cityCode')) {
+    regionInput.cityCode = input.cityCode
+  }
+  const regionChanges = region.resolveRegionUpdate(regionInput)
+
   await tenantModel.updateTerms(tenantId, {
     plan: input.plan,
     maxProjects: input.maxProjects,
@@ -253,6 +288,7 @@ async function updateTerms(operator, tenantId, input) {
     contactName: input.contactName,
     contactPhone: input.contactPhone,
     remark: input.remark,
+    ...regionChanges,
   })
 
   const after = await tenantModel.findById(tenantId)
@@ -271,6 +307,10 @@ async function updateTerms(operator, tenantId, input) {
     contact_name: 'contactName',
     contact_phone: 'contactPhone',
     remark: 'remark',
+    province_code: 'provinceCode',
+    province_name: 'provinceName',
+    city_code: 'cityCode',
+    city_name: 'cityName',
   }
   for (const [column, key] of Object.entries(mapping)) {
     if (String(before[column] ?? '') !== String(after[column] ?? '')) {

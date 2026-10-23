@@ -76,6 +76,10 @@ router.use('/reconciliations', reconciliationRoutes.reconciliationRouter)
 // 后台管理员对「新增/修改/失效」与「查看」四栏全是 ❌（AC-K01 / AC-K02）
 router.use('/door-codes', doorCodeRoutes.codeRouter)
 
+// 考察计划与路线规划（§4.6）。路线方案是个人资产，因此挂在顶层，
+// 与「当前看哪个项目」无关；项目坐标仍通过 /projects/:id/location 提供
+router.use('/route-plans', require('./mini/routePlan.routes'))
+
 // 消息中心（AC-U06~U10）。挂在顶层而不是 /projects 之下：消息是「给我的」，
 // 与当前看哪个项目无关 —— 进入某个项目才看得到自己的消息，会让人漏掉提醒
 router.use('/notifications', require('./mini/notification.routes'))

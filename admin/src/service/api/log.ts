@@ -44,6 +44,7 @@ export interface LoginLog {
   ip: string;
   result: 'success' | 'failed';
   failReason: string | null;
+  authMethod?: 'password' | 'wechat';
 }
 
 export interface LoginLogParams {
@@ -54,21 +55,25 @@ export interface LoginLogParams {
   adminUserId?: number;
 }
 
-export function fetchOperationLogFilters() {
-  return request<{ modules: OperationLogFilterModule[] }>({ url: '/admin/operation-logs/filters' });
+export type LogScope = 'tenant' | 'platform';
+
+export function fetchOperationLogFilters(scope: LogScope = 'tenant') {
+  return request<{ modules: OperationLogFilterModule[] }>({
+    url: scope === 'platform' ? '/admin/platform/logs/operation/filters' : '/admin/operation-logs/filters'
+  });
 }
 
-export function fetchOperationLogs(params: OperationLogParams) {
+export function fetchOperationLogs(params: OperationLogParams, scope: LogScope = 'tenant') {
   return request<PageResult<OperationLog>>({
-    url: '/admin/operation-logs',
+    url: scope === 'platform' ? '/admin/platform/logs/operation' : '/admin/operation-logs',
     method: 'get',
     params
   });
 }
 
-export function fetchLoginLogs(params: LoginLogParams) {
+export function fetchLoginLogs(params: LoginLogParams, scope: LogScope = 'tenant') {
   return request<PageResult<LoginLog>>({
-    url: '/admin/login-logs',
+    url: scope === 'platform' ? '/admin/platform/logs/login' : '/admin/login-logs',
     method: 'get',
     params
   });

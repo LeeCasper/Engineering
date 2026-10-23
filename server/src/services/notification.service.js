@@ -264,13 +264,23 @@ async function resolveTenantId({ tenantId, projectId }) {
   return row ? row.tenant_id : null
 }
 
-/** 业务消息类型 → 模板 ID（B-5.7 逐业务配置，**按租户**） */
-async function resolveTemplateId(tenantId, type) {
+/**
+ * 业务消息类型 → 模板 ID（B-5.7）。
+ *
+ * ── 模板 ID 是平台级的，不是租户级 ──
+ * 模板 ID 来自微信公众平台的小程序后台。本项目一个小程序服务多个租户，
+ * 小程序主体是平台，租户没有该小程序的登录权限，申请不到模板 ID。
+ * 因此这里**固定读平台基础配置**（tenantId = null），不使用调用方传入的租户。
+ * `tenantId` 参数仍然保留：它在这一层没有用，但调用方（订阅授权、推送）
+ * 需要它来定位 `user_subscription` 的租户维度 —— 同一个模板 ID 下，
+ * 不同租户的授权状态必须分开。
+ */
+async function resolveTemplateId(_tenantId, type) {
   // 走 sysConfigService 而不是自己查 sys_config：
   // 那边有默认值回落与 60 秒缓存，也保证「后台能配的键」与「这里读的键」
   // 出自同一个注册表。自己查库则既绕过默认值、也绕过缓存失效，
   // 表现为后台改完模板 ID 要等一分钟才生效，而别处的配置立刻生效
-  const value = await sysConfigService.getRaw(tenantId, `subscribe_template_${type}`)
+  const value = await sysConfigService.getRaw(null, `subscribe_template_${type}`)
   return value || null
 }
 

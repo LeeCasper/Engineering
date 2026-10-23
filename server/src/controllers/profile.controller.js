@@ -12,9 +12,14 @@
 
 const profileService = require('../services/profile.service')
 
-/** GET /projects/:id/my-stats —— 工长专属统计（AC-U14） */
+/** GET /projects/:id/my-stats —— 工长在单个项目里的统计（AC-U14） */
 async function myStats(req, res) {
   res.ok(await profileService.getMyStats(req.auth.id, Number(req.params.id)))
+}
+
+/** GET /projects/my-stats —— 工长跨项目汇总；Mine 未选项目时使用 */
+async function myStatsAll(req, res) {
+  res.ok(await profileService.getMyStatsAll(req.auth.id))
 }
 
 /** GET /projects/:id/contacts —— 业主查看工长/监理联系方式（AC-U15） */
@@ -22,4 +27,4 @@ async function contacts(req, res) {
   res.ok(await profileService.getContacts(req.auth.id, Number(req.params.id)))
 }
 
-module.exports = { myStats, contacts }
+module.exports = { myStats, myStatsAll, contacts }

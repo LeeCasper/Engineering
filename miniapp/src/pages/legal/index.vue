@@ -6,7 +6,7 @@
 
     <view v-else-if="error" class="state">
       <text class="state-title">{{ error }}</text>
-      <text class="state-text">可稍后在「我的 → 关于工程宝」中查看</text>
+      <text class="state-text">可稍后在「我的 → 关于柏总管」中查看</text>
     </view>
 
     <view v-else class="document">
@@ -21,6 +21,7 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getContent } from '../../api/auth'
+import { getCurrentProject } from '../../store/projectContext'
 
 const TITLES = { agreement: '用户协议', privacy: '隐私政策', about: '关于我们' }
 
@@ -36,7 +37,10 @@ onLoad(async (options) => {
   uni.setNavigationBarTitle({ title: title.value })
 
   try {
-    const data = await getContent(key)
+    // 有当前项目时优先读该项目所属租户的版本；没有则读平台基础版本。
+    // 后端也会做同样顺序的回退，这里带 tenantId 是为了让租户覆盖版本生效。
+    const currentProject = getCurrentProject()
+    const data = await getContent(key, currentProject ? currentProject.tenantId : undefined)
     title.value = data.title || title.value
     content.value = data.content || ''
     version.value = data.version || ''

@@ -191,10 +191,27 @@ const config = {
   },
 
   map: {
+    /**
+     * 地图服务商：auto / amap / tencent。
+     *
+     * - auto：有高德 Key 用高德，否则用腾讯；两者都没有时降级
+     * - amap：只用高德（同时支持地理编码与驾车路线规划）
+     * - tencent：只用腾讯（仅地理编码；腾讯路线规划不在本轮实现）
+     *
+     * 路线规划只依赖高德（§4.6）。把服务商做成显式配置，是为了让运维
+     * 在同一个部署里能明确知道「当前用的是谁」，而不是靠 Key 是否为空来猜。
+     */
+    provider: str('MAP_PROVIDER', 'auto').toLowerCase(),
+    amapKey: str('AMAP_KEY', ''),
     tencentKey: str('TENCENT_MAP_KEY', ''),
     get enabled() {
       // 未配置 Key 时地理编码降级为手工拾取坐标（AC-AD54），不阻断建档
-      return this.tencentKey !== ''
+      return this.amapKey !== '' || this.tencentKey !== ''
+    },
+    get routingEnabled() {
+      // 只有高德提供了本模块使用的驾车路线接口。
+      // 显式选 tencent 时即使同时配了 AMAP_KEY 也不走路线规划。
+      return this.provider !== 'tencent' && this.amapKey !== ''
     },
   },
 

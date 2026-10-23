@@ -5,7 +5,7 @@
       "style": {
         "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
-        "backgroundColor": "#F5F8FC"
+        "backgroundColor": "#FBF6F0"
       }
     },
     {
@@ -13,15 +13,176 @@
       "style": {
         "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
-        "backgroundColor": "#F2F6FA"
+        "backgroundColor": "#FAF5F0"
       }
     },
     {
       "path": "pages/projects/index",
       "style": {
-        "navigationBarTitleText": "我的项目",
-        "navigationBarBackgroundColor": "#F5F7FA",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "white",
+        "navigationBarBackgroundColor": "#EB5C20",
+        "backgroundColor": "#FAF6F1",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/project/index",
+      "style": {
+        "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/project/feed",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/project/door-code",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/route-plan/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/route-plan/plan",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4"
+      }
+    },
+    {
+      "path": "pages/route-plan/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/acceptance/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/acceptance/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark"
+      }
+    },
+    {
+      "path": "pages/admin/login/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4"
+      }
+    },
+    {
+      "path": "pages/admin/change-password/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4"
+      }
+    },
+    {
+      "path": "pages/admin/projects/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/admin/profile/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4"
+      }
+    },
+    {
+      "path": "pages/admin/project/form",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4"
+      }
+    },
+    {
+      "path": "pages/admin/project/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/admin/project/members",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/admin/project/payments",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/admin/project/stages",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
         "enablePullDownRefresh": true
       }
     },
@@ -32,12 +193,90 @@
         "navigationBarBackgroundColor": "#FFFFFF",
         "navigationBarTextStyle": "black"
       }
+    },
+    {
+      "path": "pages/message/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/subscriptions/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4"
+      }
+    },
+    {
+      "path": "pages/feedback/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4"
+      }
+    },
+    {
+      "path": "pages/ledger/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/mine/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "white",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
     }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "工程宝",
-    "navigationBarBackgroundColor": "#F5F7FA",
-    "backgroundColor": "#F5F7FA"
+    "navigationBarTitleText": "柏总管",
+    "navigationBarBackgroundColor": "#FAF7F4",
+    "backgroundColor": "#FAF7F4"
+  },
+  "tabBar": {
+    "color": "#8B8179",
+    "selectedColor": "#EB5C20",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/projects/index",
+        "text": "项目",
+        "iconPath": "static/images/icon-tab-project-gray.png",
+        "selectedIconPath": "static/images/icon-tab-project-accent.png"
+      },
+      {
+        "pagePath": "pages/acceptance/index",
+        "text": "验收",
+        "iconPath": "static/images/icon-tab-acceptance-gray.png",
+        "selectedIconPath": "static/images/icon-tab-acceptance-accent.png"
+      },
+      {
+        "pagePath": "pages/ledger/index",
+        "text": "记账",
+        "iconPath": "static/images/icon-tab-ledger-gray.png",
+        "selectedIconPath": "static/images/icon-tab-ledger-accent.png"
+      },
+      {
+        "pagePath": "pages/mine/index",
+        "text": "我的",
+        "iconPath": "static/images/icon-tab-mine-gray.png",
+        "selectedIconPath": "static/images/icon-tab-mine-accent.png"
+      }
+    ]
   }
 }

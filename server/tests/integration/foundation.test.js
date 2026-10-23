@@ -149,9 +149,11 @@ describe('基建 · 数据层连接', () => {
     //   project_door_code（v1.7 门锁密码，迁移 014）
     //   admin_notification、export_task（迁移 012）
     //   content_page、feedback（迁移 013，M11 补的两处 §6.3 漏项）
+    //   report_media_staging（迁移 017，小程序逐文件上传的暂存）
+    //   admin_wechat_binding（迁移 018，小程序管理员微信免密绑定）
     // 这个数字每加一张表就要改一次，是刻意的 —— 它逼着改动者确认
     // 「新表是不是真的该建」，而不是随手加一张
-    expect(names).toHaveLength(38)
+    expect(names).toHaveLength(40)
 
     for (const expected of [
       'user',
@@ -166,6 +168,7 @@ describe('基建 · 数据层连接', () => {
       'project_door_code',
       'tenant',
       'platform_access_grant',
+      'admin_wechat_binding',
     ]) {
       expect(names).toContain(expected)
     }

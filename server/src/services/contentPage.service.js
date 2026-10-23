@@ -33,9 +33,21 @@ async function listAll(tenantId) {
   const rows = await contentPageModel.listAll(tenantId)
   const stored = new Map(rows.map((r) => [r.page_key, r]))
 
+  // 租户列表要同时看到平台基础版本：本租户没发布时 C 端实际显示的是它。
+  // 不展示这一层，管理员会误以为「我没发过，所以 C 端什么都没有」。
+  const platformRows = tenantId == null ? rows : await contentPageModel.listAll(null)
+  const platformStored = new Map(platformRows.map((r) => [r.page_key, r]))
+
   return Object.entries(PAGES)
     .map(([pageKey, meta]) => {
       const row = stored.get(pageKey)
+      const platformRow = platformStored.get(pageKey)
+
+      // 与 C 端读取顺序完全一致：本租户已发布 → 平台已发布 → 都没有
+      let effectiveSource = 'none'
+      if (row && row.published_at) effectiveSource = tenantId == null ? 'platform' : 'tenant'
+      else if (platformRow && platformRow.published_at) effectiveSource = 'platform'
+
       return {
         pageKey,
         label: meta.label,
@@ -47,6 +59,10 @@ async function listAll(tenantId) {
         // 而把两三页完整法律文本塞进一个列表响应，纯属浪费
         contentLength: row ? row.content_length : 0,
         exists: Boolean(row),
+        // 本租户还没创建覆盖版本，但平台已有可继承的已发布版本
+        inheritsPlatform: tenantId != null && (!row || !row.published_at) && Boolean(platformRow && platformRow.published_at),
+        platformPublishedAt: tenantId != null && platformRow ? platformRow.published_at : null,
+        effectiveSource,
         updatedAt: row ? row.updated_at : null,
       }
     })
@@ -85,7 +101,19 @@ async function getForAdmin(tenantId, pageKey) {
  */
 async function getPublished(tenantId, pageKey) {
   assertKnownKey(pageKey)
-  const row = await contentPageModel.findByKey(tenantId, pageKey, { requirePublished: true })
+
+  // 租户已发布 → 平台基础已发布 → 404。
+  //
+  // 平台基础版本是登录前唯一能读到的版本（那时没有租户上下文），
+  // 也是租户尚未发布时的兜底。少了这一层，共享小程序在登录页
+  // 根本打不开用户协议 —— 而隐私政策是合规必需入口。
+  let row = null
+  if (tenantId != null) {
+    row = await contentPageModel.findByKey(tenantId, pageKey, { requirePublished: true })
+  }
+  if (!row) {
+    row = await contentPageModel.findByKey(null, pageKey, { requirePublished: true })
+  }
   if (!row) throw AppError.notFound('页面尚未发布')
 
   return {
@@ -110,9 +138,19 @@ async function getPublished(tenantId, pageKey) {
 async function save(pageKey, input, operator) {
   assertKnownKey(pageKey)
 
-  if (!operator.tenantId) throw AppError.forbidden('平台账号不能修改租户内容页')
+  // 平台运营改的是平台基础版本（tenant_id IS NULL），租户管理员改自己的覆盖版本。
+  // 平台持排障授权进入租户时 tenantId 非空、role 仍是 platform —— 写操作
+  // 在 requireTenant 就被拦下了，这里再拒绝一次，避免服务被别的调用方误用。
+  const targetTenantId =
+    operator.role === 'platform' && operator.tenantId == null ? null : operator.tenantId
+  if (operator.role === 'platform' && operator.tenantId != null) {
+    throw AppError.forbidden('平台排障窗口内只能查看内容页')
+  }
+  if (targetTenantId == null && operator.role !== 'platform') {
+    throw AppError.forbidden('缺少租户信息，无法保存内容页')
+  }
 
-  const before = await contentPageModel.findByKey(operator.tenantId, pageKey)
+  const before = await contentPageModel.findByKey(targetTenantId, pageKey)
 
   // 已发布的页面，`published_at` 不再变化 —— 它记录的是「这一版什么时候上线的」，
   // 每次编辑都刷新会让「用户当时同意的是哪一版」这个问题失去答案
@@ -123,7 +161,7 @@ async function save(pageKey, input, operator) {
   const content = input.content ?? (before ? before.content : null)
 
   await contentPageModel.upsert({
-    tenantId: operator.tenantId,
+    tenantId: targetTenantId,
     pageKey,
     title,
     content,
@@ -139,6 +177,7 @@ async function save(pageKey, input, operator) {
     // 内容页没有自增 id 可引用（upsert 前可能还不存在），用键名定位
     targetId: null,
     detail: {
+      scope: targetTenantId == null ? 'platform' : 'tenant',
       // **只记长度与版本，不记正文**：正文动辄数千字，写进 operation_log
       // 会让审计表迅速膨胀，且它本身不是「变更前后值」这类需要逐字比对的东西。
       // 需要留证时靠 version 字段（后台填写的版本号）回溯
@@ -152,7 +191,7 @@ async function save(pageKey, input, operator) {
     },
   })
 
-  return getForAdmin(operator.tenantId, pageKey)
+  return getForAdmin(targetTenantId, pageKey)
 }
 
 module.exports = { PAGES, listAll, getForAdmin, getPublished, save }

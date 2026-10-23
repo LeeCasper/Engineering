@@ -9,6 +9,7 @@ const asyncHandler = require('../../utils/asyncHandler')
 const { requireMini } = require('../../middlewares/miniAuth')
 const { createRateLimit } = require('../../middlewares/rateLimit')
 const controller = require('../../controllers/miniAuth.controller')
+const adminController = require('../../controllers/miniAdminAuth.controller')
 
 const router = express.Router()
 
@@ -40,5 +41,26 @@ router.post('/bind-phone', requireMini, asyncHandler(controller.bindPhone))
  * 需要登录态 —— 注销的是当前 token 对应的账号，不接受传入 userId。
  */
 router.post('/deactivate', requireMini, asyncHandler(controller.deactivate))
+
+/**
+ * 小程序管理端的微信免密入口。
+ *
+ * C token 只证明微信身份；换到的是普通管理员 token，之后仍然走 /admin/*。
+ * 免密登录单独限流，避免绑定 id 被反复尝试。
+ */
+const wechatLoginRateLimit = createRateLimit({
+  scope: 'mini-admin-wechat-login',
+  max: 20,
+  identity: (req) => (req.auth ? `${req.ip}|${req.auth.id}` : req.ip),
+  message: '操作过于频繁，请稍后再试',
+})
+
+router.get('/admin/bindings', requireMini, asyncHandler(adminController.listBindings))
+router.post(
+  '/admin/wechat-login',
+  requireMini,
+  wechatLoginRateLimit,
+  asyncHandler(adminController.wechatLogin)
+)
 
 module.exports = router

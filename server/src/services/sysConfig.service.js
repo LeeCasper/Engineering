@@ -71,16 +71,7 @@ async function getRaw(tenantId, key) {
 
   let row = null
   try {
-    row =
-      tenantId == null
-        ? await db.queryOne(
-            "SELECT config_value FROM sys_config WHERE config_key = ? AND scope = 'global' AND tenant_id IS NULL AND deleted_at IS NULL",
-            [key]
-          )
-        : await db.queryOne(
-            "SELECT config_value FROM sys_config WHERE config_key = ? AND scope = 'global' AND tenant_id = ? AND deleted_at IS NULL",
-            [key, tenantId]
-          )
+    row = await loadConfigRow(tenantId, key)
   } catch (err) {
     // 配置表读不到不该让业务接口挂掉：回落到默认值并留痕。
     // 这与「缓存不可用时放行」是同一个判断：配置是辅助信息，不是业务数据
@@ -90,6 +81,35 @@ async function getRaw(tenantId, key) {
   const value = row ? row.config_value : null
   cache.set(cacheKey, { value, loadedAt: Date.now() })
   return value === null ? DEFAULTS[key] ?? '' : value
+}
+
+/**
+ * 读取一行配置：租户覆盖 → 平台基础 → null（调用方再回落到代码默认值）。
+ *
+ * `tenantId = null` 时只读平台基础行。
+ *
+ * 注意「租户没有行」与「租户显式配置了空字符串」是两件事：
+ * 前者继承平台，后者是一个有效的覆盖值（例如客服联系方式留空）。
+ * 因此这里用「行是否存在」判断，而不是 `config_value` 是否为空。
+ */
+async function loadConfigRow(tenantId, key) {
+  const base =
+    "SELECT config_value, description FROM sys_config WHERE config_key = ? AND scope = 'global' AND deleted_at IS NULL"
+
+  if (tenantId == null) {
+    return db.queryOne(`${base} AND tenant_id IS NULL`, [key])
+  }
+
+  // 平台专属配置（如微信公众号订阅消息模板 ID）不接受租户覆盖。
+  // 即使历史库里残留了租户行，也直接读平台值 —— 否则租户会看到「配了但没用」。
+  if (SCHEMA[key] && SCHEMA[key].platformOnly) {
+    return db.queryOne(`${base} AND tenant_id IS NULL`, [key])
+  }
+
+  const tenantRow = await db.queryOne(`${base} AND tenant_id = ?`, [key, tenantId])
+  if (tenantRow) return tenantRow
+
+  return db.queryOne(`${base} AND tenant_id IS NULL`, [key])
 }
 
 /** 取整数配置。非法值回落默认值并告警 —— 配置写错不该让接口 500 */
@@ -137,7 +157,7 @@ function getGateStrength(tenantId) {
  * 定义集中在这里之后，新增配置项时**必须**同时写清楚它的合法范围。
  *
  * ── `effective` 字段是诚实性要求 ──
- * `sign_in_distance_threshold` 与 `route_max_points` 属于 V1.2 的签到与路线模块，
+ * `sign_in_distance_threshold` 属于尚未交付的现场签到模块，
  * `operation_log_retention` 对应的清理任务也还没写。这些值改完**不会立即生效**。
  * 若接口一律显示「保存成功」，管理员会以为自己调好了阈值而实际什么都没发生 ——
  * 那种「配置项存在但没人读」的界面比没有这个界面更糟。因此这里显式标注，
@@ -215,8 +235,7 @@ const SCHEMA = {
     unit: '个',
     label: '单次路线规划途经点上限',
     requirement: 'B-5.6',
-    effective: false,
-    note: '路线规划模块（V1.2）上线后生效',
+    note: '按租户配置；新的规划请求立即使用新上限，历史考察计划不受影响',
   },
   operation_log_retention: {
     type: 'enum',
@@ -264,8 +283,13 @@ for (const type of SUBSCRIBE_TEMPLATE_TYPES) {
     maxLength: 64,
     label: `订阅消息模板 ID（${type}）`,
     requirement: 'B-5.7',
+    // ── 平台统一配置，租户只读 ──
+    // 模板 ID 来自微信公众平台的小程序后台。本项目是**一个小程序服务多个租户**，
+    // 小程序的主体是平台，租户没有这个小程序的登录权限，根本申请不到模板 ID。
+    // 让租户配置只会得到一串永远不生效的值，因此这里从根上禁止租户覆盖。
+    platformOnly: true,
     // 模板 ID 要从微信后台申请审核通过后才有，没配就是走纯站内消息（AC-U12）
-    note: '留空表示该类消息只发站内信；微信订阅消息推送尚未接入（缺凭据）',
+    note: '由平台统一配置（模板 ID 来自微信公众平台）；留空表示该类消息只发站内信',
   }
   // 默认值由注册表补全，而不是要求改代码的人记得去上面那个 DEFAULTS 字面量里再写一行。
   // 漏写的后果很隐蔽：`getRaw` 会对没有默认值的键返回空串，于是「未配置」
@@ -336,10 +360,37 @@ async function describeAll(tenantId) {
   const rows = await sysConfigModel.listGlobal(tenantId)
   const stored = new Map(rows.map((r) => [r.config_key, r]))
 
+  // 租户视角还要读平台基础版本：它决定「没有覆盖时实际生效的是什么」，
+  // 也是「恢复平台默认」按钮的目标值。
+  const platformRows =
+    tenantId == null ? rows : await sysConfigModel.listGlobal(null)
+  const platformStored = new Map(platformRows.map((r) => [r.config_key, r]))
+
   return Object.entries(SCHEMA)
     .map(([key, spec]) => {
-      const row = stored.get(key)
-      const value = row ? row.config_value : DEFAULTS[key] ?? ''
+      // 平台专属配置忽略租户行：数据库里即便有历史覆盖值，读取与展示都不能用它，
+      // 否则界面会出现「租户覆盖」而实际读的是平台值，运维会被误导。
+      const storedRow = stored.get(key)
+      const row = spec.platformOnly && tenantId != null ? undefined : storedRow
+      const platformRow = platformStored.get(key)
+
+      // source 是这次改造新增的语义：
+      //   tenant   = 该租户显式覆盖
+      //   platform = 继承平台基础版本
+      //   default  = 连平台也没配，使用代码内置默认值
+      let source
+      if (row) source = tenantId == null ? 'platform' : 'tenant'
+      else if (tenantId != null && platformRow) source = 'platform'
+      else source = 'default'
+
+      const value =
+        row
+          ? row.config_value
+          : platformRow
+            ? platformRow.config_value
+            : DEFAULTS[key] ?? ''
+      const sourceRow = row || (tenantId != null ? platformRow : null)
+
       return {
         key,
         label: spec.label,
@@ -348,10 +399,23 @@ async function describeAll(tenantId) {
         unit: spec.unit ?? null,
         note: spec.note ?? null,
         // 未落库时说明这是默认值而不是「有人配过」——两者的运维含义完全不同
-        isDefault: !row,
+        isDefault: source === 'default',
+        // 租户视角下 inherited=true 表示当前值不是本租户配的
+        inherited: tenantId != null && source !== 'tenant',
+        source,
+        // 平台专属项：租户后台只读，平台后台可编辑
+        platformOnly: Boolean(spec.platformOnly),
         value: formatValue(key, value),
-        updatedAt: row ? row.updated_at : null,
-        updatedBy: row ? row.updated_by : null,
+        // 平台基础值始终单独给一份，前端可以展示「平台：6 张 / 本租户：9 张」
+        platformValue:
+          tenantId == null
+            ? null
+            : formatValue(
+                key,
+                platformRow ? platformRow.config_value : DEFAULTS[key] ?? ''
+              ),
+        updatedAt: sourceRow ? sourceRow.updated_at : null,
+        updatedBy: sourceRow ? sourceRow.updated_by : null,
         effective: spec.effective !== false,
         // 前端据此选择控件与取值范围；不返回这些字段，界面就只能
         // 把规则再抄一份，抄漏的那项会在提交时突然被服务端拒绝
@@ -381,31 +445,32 @@ async function describe(tenantId, key) {
  *
  * ── 权限 ──
  * AC-AD67 要求「项目管理员修改系统配置返回 403」。该判断放在路由层
- * （requireSuperAdmin），因为它是**角色级**的，与目标数据无关；
+ * （requireTenantOwner），因为它是**角色级**的，与目标数据无关；
  * service 层再判一次是因为将来若有别的调用方（定时任务、脚本），
  * 它们不该绕过这条规则。
  */
 async function update(key, value, operator) {
-  if (!operator || operator.type !== 'admin') throw AppError.forbidden('仅后台账号可修改系统配置')
-  if (operator.role !== 'owner') throw AppError.forbidden('仅租户管理员可修改系统配置')
+  const targetTenantId = resolveTargetTenant(operator)
 
   const spec = SCHEMA[key]
   if (!spec) throw AppError.badRequest('未知的配置项')
 
-  if (!operator.tenantId) throw AppError.forbidden('平台账号不能修改租户配置')
+  if (spec.platformOnly && targetTenantId != null) {
+    throw AppError.forbidden(`${spec.label}由平台统一配置，租户不能修改`)
+  }
 
-  const before = await describe(operator.tenantId, key)
+  const before = await describe(targetTenantId, key)
   const normalized = normalizeValue(key, value)
 
   if (before.value === normalized) {
     // 值没变就不写库、也不记日志：否则日志里会堆满「改了但改成了同一个值」，
     // 而这类记录会掩盖真正的变更
-    return { key, value: normalized, changed: false }
+    return { key, value: normalized, changed: false, source: before.source }
   }
 
   await db.withTransaction(async (tx) => {
     await sysConfigModel.upsertGlobal(
-      { tenantId: operator.tenantId, key, value: normalized, description: spec.label, updatedBy: operator.id },
+      { tenantId: targetTenantId, key, value: normalized, description: spec.label, updatedBy: operator.id },
       tx
     )
 
@@ -414,9 +479,10 @@ async function update(key, value, operator) {
         ...operationLog.fromOperator(operator),
         action: operationLog.ACTIONS.SYS_CONFIG_UPDATE,
         targetType: 'sys_config',
-        // 配置没有自增 id，用键名做 target_id 之外的目标标识；
-        // target_id 留空，查询时按 action + detail 定位
         detail: {
+          // scope 明确这次改的是平台基线还是租户覆盖。
+          // 平台改动会影响所有未覆盖的租户，审计里必须能一眼区分。
+          scope: targetTenantId == null ? 'platform' : 'tenant',
           before: { key, value: before.value },
           after: { key, value: normalized },
         },
@@ -425,10 +491,101 @@ async function update(key, value, operator) {
     )
   })
 
-  // 只清本租户的缓存条目：别的租户的配置没有被改动
-  invalidate(operator.tenantId)
+  // 平台基础值被改时，继承它的租户缓存也必须失效；
+  // 只改某个租户时不能顺手清掉别的租户的缓存。
+  invalidate(targetTenantId ?? undefined)
 
-  return { key, value: normalized, changed: true }
+  return { key, value: normalized, changed: true, source: targetTenantId == null ? 'platform' : 'tenant' }
+}
+
+/**
+ * 恢复平台默认：删除本租户的覆盖行，重新继承平台基础版本。
+ *
+ * 只对租户 owner 开放。平台基础配置本身没有「恢复默认」的语义 ——
+ * 平台就是基线，删掉它只会让所有租户一起回落到代码默认值，
+ * 那不应该是一个普通按钮能触发的事。
+ */
+async function reset(key, operator) {
+  if (!operator || operator.type !== 'admin') throw AppError.forbidden('仅后台账号可恢复配置')
+  if (operator.role !== 'owner' || operator.tenantId == null) {
+    throw AppError.forbidden('仅租户管理员可恢复配置')
+  }
+
+  const spec = SCHEMA[key]
+  if (!spec) throw AppError.badRequest('未知的配置项')
+
+  if (spec.platformOnly) {
+    throw AppError.forbidden(`${spec.label}由平台统一配置，没有租户覆盖可恢复`)
+  }
+
+  const before = await describe(operator.tenantId, key)
+  if (before.source !== 'tenant') {
+    return { key, value: before.value, changed: false, source: before.source }
+  }
+
+  // 恢复后会读到平台基础值或代码默认值。提前算出来供审计日志使用：
+  // 事务里再调用 describe() 会走另一条连接，看不到尚未提交的软删除。
+  const platformRow = await db.queryOne(
+    "SELECT config_value FROM sys_config WHERE config_key = ? AND scope = 'global' AND tenant_id IS NULL AND deleted_at IS NULL",
+    [key]
+  )
+  const afterValue = formatValue(
+    key,
+    platformRow ? platformRow.config_value : DEFAULTS[key] ?? ''
+  )
+
+  await db.withTransaction(async (tx) => {
+    await sysConfigModel.softDeleteGlobalOverride(
+      { tenantId: operator.tenantId, key, updatedBy: operator.id },
+      tx
+    )
+
+    await operationLog.record(
+      {
+        ...operationLog.fromOperator(operator),
+        action: operationLog.ACTIONS.SYS_CONFIG_RESET,
+        targetType: 'sys_config',
+        detail: {
+          scope: 'tenant',
+          before: { key, value: before.value },
+          after: { key, value: afterValue },
+        },
+      },
+      tx
+    )
+  })
+
+  invalidate(operator.tenantId)
+  const after = await describe(operator.tenantId, key)
+
+  return { key, value: after.value, changed: true, source: after.source }
+}
+
+/**
+ * 解析一次配置写入的目标作用域。
+ *
+ * - 平台运营（tenantId 为 null）只能改平台基础配置；
+ * - 租户 owner 只能改自己租户的覆盖值；
+ * - 平台持排障授权进入租户时 `tenantId` 会被写成目标租户，但角色仍是 platform，
+ *   因此这里必须拒绝 —— 排障窗口只读，不能借 `operator.tenantId` 改客户配置。
+ */
+function resolveTargetTenant(operator) {
+  if (!operator || operator.type !== 'admin') {
+    throw AppError.forbidden('仅后台账号可修改系统配置')
+  }
+
+  if (operator.role === 'platform') {
+    if (operator.tenantId != null) {
+      throw AppError.forbidden('平台排障窗口内只能查看租户配置')
+    }
+    return null
+  }
+
+  if (operator.role === 'owner' && operator.tenantId != null) {
+    return operator.tenantId
+  }
+
+  throw AppError.forbidden('仅租户管理员或平台运营可修改系统配置')
 }
 
 /** 清空进程内缓存。改配置后调用，使变更立即生效（管理后台改配置时用） */
@@ -461,6 +618,7 @@ module.exports = {
   describeAll,
   describe,
   update,
+  reset,
   normalizeValue,
   invalidate,
 }

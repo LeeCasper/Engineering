@@ -149,7 +149,6 @@ export interface CreateProjectInput {
 export interface InviteMemberInput {
   phone: string;
   role: MemberRole;
-  confirmReplace?: boolean;
 }
 
 export interface BatchResult {

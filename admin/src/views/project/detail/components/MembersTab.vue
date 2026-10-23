@@ -28,14 +28,12 @@ const inviteDialog = reactive({
 
 const inviteForm = reactive({
   phone: '',
-  role: 'foreman' as MemberRole,
-  confirmReplace: false
+  role: 'foreman' as MemberRole
 });
 
 function openInvite() {
   inviteForm.phone = '';
   inviteForm.role = 'foreman';
-  inviteForm.confirmReplace = false;
   inviteDialog.visible = true;
 }
 
@@ -50,8 +48,7 @@ async function submitInvite() {
   try {
     const { error } = await fetchInviteMember(props.projectId, {
       phone: inviteForm.phone.trim(),
-      role: inviteForm.role,
-      confirmReplace: inviteForm.confirmReplace
+      role: inviteForm.role
     });
 
     if (error) return;
@@ -206,7 +203,7 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
         :closable="false"
         show-icon
         title="邀请按手机号发起"
-        description="对方在小程序确认前状态为「待确认」，不计入任何权限，也不会在 C 端项目列表里出现。"
+        description="角色是账号级固定的：工长 / 监理在任一项目确定后，跨项目不能更改；业主可参与多个项目。对方确认前状态为「待确认」，不计入任何权限。"
       />
 
       <ElForm label-width="84px">
@@ -220,12 +217,6 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
             <ElOption label="监理（0 名时验收自动跳过监理环节）" value="supervisor" />
             <ElOption label="业主（至少 1 名）" value="owner" />
           </ElSelect>
-        </ElFormItem>
-
-        <ElFormItem label="重复邀请">
-          <ElCheckbox v-model="inviteForm.confirmReplace">
-            该手机号已是本项目成员且角色不同时，确认替换角色
-          </ElCheckbox>
         </ElFormItem>
       </ElForm>
 

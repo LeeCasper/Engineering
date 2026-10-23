@@ -766,30 +766,82 @@ describe('AC-AD18~21 / 58 / 59 成员管理', () => {
     expect(JSON.stringify(members.body)).not.toContain('13800001111')
   })
 
-  it('同一用户在同一项目只能有一个角色，重复分配提示替换（AC-AD20）', async () => {
+  it('账号角色固定：同一用户不能在同一项目或跨项目改成另一个角色', async () => {
     const { token, projectId } = await setup()
     await request
       .authed('post', `/admin/projects/${projectId}/members`, token)
       .send({ phone: '13800002222', role: 'owner' })
 
+    // 即使是同一项目内，也不能把已固定的「业主」替换成「监理」
     const conflict = await request
       .authed('post', `/admin/projects/${projectId}/members`, token)
       .send({ phone: '13800002222', role: 'supervisor' })
 
     expect(conflict.status).toBe(409)
-    expect(conflict.body.data.needsReplace).toBe(true)
+    expect(conflict.body.data.roleLocked).toBe(true)
+    expect(conflict.body.message).toContain('固定为业主')
 
+    // 旧客户端的 confirmReplace 参数不能再绕过固定角色
     const replaced = await request
       .authed('post', `/admin/projects/${projectId}/members`, token)
       .send({ phone: '13800002222', role: 'supervisor', confirmReplace: true })
-    expect(replaced.status).toBe(200)
+    expect(replaced.status).toBe(409)
 
-    // 仍然只有一行（唯一索引保证）
     const count = await db.count(
       'FROM project_member WHERE project_id = ? AND deleted_at IS NULL',
       [projectId]
     )
     expect(count).toBe(1)
+  })
+
+  it('业主可参与多个项目；工长 / 监理跨项目仍保持同一角色', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+    const projectA = (await request.authed('post', '/admin/projects', token).send({ ...VALID_PROJECT, templateId })).body.data.id
+    const projectB = (await request.authed('post', '/admin/projects', token).send({ ...VALID_PROJECT, name: '第二个项目', templateId })).body.data.id
+
+    // 业主可以重复加入多个项目
+    expect(
+      (
+        await request.authed('post', `/admin/projects/${projectA}/members`, token).send({
+          phone: '13800007771',
+          role: 'owner',
+        })
+      ).status
+    ).toBe(200)
+    expect(
+      (
+        await request.authed('post', `/admin/projects/${projectB}/members`, token).send({
+          phone: '13800007771',
+          role: 'owner',
+        })
+      ).status
+    ).toBe(200)
+
+    // 工长在项目 A 固定后，在项目 B 仍只能以工长身份加入
+    expect(
+      (
+        await request.authed('post', `/admin/projects/${projectA}/members`, token).send({
+          phone: '13800007772',
+          role: 'foreman',
+        })
+      ).status
+    ).toBe(200)
+    const wrongRole = await request.authed('post', `/admin/projects/${projectB}/members`, token).send({
+      phone: '13800007772',
+      role: 'supervisor',
+    })
+    expect(wrongRole.status).toBe(409)
+    expect(wrongRole.body.data.roleLocked).toBe(true)
+
+    expect(
+      (
+        await request.authed('post', `/admin/projects/${projectB}/members`, token).send({
+          phone: '13800007772',
+          role: 'foreman',
+        })
+      ).status
+    ).toBe(200)
   })
 
   it('允许多名工长并存（Q11）', async () => {

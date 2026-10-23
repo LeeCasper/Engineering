@@ -30,6 +30,54 @@ async function loadWritableProject(operator, projectId) {
 }
 
 /**
+ * 解析并锁定账号的固定角色（v2.5）。
+ *
+ * ── 固定角色一旦确定就不能改 ──
+ * 工长永远是工长、监理永远是监理；只有「业主」可以同时参与多个项目。
+ * 账号第一次被邀请时确定角色，之后任何项目都只能用同一角色邀请。
+ *
+ * ── 为什么不清空角色后重新邀请 ──
+ * 那等于给了一条「先移除、再按另一个角色邀请」的绕行路径，和用户明确要求的
+ * 「不能改变」相矛盾。若确实录错，需要平台按数据修正流程处理，不能由邀请接口
+ * 顺手改掉。
+ */
+async function resolveAccountRole(tx, user, requestedRole) {
+  let role = user.role
+
+  if (!role) {
+    // 历史数据可能已经把同一个人放进多个角色；这种情况不擅自挑一个，
+    // 直接拒绝并交给数据清理，避免静默改变已有项目的权限
+    const existingRoles = await tx.query(
+      `SELECT DISTINCT role FROM project_member
+        WHERE user_id = ? AND status IN ('pending', 'active') AND deleted_at IS NULL`,
+      [user.id]
+    )
+    if (existingRoles.length > 1) {
+      throw AppError.conflict('该账号历史数据中存在多个角色，无法确定固定角色，请联系平台处理', {
+        detail: { roleConflict: true, roles: existingRoles.map((row) => row.role) },
+      })
+    }
+
+    role = existingRoles.length === 1 ? existingRoles[0].role : requestedRole
+    await tx.query('UPDATE user SET role = ? WHERE id = ? AND role IS NULL', [role, user.id])
+
+    // 并发邀请：两个管理员同时邀请同一个人到不同角色时，只有一个能写入。
+    // 以数据库里的最终值为准，不能拿事务开始时的内存值继续写成员关系。
+    const locked = await tx.queryOne('SELECT role FROM user WHERE id = ?', [user.id])
+    role = locked ? locked.role : role
+  }
+
+  if (role !== requestedRole) {
+    throw AppError.conflict(
+      `该账号已固定为${ROLE_LABELS[role]}，不能改为${ROLE_LABELS[requestedRole]}`,
+      { detail: { roleLocked: true, currentRole: role } }
+    )
+  }
+
+  return role
+}
+
+/**
  * 邀请成员（B-2.6）。
  *
  * @param {object} operator 后台操作者
@@ -37,7 +85,6 @@ async function loadWritableProject(operator, projectId) {
  * @param {object} input
  * @param {string} input.phone 被邀请人手机号
  * @param {'foreman'|'supervisor'|'owner'} input.role
- * @param {boolean} [input.confirmReplace] 目标已有其他角色 / 工长已有他人时，是否确认替换
  */
 async function invite(operator, projectId, input) {
   await loadWritableProject(operator, projectId)
@@ -53,33 +100,34 @@ async function invite(operator, projectId, input) {
     // 1. 找到或创建占位用户
     const user = await findOrCreateUserByPhone(tx, phone)
 
-    // 2. 看这个人当前在本项目里是什么角色
+    // 2. 账号角色是全局固定的：工长 / 监理 / 业主不能跨项目变化
+    await resolveAccountRole(tx, user, input.role)
+
+    // 3. 看这个人当前在本项目里是什么角色
     const existing = await tx.queryOne(
       'SELECT id, role, status FROM project_member WHERE project_id = ? AND user_id = ?',
       [projectId, user.id]
     )
 
-    // AC-AD20：同一用户在同一项目内只能有一个角色；重复分配应提示替换而非新增
+    // 同一用户在同一项目内仍然只能有一个角色。历史上如果已经存在与本项目
+    // 不一致的角色，说明数据不一致，不能靠「替换」把它悄悄改成新角色。
     if (existing && existing.status !== 'removed' && existing.role !== input.role) {
-      if (!input.confirmReplace) {
-        throw AppError.conflict(
-          `该用户已是本项目的${ROLE_LABELS[existing.role]}，继续将替换其角色为${ROLE_LABELS[input.role]}`,
-          { detail: { needsReplace: true, currentRole: existing.role } }
-        )
-      }
+      throw AppError.conflict('账号角色已固定，不能替换项目角色；请使用对应角色的账号邀请', {
+        detail: { roleLocked: true, currentRole: existing.role },
+      })
     }
 
     if (existing && existing.status === 'active' && existing.role === input.role) {
       throw AppError.conflict(`该用户已是本项目的${ROLE_LABELS[input.role]}`)
     }
 
-    // 3. 确定是否为主工长（Q11）
+    // 4. 确定是否为主工长（Q11）
     //
     // 项目允许配置**多名**工长，其中有且仅有 1 名主工长。
     // 首个工长自动成为主工长，避免出现「有工长但没人能发起验收」的死角 ——
     // 那种死角一旦出现，现场只能停在那里等管理员发现。
     //
-    // 查询要排除**本人**：重新邀请一位已是主工长的工长时（比如改了角色再改回来），
+    // 查询要排除**本人**：重新邀请一位已是主工长的工长时，
     // 若不排除，他会「查到自己」从而被认为「已有主工长」，
     // 于是 is_primary 被置 0 —— 主工长身份被自己挤掉了。
     let isPrimary = false
@@ -94,7 +142,7 @@ async function invite(operator, projectId, input) {
       isPrimary = !currentPrimary
     }
 
-    // 4. 写入或更新成员关系
+    // 5. 写入或更新成员关系
     await projectMemberModel.invite({
       projectId,
       userId: user.id,
@@ -217,7 +265,7 @@ async function setPrimaryForeman(operator, projectId, memberId) {
  */
 async function findOrCreateUserByPhone(tx, phone) {
   const existing = await tx.queryOne(
-    'SELECT id, phone, openid, status, anonymized_at FROM user WHERE phone = ? AND deleted_at IS NULL',
+    'SELECT id, phone, openid, status, role, anonymized_at FROM user WHERE phone = ? AND deleted_at IS NULL',
     [phone]
   )
 
@@ -231,7 +279,15 @@ async function findOrCreateUserByPhone(tx, phone) {
   }
 
   const result = await tx.query('INSERT INTO user (phone) VALUES (?)', [phone])
-  return { id: result.insertId, phone, openid: null, status: 'active', anonymized_at: null, __created: true }
+  return {
+    id: result.insertId,
+    phone,
+    openid: null,
+    status: 'active',
+    role: null,
+    anonymized_at: null,
+    __created: true,
+  }
 }
 
 /**

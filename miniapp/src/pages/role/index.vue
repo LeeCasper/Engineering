@@ -21,30 +21,21 @@
       <!-- 品牌与主文案 -->
       <view class="brand">
         <image class="brand-logo" src="/static/images/logo.png" mode="aspectFit" />
-        <text class="brand-name">工程宝</text>
+        <text class="brand-name">柏总管</text>
       </view>
 
-      <text class="headline">请选择您的身份</text>
+      <text class="headline">角色由邀请确定</text>
       <view class="subtitles">
         <text class="subtitle">不同角色</text>
         <text class="subtitle">不同视角</text>
         <text class="subtitle">同一项目</text>
         <text class="subtitle">共同协作</text>
       </view>
+      <text class="role-note">工长、监理、业主在邀请时固定，不能自行切换；业主可以参与多个项目</text>
 
       <!-- 角色卡片 -->
       <view class="cards">
-        <view
-          v-for="role in ROLES"
-          :key="role.key"
-          class="card"
-          :class="{ 'card--active': selected === role.key }"
-          @tap="choose(role)"
-        >
-          <view v-if="selected === role.key" class="checked-badge">
-            <image class="checked-icon" src="/static/images/icon-check-white.png" mode="aspectFit" />
-          </view>
-
+        <view v-for="role in ROLES" :key="role.key" class="card">
           <!-- 右侧实景图 + 白色渐变覆盖层（模拟设计稿的左侧羽化） -->
           <image class="card-image" :src="role.image" mode="aspectFill" />
           <view class="card-image-fade" />
@@ -62,7 +53,6 @@
             <text class="card-desc">{{ role.description }}</text>
           </view>
 
-          <image class="card-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
         </view>
       </view>
     </view>
@@ -74,7 +64,7 @@
         <image class="footer-shield" src="/static/images/icon-shield-outline.png" mode="aspectFit" />
         <view class="footer-line footer-line--right" />
       </view>
-      <text class="footer-text">工程宝 · 让装修工程更透明、更可控</text>
+      <text class="footer-text">柏总管 · 让装修工程更透明、更可控</text>
       <image class="skyline" src="/static/images/role-skyline.png" mode="aspectFill" />
     </view>
   </view>
@@ -84,11 +74,9 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { ROLES } from '../../config'
-import { getToken, getPreferredRole, setPreferredRole } from '../../store/session'
+import { getToken } from '../../store/session'
 
 const safeTop = ref(0)
-const selected = ref(getPreferredRole() || 'foreman')
-let navigating = false
 
 onLoad(() => {
   const info = uni.getSystemInfoSync()
@@ -101,24 +89,14 @@ onLoad(() => {
 })
 
 function goBack() {
-  // 从登录页是 redirectTo 过来的，栈里没有上一页；回退的合理落点是
-  // 项目列表，而不是回到登录页（登录页会把已登录用户再次弹回来）
-  uni.navigateBack({
-    fail: () => uni.reLaunch({ url: '/pages/projects/index' }),
-  })
-}
-
-function choose(role) {
-  if (navigating) return
-  selected.value = role.key
-  setPreferredRole(role.key)
-
-  // 卡片右侧的箭头就是「进入」的暗示；先让选中态被看见，再进入项目列表。
-  // 这个选择只是界面偏好，真正的身份由后端 project_member 判定。
-  navigating = true
-  setTimeout(() => {
-    uni.redirectTo({ url: '/pages/projects/index' })
-  }, 180)
+  // 本页是角色说明页；栈里没有上一页时回到项目列表，
+  // 而不是登录页（登录页会把已登录用户再次弹回来）
+  const pages = getCurrentPages()
+  if (pages.length > 1) {
+    uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/projects/index' }) })
+    return
+  }
+  uni.reLaunch({ url: '/pages/projects/index' })
 }
 </script>
 
@@ -129,7 +107,7 @@ function choose(role) {
   flex-direction: column;
   justify-content: space-between;
   min-height: 100vh;
-  background: #f2f6fa;
+  background: #faf5f0;
   overflow: hidden;
 }
 
@@ -157,11 +135,11 @@ function choose(role) {
   inset: 0;
   background: linear-gradient(
       180deg,
-      rgba(242, 246, 250, 0) 0%,
-      rgba(242, 246, 250, 0.7) 58%,
-      #f2f6fa 100%
+      rgba(250, 246, 241, 0) 0%,
+      rgba(250, 246, 241, 0.7) 58%,
+      #faf5f0 100%
     ),
-    linear-gradient(90deg, #f2f6fa 0%, rgba(242, 246, 250, 0.1) 42%, rgba(242, 246, 250, 0) 70%);
+    linear-gradient(90deg, #faf5f0 0%, rgba(250, 246, 241, 0.1) 42%, rgba(250, 246, 241, 0) 70%);
 }
 
 .hard-hat {
@@ -231,13 +209,13 @@ function choose(role) {
   height: dp(44);
   border-radius: dp(12);
   margin-right: dp(12);
-  box-shadow: 0 dp(4) dp(12) rgba(22, 93, 255, 0.18);
+  box-shadow: 0 dp(4) dp(12) rgba(235, 92, 32, 0.18);
 }
 
 .brand-name {
   font-size: dp(24);
   font-weight: 800;
-  color: #0f274a;
+  color: #2b1a12;
   letter-spacing: dp(-0.3);
 }
 
@@ -247,7 +225,7 @@ function choose(role) {
   margin-top: dp(12);
   font-size: dp(23);
   font-weight: 800;
-  color: #111f38;
+  color: #241c17;
   letter-spacing: dp(-0.3);
 }
 
@@ -262,9 +240,17 @@ function choose(role) {
 .subtitle {
   font-size: dp(12);
   font-weight: 500;
-  color: #7a8da3;
+  color: #84786f;
   margin-right: dp(8);
   letter-spacing: dp(0.3);
+}
+
+.role-note {
+  padding: 0 dp(24);
+  margin-bottom: dp(14);
+  font-size: dp(11);
+  line-height: 1.5;
+  color: #a09388;
 }
 
 /* ── 角色卡片 ── */
@@ -281,20 +267,11 @@ function choose(role) {
   padding: dp(15);
   margin-bottom: dp(14);
   background: $color-surface;
-  border: 2px solid #f1f5f9;
+  border: 2px solid #f3efea;
   border-radius: dp(16);
   box-shadow: 0 dp(2) dp(12) rgba(0, 0, 0, 0.03);
   overflow: hidden;
   transition: border-color 0.16s ease, box-shadow 0.16s ease;
-}
-
-.card:active {
-  transform: scale(0.99);
-}
-
-.card--active {
-  border-color: #2680eb;
-  box-shadow: 0 dp(4) dp(16) rgba(38, 128, 235, 0.12);
 }
 
 .card-image {
@@ -347,7 +324,7 @@ function choose(role) {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 dp(2) dp(6) rgba(15, 39, 74, 0.12);
+  box-shadow: 0 dp(2) dp(6) rgba(94, 45, 22, 0.12);
 }
 
 .avatar-icon {
@@ -363,7 +340,7 @@ function choose(role) {
 .card-title {
   font-size: dp(19);
   font-weight: 700;
-  color: #1a2332;
+  color: #2b2119;
   line-height: 1.2;
   letter-spacing: dp(-0.2);
 }
@@ -372,48 +349,18 @@ function choose(role) {
   margin-top: dp(2);
   font-size: dp(13);
   font-weight: 500;
-  color: #4f5f73;
+  color: #5b5048;
 }
 
 .card-desc {
   margin-top: dp(10);
   padding-left: dp(1);
   font-size: dp(11);
-  color: #66788c;
+  color: #71675f;
   line-height: 1.5;
   /* 描述文字会压到右侧实景图的羽化区上；给一圈白色柔光保证可读，
      而不加一块白色底板（那会切断图片的融合感） */
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 6px rgba(255, 255, 255, 0.85);
-}
-
-.card-chevron {
-  position: absolute;
-  right: dp(14);
-  top: 50%;
-  transform: translateY(-50%);
-  width: dp(16);
-  height: dp(16);
-  z-index: 20;
-}
-
-.checked-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: dp(24);
-  height: dp(24);
-  background: #1f7ae6;
-  border-bottom-left-radius: dp(12);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 30;
-  box-shadow: 0 dp(1) dp(3) rgba(15, 39, 74, 0.15);
-}
-
-.checked-icon {
-  width: dp(14);
-  height: dp(14);
 }
 
 /* ── 底部 ── */
@@ -438,11 +385,11 @@ function choose(role) {
 .footer-line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, rgba(203, 215, 230, 0), #cbd7e6);
+  background: linear-gradient(90deg, rgba(203, 215, 230, 0), #d8cbc2);
 }
 
 .footer-line--right {
-  background: linear-gradient(90deg, #cbd7e6, rgba(203, 215, 230, 0));
+  background: linear-gradient(90deg, #d8cbc2, rgba(203, 215, 230, 0));
 }
 
 .footer-shield {
@@ -453,7 +400,7 @@ function choose(role) {
 
 .footer-text {
   font-size: dp(12);
-  color: #7d93af;
+  color: #8a7e73;
   letter-spacing: dp(-0.2);
   margin-bottom: dp(28);
 }

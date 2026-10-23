@@ -8,9 +8,10 @@
 
 const express = require('express')
 const asyncHandler = require('../../utils/asyncHandler')
-const { requireAdmin } = require('../../middlewares/adminAuth')
+const { requireAdmin, requireTenant } = require('../../middlewares/adminAuth')
 const { createRateLimit } = require('../../middlewares/rateLimit')
 const controller = require('../../controllers/adminAuth.controller')
+const bindingController = require('../../controllers/adminWechatBinding.controller')
 
 const router = express.Router()
 
@@ -40,5 +41,28 @@ router.post('/login', loginRateLimit, asyncHandler(controller.login))
 router.post('/logout', requireAdmin, asyncHandler(controller.logout))
 router.get('/profile', requireAdmin, asyncHandler(controller.profile))
 router.post('/change-password', requireAdmin, asyncHandler(controller.changePassword))
+
+/**
+ * 小程序管理端的微信免密绑定。
+ *
+ * `requireTenant` 把平台账号挡在外面；绑定/解绑是按管理员账号操作的，
+ * 因此挂在 /admin/auth 下，而不是 /admin/admin-users 下。
+ */
+const bindRateLimit = createRateLimit({
+  scope: 'admin-wechat-bind',
+  max: 10,
+  identity: (req) => (req.auth ? `${req.ip}|${req.auth.id}` : req.ip),
+  message: '绑定操作过于频繁，请稍后再试',
+})
+
+router.get('/wechat-binding', requireAdmin, requireTenant, asyncHandler(bindingController.status))
+router.post(
+  '/wechat-binding',
+  requireAdmin,
+  requireTenant,
+  bindRateLimit,
+  asyncHandler(bindingController.bind)
+)
+router.delete('/wechat-binding', requireAdmin, requireTenant, asyncHandler(bindingController.unbind))
 
 module.exports = router

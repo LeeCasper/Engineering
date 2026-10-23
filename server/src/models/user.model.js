@@ -12,7 +12,7 @@ const db = require('../db/pool')
 
 async function findById(id) {
   return db.queryOne(
-    `SELECT id, openid, unionid, phone, nickname, avatar, status, anonymized_at, last_login_at, created_at
+    `SELECT id, openid, unionid, phone, nickname, avatar, status, role, anonymized_at, last_login_at, created_at
        FROM user WHERE id = ? AND deleted_at IS NULL`,
     [id]
   )
@@ -21,7 +21,7 @@ async function findById(id) {
 async function findByOpenid(openid) {
   if (!openid) return null
   return db.queryOne(
-    `SELECT id, openid, unionid, phone, nickname, avatar, status, anonymized_at, last_login_at
+    `SELECT id, openid, unionid, phone, nickname, avatar, status, role, anonymized_at, last_login_at
        FROM user WHERE openid = ? AND deleted_at IS NULL`,
     [openid]
   )
@@ -29,7 +29,7 @@ async function findByOpenid(openid) {
 
 async function findByUnionid(unionid) {
   if (!unionid) return null
-  return db.queryOne('SELECT id, phone, nickname, avatar, status FROM user WHERE unionid = ? AND deleted_at IS NULL', [
+  return db.queryOne('SELECT id, phone, nickname, avatar, status, role FROM user WHERE unionid = ? AND deleted_at IS NULL', [
     unionid,
   ])
 }
@@ -37,7 +37,7 @@ async function findByUnionid(unionid) {
 async function findByPhone(phone) {
   if (!phone) return null
   // 已注销用户的 phone 为 NULL，因此这里天然只匹配活跃账号
-  return db.queryOne('SELECT id, openid, phone, status FROM user WHERE phone = ? AND deleted_at IS NULL', [phone])
+  return db.queryOne('SELECT id, openid, phone, status, role FROM user WHERE phone = ? AND deleted_at IS NULL', [phone])
 }
 
 /**
@@ -118,7 +118,7 @@ async function upsertByWechat({ openid, unionid, nickname, avatar }) {
 async function bindPhone(userId, phone) {
   return db.withTransaction(async (tx) => {
     const existing = await tx.queryOne(
-      'SELECT id, openid FROM user WHERE phone = ? AND deleted_at IS NULL',
+      'SELECT id, openid, role FROM user WHERE phone = ? AND deleted_at IS NULL',
       [phone]
     )
 
@@ -147,7 +147,16 @@ async function bindPhone(userId, phone) {
       return { ok: false, reason: '该手机号已被其他账号绑定' }
     }
 
-    const current = await tx.queryOne('SELECT id, openid, nickname, avatar FROM user WHERE id = ?', [userId])
+    const current = await tx.queryOne('SELECT id, openid, nickname, avatar, role FROM user WHERE id = ?', [userId])
+
+    // ── 固定角色不能因手机号合并而改变 ──
+    // 占位账号通常是管理员按手机号邀请时创建的，角色已经确定；
+    // 当前微信账号如果也已经有固定角色，两者必须一致。
+    // 不一致时拒绝合并，而不是悄悄让其中一方变成另一个角色。
+    if (existing.role && current.role && existing.role !== current.role) {
+      return { ok: false, reason: '该手机号对应的账号角色与当前微信账号不一致，请联系管理员处理' }
+    }
+    const mergedRole = existing.role || current.role || null
 
     // ── 三步的顺序不能换 ──
     // openid 上有唯一索引，两个账号不能同时持有同一个 openid。
@@ -157,12 +166,22 @@ async function bindPhone(userId, phone) {
 
     await tx.query(
       `UPDATE user
-          SET openid = ?, nickname = COALESCE(nickname, ?), avatar = COALESCE(avatar, ?), last_login_at = NOW()
+          SET openid = ?, nickname = COALESCE(nickname, ?), avatar = COALESCE(avatar, ?),
+              role = COALESCE(role, ?), last_login_at = NOW()
         WHERE id = ?`,
-      [current.openid, current.nickname, current.avatar, existing.id]
+      [current.openid, current.nickname, current.avatar, mergedRole, existing.id]
     )
 
     await tx.query('UPDATE user SET deleted_at = NOW() WHERE id = ?', [userId])
+
+    // 管理员微信绑定按 openid 查找；合并后 openid 不变，绑定仍然有效。
+    // 这里只修正 user_id，保持审计数据与当前用户行一致。
+    if (current.openid) {
+      await tx.query(
+        'UPDATE admin_wechat_binding SET user_id = ? WHERE openid = ? AND user_id <> ?',
+        [existing.id, current.openid, existing.id]
+      )
+    }
 
     return { ok: true, merged: true, mergedIntoUserId: existing.id }
   })

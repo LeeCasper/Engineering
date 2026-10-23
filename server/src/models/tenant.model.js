@@ -12,6 +12,7 @@ const db = require('../db/pool')
 const COLUMNS = `
   id, name, code, status, plan, max_projects, max_admin_users,
   trial_ends_at, expires_at, contact_name, contact_phone, remark,
+  province_code, province_name, city_code, city_name,
   created_at, updated_at
 `
 
@@ -32,7 +33,7 @@ async function findByCode(code) {
  * 两个统计维度会让行数相乘（笛卡尔积），除非每个都写 COUNT(DISTINCT)，
  * 而那个写法的成本并不比两个子查询低。
  */
-async function list({ status, keyword, offset, limit }) {
+async function list({ status, keyword, provinceCode, cityCode, unassigned, offset, limit }) {
   const where = ['t.deleted_at IS NULL']
   const params = []
 
@@ -43,6 +44,17 @@ async function list({ status, keyword, offset, limit }) {
   if (keyword) {
     where.push('(t.name LIKE ? OR t.code LIKE ?)')
     params.push(`%${keyword}%`, `%${keyword}%`)
+  }
+  if (provinceCode) {
+    where.push('t.province_code = ?')
+    params.push(provinceCode)
+  }
+  if (cityCode) {
+    where.push('t.city_code = ?')
+    params.push(cityCode)
+  }
+  if (unassigned) {
+    where.push('t.province_code IS NULL')
   }
 
   const clause = `FROM tenant t WHERE ${where.join(' AND ')}`
@@ -82,11 +94,30 @@ async function countAdminUsers(tenantId, tx = db) {
   return tx.count('FROM admin_user WHERE tenant_id = ? AND deleted_at IS NULL', [tenantId])
 }
 
-async function create({ name, code, plan, maxProjects, maxAdminUsers, trialEndsAt, expiresAt, contactName, contactPhone, remark }, tx = db) {
+async function create(
+  {
+    name,
+    code,
+    plan,
+    maxProjects,
+    maxAdminUsers,
+    trialEndsAt,
+    expiresAt,
+    contactName,
+    contactPhone,
+    remark,
+    provinceCode,
+    provinceName,
+    cityCode,
+    cityName,
+  },
+  tx = db
+) {
   const result = await tx.query(
     `INSERT INTO tenant
-       (name, code, plan, max_projects, max_admin_users, trial_ends_at, expires_at, contact_name, contact_phone, remark)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (name, code, plan, max_projects, max_admin_users, trial_ends_at, expires_at,
+        contact_name, contact_phone, remark, province_code, province_name, city_code, city_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       name,
       code,
@@ -98,6 +129,10 @@ async function create({ name, code, plan, maxProjects, maxAdminUsers, trialEndsA
       contactName ?? null,
       contactPhone ?? null,
       remark ?? null,
+      provinceCode ?? null,
+      provinceName ?? null,
+      cityCode ?? null,
+      cityName ?? null,
     ]
   )
   return result.insertId
@@ -118,6 +153,10 @@ const TERM_COLUMNS = {
   contactName: 'contact_name',
   contactPhone: 'contact_phone',
   remark: 'remark',
+  provinceCode: 'province_code',
+  provinceName: 'province_name',
+  cityCode: 'city_code',
+  cityName: 'city_name',
 }
 
 /**
