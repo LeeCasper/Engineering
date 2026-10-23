@@ -6,9 +6,9 @@
     <view class="top" :style="{ paddingTop: `${safeTop}px` }">
       <!-- 品牌 -->
       <view class="brand">
-        <image class="brand-logo" src="/static/images/logo.png" mode="aspectFit" />
+        <image class="brand-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
         <view class="brand-text">
-          <text class="brand-name">柏总管</text>
+          <text class="brand-name">{{ branding.name }}</text>
           <text class="brand-slogan">让装修工程更透明、更可控</text>
         </view>
       </view>
@@ -128,6 +128,7 @@ import {
   setCachedProjects,
 } from '../../store/session'
 import { resolveProjectsLanding } from '../../store/projectContext'
+import { branding, loadBranding } from '../../store/branding'
 
 const phone = ref('')
 const smsCode = ref('')
@@ -167,6 +168,7 @@ const features = [
 ]
 
 onLoad(() => {
+  loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 

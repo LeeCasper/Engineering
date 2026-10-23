@@ -21,7 +21,7 @@
       </view>
 
       <view v-if="loading" class="state">
-        <text class="state-text">加载中…</text>
+        <gc-loading text="正在加载订阅状态…" />
       </view>
 
       <view v-else-if="error" class="state">

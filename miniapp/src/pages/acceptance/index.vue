@@ -76,9 +76,9 @@
     </view>
     <view v-if="searchStuck" class="sticky-status-bg" :style="{ height: `${safeTop}px` }" />
 
-    <!-- 首屏加载 -->
-    <view v-if="loading && !items.length" class="state-block">
-      <text class="state-text">加载中…</text>
+    <!-- 首屏加载：只在第一次进入且还没有数据时显示 -->
+    <view v-if="loading && !loaded && !items.length" class="gc-loading-page">
+      <gc-skeleton :rows="3" />
     </view>
 
     <!-- 加载失败 -->
@@ -101,7 +101,7 @@
     </view>
 
     <!-- 验收卡片 -->
-    <view v-else class="card-list">
+    <view v-else class="card-list gc-stagger">
       <view
         v-for="item in visibleItems"
         :key="itemKey(item)"
@@ -184,10 +184,10 @@
     </view>
 
     <!-- 项目筛选面板：项目名只出现在这里，不进入主分类行 -->
-    <view v-if="filterSheetOpen" class="sheet-mask" @tap="closeFilterSheet">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-header">
+    <view v-if="filterSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeFilterSheet">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-header" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <text class="sheet-title">筛选项目</text>
           <view class="sheet-close" @tap="closeFilterSheet">
             <image class="sheet-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
@@ -222,10 +222,10 @@
     </view>
 
     <!-- 阶段梯子 -->
-    <view v-if="stageSheetOpen" class="sheet-mask" @tap="closeStageSheet">
-      <view class="sheet sheet--stage" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-header">
+    <view v-if="stageSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeStageSheet">
+      <view class="sheet sheet--stage" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-header" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">{{ stageProject.name }}</text>
             <text class="sheet-subtitle">阶段推进</text>
@@ -270,10 +270,10 @@
     </view>
 
     <!-- 发起验收 -->
-    <view v-if="createSheetOpen" class="sheet-mask" @tap="closeCreateSheet">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-header">
+    <view v-if="createSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeCreateSheet">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-header" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <text class="sheet-title">发起验收</text>
           <view class="sheet-close" @tap="closeCreateSheet">
             <image class="sheet-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
@@ -323,6 +323,11 @@ import {
 } from '../../api/acceptance'
 import { getToken } from '../../store/session'
 import { setCurrentProject } from '../../store/projectContext'
+import { useSwipeClose } from '../../composables/useSwipeClose'
+
+// 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
 
 const TABS = [
   { key: 'all', label: '全部项目' },
@@ -332,6 +337,9 @@ const TABS = [
 ]
 
 const loading = ref(false)
+// 是否至少成功加载过一次。tab 页切回来时 onShow 会静默刷新，
+// 只有首次加载才显示「加载中…」，否则空列表也会闪一下加载态。
+const loaded = ref(false)
 const loadError = ref('')
 const items = ref([])
 const projects = ref([])
@@ -502,6 +510,7 @@ async function load() {
     const data = await fetchAcceptanceInbox()
     items.value = data.items || []
     projects.value = data.projects || []
+    loaded.value = true
 
     // 首次进入如果「待我处理」为空但有其他事项，直接展示全部，
     // 避免用户以为验收页什么都没有
@@ -513,7 +522,8 @@ async function load() {
       uni.redirectTo({ url: '/pages/login/index' })
       return
     }
-    if (items.value.length) {
+    // 已经成功加载过（或列表里还有数据）时，刷新失败只提示、不把整页替换成失败态
+    if (loaded.value || items.value.length) {
       uni.showToast({ title: err.message || '加载失败', icon: 'none' })
     } else {
       loadError.value = err.message || '加载失败，请稍后重试'
@@ -771,6 +781,11 @@ async function submitCreate() {
   } finally {
     creating.value = false
   }
+}
+function closeActiveSheet() {
+  if (filterSheetOpen.value) closeFilterSheet()
+  else if (stageSheetOpen.value) closeStageSheet()
+  else if (createSheetOpen.value) closeCreateSheet()
 }
 </script>
 

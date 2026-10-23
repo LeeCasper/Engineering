@@ -189,8 +189,19 @@ const MINE_HERO_ARCH = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400
  * - accent 保留原图质感（当前主题本身就是橙色）；
  * - gray 用灰度 + 暖灰着色，保留明暗层次，避免选中/未选中只是纯色遮罩。
  */
+async function trimTransparent(buffer) {
+  // 设计方给的 tab 图标四周有较多透明留白，直接缩到 81×81 会让图形只占 70%~85%。
+  // 先裁掉透明边再缩放，视觉上图标更大，但 tabBar 本身仍是微信原生组件。
+  try {
+    return await sharp(buffer).ensureAlpha().trim({ threshold: 1 }).toBuffer()
+  } catch {
+    return buffer
+  }
+}
+
 async function renderColorTabIcon(source, outName, size = 81) {
-  await sharp(source)
+  const trimmed = await trimTransparent(await sharp(source).toBuffer())
+  await sharp(trimmed)
     .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toFile(path.join(OUT, outName))
@@ -198,7 +209,8 @@ async function renderColorTabIcon(source, outName, size = 81) {
 }
 
 async function renderGrayTabIcon(source, outName, color = '#8B8179', size = 81) {
-  await sharp(source)
+  const trimmed = await trimTransparent(await sharp(source).toBuffer())
+  await sharp(trimmed)
     .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .grayscale()
     .tint(color)

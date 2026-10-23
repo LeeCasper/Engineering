@@ -87,7 +87,8 @@
         </view>
 
         <view v-if="projects.length < total" class="load-more" @tap="loadMore">
-          {{ loadingMore ? '加载中…' : '加载更多' }}
+          <gc-loading v-if="loadingMore" inline text="加载中" />
+          <text v-else>加载更多</text>
         </view>
       </view>
     </view>

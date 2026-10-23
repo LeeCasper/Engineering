@@ -15,7 +15,7 @@
     </view>
 
     <view v-if="loading && !detail" class="state-block">
-      <text class="state-text">加载中…</text>
+      <gc-loading text="正在加载验收详情…" />
     </view>
 
     <view v-else-if="loadError" class="state-block">
@@ -289,10 +289,10 @@
     </view>
 
     <!-- 驳回 -->
-    <view v-if="rejectOpen" class="sheet-mask" @tap="closeReject">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-header">
+    <view v-if="rejectOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeReject">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-header" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <text class="sheet-title">驳回验收</text>
           <view class="sheet-close" @tap="closeReject">
             <image class="sheet-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
@@ -345,6 +345,11 @@ import {
 import { resolveMediaUrl } from '../../api/request'
 import { getToken } from '../../store/session'
 import { getCurrentProject, setCurrentProject } from '../../store/projectContext'
+import { useSwipeClose } from '../../composables/useSwipeClose'
+
+// 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
 
 const TABS = [
   { key: 'items', label: '验收项' },
@@ -1051,6 +1056,9 @@ async function retryReport() {
   } finally {
     retryingReport.value = false
   }
+}
+function closeActiveSheet() {
+  if (rejectOpen.value) closeReject()
 }
 </script>
 

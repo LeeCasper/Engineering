@@ -60,6 +60,13 @@ interface GroupDef {
 
 const GROUP_DEFS: GroupDef[] = [
   {
+    key: 'brand',
+    title: '小程序品牌',
+    description:
+      '小程序名称与 Logo 由平台统一维护；建议在「小程序品牌」页面设置，这里显示底层配置值。',
+    keys: ['miniapp_name', 'miniapp_logo']
+  },
+  {
     key: 'remind',
     title: '提醒与门禁',
     description: '未汇报提醒、验收超时与大额支出的阈值；门禁强度决定未结清阶段能否继续汇报。',

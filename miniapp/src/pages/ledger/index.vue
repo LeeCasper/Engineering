@@ -12,8 +12,8 @@
     </view>
 
     <!-- 首次加载 -->
-    <view v-if="loading && !detail" class="state-block">
-      <text class="state-text">加载中…</text>
+    <view v-if="loading && !detail" class="gc-loading-page">
+      <gc-skeleton :rows="3" />
     </view>
 
     <!-- 没有项目上下文：记账以项目为单位，不默认第一个项目 -->
@@ -23,7 +23,7 @@
       <text class="state-text">记账以项目为单位。仅展示你是业主或工长的项目。</text>
 
       <view v-if="projectSheetLoading" class="project-picker">
-        <view class="sheet-state">加载中…</view>
+        <view class="sheet-state"><gc-loading inline text="加载中" /></view>
       </view>
       <view v-else-if="projectLoadError" class="project-picker">
         <view class="sheet-state">{{ projectLoadError }}</view>
@@ -72,7 +72,7 @@
       <button class="state-btn state-btn--ghost" @tap="goProjects">返回项目列表</button>
     </view>
 
-    <view v-else-if="detail" class="content">
+    <view v-else-if="detail" class="content gc-stagger">
       <!-- 合同与总览 -->
       <view v-if="summary" class="hero">
         <image class="hero-mark" src="/static/images/ledger-hero-mark.png" mode="aspectFit" />
@@ -323,7 +323,7 @@
         </view>
 
         <view v-if="entriesLoading && !entries.length" class="card empty-card">
-          <text class="state-text">加载中…</text>
+          <gc-loading text="正在加载流水…" />
         </view>
         <view v-else-if="!entries.length" class="card empty-card">
           <image class="empty-icon" src="/static/images/icon-receipt-gray.png" mode="aspectFit" />
@@ -371,7 +371,8 @@
           </view>
 
           <view v-if="entries.length < entriesTotal" class="load-more" @tap="loadEntries(false)">
-            {{ entriesLoading ? '加载中…' : '加载更多' }}
+            <gc-loading v-if="entriesLoading" inline text="加载中" />
+            <text v-else>加载更多</text>
           </view>
         </view>
       </view>
@@ -422,10 +423,10 @@
     </view>
 
     <!-- 项目切换 -->
-    <view v-if="projectSheetOpen" class="sheet-mask" @tap="projectSheetOpen = false">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="projectSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="projectSheetOpen = false">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">切换项目</text>
             <text class="sheet-sub">仅展示你是业主或工长的项目</text>
@@ -435,7 +436,7 @@
           </view>
         </view>
 
-        <view v-if="projectSheetLoading" class="sheet-state">加载中…</view>
+        <view v-if="projectSheetLoading" class="sheet-state"><gc-loading inline text="加载中" /></view>
         <view v-else-if="projectLoadError" class="sheet-state">{{ projectLoadError }}</view>
         <view v-else-if="!projectOptions.length" class="sheet-state">暂无可查看账目的项目</view>
         <view v-else class="project-options">
@@ -460,10 +461,10 @@
     </view>
 
     <!-- 合同信息 -->
-    <view v-if="contractSheetOpen" class="sheet-mask" @tap="contractSheetOpen = false">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="contractSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="contractSheetOpen = false">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">合同信息</text>
             <text class="sheet-sub">系统只记录合同金额与工期，用于对账和付款节点</text>
@@ -508,10 +509,10 @@
     </view>
 
     <!-- 全部付款节点 -->
-    <view v-if="nodesSheetOpen" class="sheet-mask" @tap="nodesSheetOpen = false">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="nodesSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="nodesSheetOpen = false">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">付款节点</text>
             <text class="sheet-sub">共 {{ nodes.length }} 个节点 · 款项全部走线下转账</text>
@@ -550,10 +551,10 @@
     </view>
 
     <!-- 待我处理 -->
-    <view v-if="pendingSheetOpen" class="sheet-mask" @tap="pendingSheetOpen = false">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="pendingSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="pendingSheetOpen = false">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">待我处理</text>
             <text class="sheet-sub">共 {{ pendingItems.length }} 项</text>
@@ -585,10 +586,10 @@
     </view>
 
     <!-- 对账单详情 -->
-    <view v-if="recSheetOpen" class="sheet-mask" @tap="closeReconciliation">
-      <view class="sheet sheet--reconcile" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="recSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeReconciliation">
+      <view class="sheet sheet--reconcile" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">{{ recDetail ? recPeriodLabel(recDetail) : '对账详情' }}</text>
             <text class="sheet-sub">{{ recDetail ? recDetail.statusLabel : '加载中…' }}</text>
@@ -599,7 +600,7 @@
         </view>
 
         <scroll-view class="rec-scroll" scroll-y>
-          <view v-if="recLoading" class="sheet-state">加载中…</view>
+          <view v-if="recLoading" class="sheet-state"><gc-loading inline text="加载中" /></view>
           <view v-else-if="recError" class="sheet-state">
             {{ recError }}
             <button class="state-btn state-btn--small" @tap="reloadRecDetail">重试</button>
@@ -706,10 +707,10 @@
     </view>
 
     <!-- 工长：登记流水 -->
-    <view v-if="entrySheetOpen" class="sheet-mask" @tap="closeEntrySheet">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="entrySheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeEntrySheet">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">登记流水</text>
             <text class="sheet-sub">
@@ -835,10 +836,10 @@
     </view>
 
     <!-- 工长：发起对账 -->
-    <view v-if="initiateSheetOpen" class="sheet-mask" @tap="closeInitiateSheet">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="initiateSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeInitiateSheet">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">发起对账</text>
             <text class="sheet-sub">把周期内的收支提交给业主核对</text>
@@ -916,6 +917,7 @@ import {
   setCurrentProject,
   clearCurrentProject,
 } from '../../store/projectContext'
+import { useSwipeClose } from '../../composables/useSwipeClose'
 
 defineOptions({ name: 'LedgerPage' })
 
@@ -1002,6 +1004,40 @@ const initiateForm = reactive({
   periodEnd: todayDate(),
   remark: '',
 })
+
+// 底部弹窗下滑关闭：只绑定把手 / 标题区，避免和表单滚动冲突
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
+
+function closeActiveSheet() {
+  if (projectSheetOpen.value) {
+    projectSheetOpen.value = false
+    return
+  }
+  if (contractSheetOpen.value) {
+    contractSheetOpen.value = false
+    return
+  }
+  if (nodesSheetOpen.value) {
+    nodesSheetOpen.value = false
+    return
+  }
+  if (pendingSheetOpen.value) {
+    pendingSheetOpen.value = false
+    return
+  }
+  if (recSheetOpen.value) {
+    closeReconciliation()
+    return
+  }
+  if (entrySheetOpen.value) {
+    closeEntrySheet()
+    return
+  }
+  if (initiateSheetOpen.value) {
+    closeInitiateSheet()
+  }
+}
 
 const EXPENSE_CATEGORY_OPTIONS = [
   { key: 'material', label: '材料费' },

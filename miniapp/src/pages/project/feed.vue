@@ -13,7 +13,7 @@
     </view>
 
     <view v-if="loading && !detail" class="state-block">
-      <text class="state-text">加载中…</text>
+      <gc-loading text="正在加载工程动态…" />
     </view>
 
     <view v-else-if="loadError" class="state-block">
@@ -85,7 +85,7 @@
 
         <!-- 动态列表 -->
         <view v-if="loading && !reports.length" class="empty-card">
-          <text class="empty-text">加载中…</text>
+          <gc-loading text="正在加载动态…" />
         </view>
 
         <view v-else-if="!filteredReports.length" class="empty-card">
@@ -190,7 +190,7 @@
             </view>
           </view>
 
-          <view v-if="loadingMore" class="load-more">加载中…</view>
+          <view v-if="loadingMore" class="load-more"><gc-loading inline text="加载中" /></view>
           <view v-else-if="!hasMore && filteredReports.length >= 8" class="load-more">没有更多了</view>
         </view>
       </view>
@@ -205,9 +205,9 @@
     </template>
 
     <!-- 评论面板 -->
-    <view v-if="commentsOpen" class="sheet-mask" @tap="closeComments">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-head">
+    <view v-if="commentsOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeComments">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">评论</text>
             <text class="sheet-sub">{{ activeReport ? `${activeReport.commentCount || 0} 条评论` : '' }}</text>
@@ -218,7 +218,7 @@
         </view>
 
         <scroll-view class="comment-scroll" scroll-y>
-          <view v-if="commentsLoading" class="sheet-state">加载中…</view>
+          <view v-if="commentsLoading" class="sheet-state"><gc-loading inline text="加载中" /></view>
           <view v-else-if="!comments.length" class="sheet-state">还没有评论，来说一句吧</view>
           <view v-else class="comment-list">
             <view v-for="comment in comments" :key="comment.id" class="comment-row">
@@ -269,6 +269,11 @@ import { fetchReportComments, addReportComment } from '../../api/report'
 import { resolveMediaUrl } from '../../api/request'
 import { getToken } from '../../store/session'
 import { getCurrentProject, setCurrentProject, clearCurrentProject } from '../../store/projectContext'
+import { useSwipeClose } from '../../composables/useSwipeClose'
+
+// 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
 
 const ROLE_LABELS = { foreman: '工长', supervisor: '监理', owner: '业主' }
 
@@ -685,6 +690,9 @@ onPullDownRefresh(() => {
 onReachBottom(() => {
   loadMore()
 })
+function closeActiveSheet() {
+  if (commentsOpen.value) closeComments()
+}
 </script>
 
 <style scoped lang="scss">

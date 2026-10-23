@@ -1,6 +1,6 @@
 <template>
   <view v-if="loading" class="admin-state">
-    <text class="admin-state-text">{{ loadingText }}</text>
+    <gc-loading :text="loadingText" />
   </view>
 
   <view v-else-if="error" class="admin-state">

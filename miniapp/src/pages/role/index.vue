@@ -20,8 +20,8 @@
 
       <!-- 品牌与主文案 -->
       <view class="brand">
-        <image class="brand-logo" src="/static/images/logo.png" mode="aspectFit" />
-        <text class="brand-name">柏总管</text>
+        <image class="brand-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
+        <text class="brand-name">{{ branding.name }}</text>
       </view>
 
       <text class="headline">角色由邀请确定</text>
@@ -64,7 +64,7 @@
         <image class="footer-shield" src="/static/images/icon-shield-outline.png" mode="aspectFit" />
         <view class="footer-line footer-line--right" />
       </view>
-      <text class="footer-text">柏总管 · 让装修工程更透明、更可控</text>
+      <text class="footer-text">{{ branding.name }} · 让装修工程更透明、更可控</text>
       <image class="skyline" src="/static/images/role-skyline.png" mode="aspectFill" />
     </view>
   </view>
@@ -73,12 +73,14 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { branding, loadBranding } from '../../store/branding'
 import { ROLES } from '../../config'
 import { getToken } from '../../store/session'
 
 const safeTop = ref(0)
 
 onLoad(() => {
+  loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 

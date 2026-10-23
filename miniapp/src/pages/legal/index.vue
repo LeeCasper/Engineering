@@ -1,12 +1,12 @@
 <template>
   <view class="page">
     <view v-if="loading" class="state">
-      <text class="state-text">加载中…</text>
+      <gc-loading text="正在加载内容…" />
     </view>
 
     <view v-else-if="error" class="state">
       <text class="state-title">{{ error }}</text>
-      <text class="state-text">可稍后在「我的 → 关于柏总管」中查看</text>
+      <text class="state-text">可稍后在「我的 → 关于我们」中查看</text>
     </view>
 
     <view v-else class="document">

@@ -14,7 +14,7 @@
     </view>
 
     <view v-if="loading && !detail" class="state-block">
-      <text class="state-text">加载中…</text>
+      <gc-loading text="正在加载项目…" />
     </view>
 
     <view v-else-if="loadError" class="state-block">
@@ -25,7 +25,7 @@
     </view>
 
     <template v-else-if="detail">
-      <view class="content">
+      <view class="content gc-stagger">
         <!-- 项目概览 -->
         <view class="card overview-card">
           <view class="overview-top">
@@ -406,9 +406,9 @@
     </template>
 
     <!-- 工序历史面板 -->
-    <view v-if="historyOpen" class="sheet-mask" @tap="closeHistory">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-head">
+    <view v-if="historyOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeHistory">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">{{ historyItemName }}</text>
             <text class="sheet-sub">完成度变更历史</text>
@@ -418,7 +418,7 @@
           </view>
         </view>
 
-        <view v-if="historyLoading" class="sheet-state">加载中…</view>
+        <view v-if="historyLoading" class="sheet-state"><gc-loading inline text="加载中" /></view>
         <view v-else-if="!historyList.length" class="sheet-state">暂无变更记录</view>
         <view v-else class="history-list">
           <view v-for="row in historyList" :key="row.id" class="history-row">
@@ -438,9 +438,9 @@
     </view>
 
     <!-- 评论面板 -->
-    <view v-if="commentsOpen" class="sheet-mask" @tap="closeComments">
-      <view class="sheet sheet--comments" @tap.stop>
-        <view class="sheet-head">
+    <view v-if="commentsOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeComments">
+      <view class="sheet sheet--comments" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">评论</text>
             <text class="sheet-sub">{{ activeReport ? `${activeReport.commentCount || 0} 条评论` : '' }}</text>
@@ -451,7 +451,7 @@
         </view>
 
         <scroll-view class="comment-scroll" scroll-y>
-          <view v-if="commentsLoading" class="sheet-state">加载中…</view>
+          <view v-if="commentsLoading" class="sheet-state"><gc-loading inline text="加载中" /></view>
           <view v-else-if="!comments.length" class="sheet-state">还没有评论，来说一句吧</view>
           <view v-else class="comment-list">
             <view v-for="comment in comments" :key="comment.id" class="comment-row">
@@ -511,6 +511,11 @@ import {
   setCurrentProject,
   clearCurrentProject,
 } from '../../store/projectContext'
+import { useSwipeClose } from '../../composables/useSwipeClose'
+
+// 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
 
 const STATUS_CLASSES = {
   pending: 'status-badge--pending',
@@ -1115,6 +1120,10 @@ onShow(() => {
 onPullDownRefresh(() => {
   load(true)
 })
+function closeActiveSheet() {
+  if (historyOpen.value) closeHistory()
+  else if (commentsOpen.value) closeComments()
+}
 </script>
 
 <style scoped lang="scss">

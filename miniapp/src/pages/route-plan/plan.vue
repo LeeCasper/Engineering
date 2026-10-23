@@ -8,7 +8,7 @@
     </view>
 
     <view v-if="loadingProjects" class="state-block">
-      <text class="state-text">加载项目…</text>
+      <gc-loading text="正在加载项目…" />
     </view>
 
     <view v-else-if="loadError" class="state-block">
@@ -246,10 +246,10 @@
     </view>
 
     <!-- 保存命名面板 -->
-    <view v-if="saveSheetOpen" class="sheet-mask" @tap="closeSaveSheet">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="saveSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeSaveSheet">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">保存考察计划</text>
             <text class="sheet-sub">下次可以直接复用这条路线</text>
@@ -294,6 +294,11 @@ import {
   previewRoutePlan,
   saveRoutePlan,
 } from '../../api/routePlan'
+import { useSwipeClose } from '../../composables/useSwipeClose'
+
+// 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
 
 defineOptions({ name: 'RoutePlanCreatePage' })
 
@@ -919,6 +924,9 @@ function goBack() {
     return
   }
   uni.redirectTo({ url: '/pages/route-plan/index' })
+}
+function closeActiveSheet() {
+  if (saveSheetOpen.value) closeSaveSheet()
 }
 </script>
 

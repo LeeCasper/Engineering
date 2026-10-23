@@ -177,6 +177,15 @@ export const generatedRoutes: GeneratedRoute[] = [
     },
     children: [
       {
+        name: 'platform_branding',
+        path: '/platform/branding',
+        component: 'view.platform_branding',
+        meta: {
+          title: 'platform_branding',
+          i18nKey: 'route.platform_branding'
+        }
+      },
+      {
         name: 'platform_config',
         path: '/platform/config',
         component: 'view.platform_config',

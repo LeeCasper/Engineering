@@ -34,8 +34,8 @@
         <text class="section-count">{{ total }} 个</text>
       </view>
 
-      <view v-if="loading && plans.length === 0" class="state-card">
-        <text class="state-text">加载中…</text>
+      <view v-if="loading && plans.length === 0" class="gc-loading-page">
+        <gc-skeleton :rows="3" />
       </view>
 
       <view v-else-if="error && plans.length === 0" class="state-card">
@@ -91,7 +91,8 @@
         </view>
 
         <view v-if="plans.length < total" class="load-more" @tap="loadMore">
-          {{ loadingMore ? '加载中…' : '加载更多' }}
+          <gc-loading v-if="loadingMore" inline text="加载中" />
+          <text v-else>加载更多</text>
         </view>
       </view>
     </view>

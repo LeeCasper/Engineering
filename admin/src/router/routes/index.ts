@@ -249,13 +249,24 @@ const appRoutes = [
         }
       },
       {
+        name: 'platform_branding',
+        path: '/platform/branding',
+        component: 'view.platform_branding',
+        meta: {
+          title: '小程序品牌',
+          icon: 'mdi:cellphone-cog',
+          order: 3,
+          roles: ['platform']
+        }
+      },
+      {
         name: 'platform_config',
         path: '/platform/config',
         component: 'view.platform_config',
         meta: {
           title: '基础配置',
           icon: 'mdi:cog-outline',
-          order: 3,
+          order: 4,
           roles: ['platform']
         }
       },
@@ -266,7 +277,7 @@ const appRoutes = [
         meta: {
           title: '基础内容页',
           icon: 'mdi:file-document-edit-outline',
-          order: 4,
+          order: 5,
           roles: ['platform']
         }
       },
@@ -277,7 +288,7 @@ const appRoutes = [
         meta: {
           title: '平台日志中心',
           icon: 'mdi:file-clock-outline',
-          order: 5,
+          order: 6,
           roles: ['platform']
         }
       }

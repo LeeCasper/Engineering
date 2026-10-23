@@ -40,6 +40,10 @@ const DEFAULTS = {
   operation_log_retention: 'forever',
   gate_strength: 'standard',
   support_contact: '',
+  // 小程序品牌：平台统一维护，租户不能覆盖。
+  // Logo 存 storage.urlFor 生成的绝对 URL；留空时小程序回落到内置 Logo。
+  miniapp_name: '柏总管',
+  miniapp_logo: '',
 }
 
 /**
@@ -257,6 +261,22 @@ const SCHEMA = {
     maxLength: 100,
     label: '客服联系方式',
     requirement: 'C-5.7',
+  },
+  miniapp_name: {
+    type: 'string',
+    maxLength: 30,
+    label: '小程序名称',
+    requirement: 'B-7.12',
+    platformOnly: true,
+    note: '显示在小程序登录页、首页等品牌位置；平台统一维护',
+  },
+  miniapp_logo: {
+    type: 'string',
+    maxLength: 500,
+    label: '小程序 Logo',
+    requirement: 'B-7.12',
+    platformOnly: true,
+    note: '建议上传正方形 PNG / JPG；留空时使用小程序内置 Logo',
   },
 }
 

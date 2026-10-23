@@ -11,7 +11,7 @@
     </view>
 
     <view v-if="loading && !loaded" class="state-block">
-      <text class="state-text">加载中…</text>
+      <gc-loading text="正在加载门锁信息…" />
     </view>
 
     <view v-else-if="loadError" class="state-block">
@@ -83,10 +83,10 @@
     </template>
 
     <!-- 新增 / 修改 -->
-    <view v-if="formOpen" class="sheet-mask" @tap="closeForm">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="formOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeForm">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">{{ editingId ? '修改门锁密码' : '新增门锁密码' }}</text>
             <text class="sheet-sub">
@@ -148,10 +148,10 @@
     </view>
 
     <!-- 访问记录 -->
-    <view v-if="logOpen" class="sheet-mask" @tap="logOpen = false">
-      <view class="sheet sheet--log" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="logOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="logOpen = false">
+      <view class="sheet sheet--log" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">访问记录</text>
             <text class="sheet-sub">谁在什么时候查看过门锁密码</text>
@@ -161,7 +161,7 @@
           </view>
         </view>
 
-        <view v-if="logLoading" class="sheet-state">加载中…</view>
+        <view v-if="logLoading" class="sheet-state"><gc-loading inline text="加载中" /></view>
         <view v-else-if="!logList.length" class="sheet-state">还没有人查看过密码</view>
         <view v-else class="log-list">
           <view v-for="row in logList" :key="row.id" class="log-row">
@@ -192,6 +192,11 @@ import {
   revokeDoorCode,
   updateDoorCode,
 } from '../../api/doorCode'
+import { useSwipeClose } from '../../composables/useSwipeClose'
+
+// 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
 
 defineOptions({ name: 'ProjectDoorCodePage' })
 
@@ -406,6 +411,10 @@ function goBack() {
     return
   }
   uni.redirectTo({ url: '/pages/projects/index' })
+}
+function closeActiveSheet() {
+  if (formOpen.value) closeForm()
+  else if (logOpen.value) logOpen.value = false
 }
 </script>
 

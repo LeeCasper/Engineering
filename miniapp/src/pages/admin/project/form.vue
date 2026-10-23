@@ -4,7 +4,7 @@
 
     <view class="admin-content">
       <view v-if="loading" class="admin-card">
-        <text class="admin-muted">加载中…</text>
+        <gc-loading text="正在加载…" />
       </view>
 
       <view v-else-if="loadError" class="admin-card">

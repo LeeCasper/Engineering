@@ -5,9 +5,9 @@
       <image class="hero-skyline" src="/static/images/home-skyline.png" mode="widthFix" />
       <view class="hero-content">
         <view class="brand">
-          <image class="brand-logo" src="/static/images/home-logo.png" mode="aspectFit" />
+          <image class="brand-logo" :src="branding.logoUrl || '/static/images/home-logo.png'" mode="aspectFit" />
           <view class="brand-text">
-            <text class="brand-name">柏总管</text>
+            <text class="brand-name">{{ branding.name }}</text>
             <text class="brand-slogan">让装修工程更透明、更可控</text>
           </view>
         </view>
@@ -174,7 +174,7 @@
     </view>
 
     <!-- 项目卡片列表 -->
-    <view v-if="hasProjects && filteredProjects.length" class="project-list">
+    <view v-if="hasProjects && filteredProjects.length" class="project-list gc-stagger">
       <view
         v-for="project in filteredProjects"
         :key="project.id"
@@ -259,8 +259,8 @@
       <button class="empty-reset" @tap="clearFilters">清空搜索条件</button>
     </view>
 
-    <view v-if="loading && !hasProjects && !invitations.length" class="loading">
-      <text class="loading-text">加载中…</text>
+    <view v-if="loading && !hasProjects && !invitations.length" class="gc-loading-page">
+      <gc-skeleton :rows="3" />
     </view>
 
     <view v-if="!loading && loadError" class="load-error">
@@ -271,10 +271,10 @@
     <!-- 新建项目只对租户管理员开放，入口在 pages/admin/projects/index；C 端不展示 FAB -->
 
     <!-- 筛选面板 -->
-    <view v-if="filterSheetOpen" class="sheet-mask" @tap="closeFilterSheet">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-header">
+    <view v-if="filterSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeFilterSheet">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-header" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <text class="sheet-title">筛选项目</text>
           <view class="sheet-close" @tap="closeFilterSheet">
             <image class="sheet-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
@@ -315,6 +315,7 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { onLoad, onShow, onPageScroll, onPullDownRefresh } from '@dcloudio/uni-app'
+import { branding, loadBranding } from '../../store/branding'
 import { myProjects, confirmInvitation, rejectInvitation } from '../../api/project'
 import { bindPhone, listAdminBindings } from '../../api/auth'
 import { DEV_PHONE_BIND } from '../../config'
@@ -332,6 +333,11 @@ import {
   getBindingHint,
   setBindingHint,
 } from '../../store/adminSession'
+import { useSwipeClose } from '../../composables/useSwipeClose'
+
+// 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
 
 const HOME_TABS = [
   { key: 'all', label: '全部项目' },
@@ -472,6 +478,7 @@ onPageScroll((event) => {
 })
 
 onLoad((options) => {
+  loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
   focusInvitations.value = Boolean(options && options.focus === 'invitations')
@@ -827,6 +834,9 @@ async function submitBind(payload) {
   } finally {
     binding.value = false
   }
+}
+function closeActiveSheet() {
+  if (filterSheetOpen.value) closeFilterSheet()
 }
 </script>
 

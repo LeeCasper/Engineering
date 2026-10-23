@@ -8,7 +8,7 @@
     </view>
 
     <view v-if="loading && !plan" class="state-block">
-      <text class="state-text">加载中…</text>
+      <gc-loading text="正在加载考察计划…" />
     </view>
 
     <view v-else-if="loadError" class="state-block">

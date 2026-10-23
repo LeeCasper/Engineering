@@ -30,6 +30,7 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   home: () => import("@/views/home/index.vue"),
   log_login: () => import("@/views/log/login/index.vue"),
   log_operation: () => import("@/views/log/operation/index.vue"),
+  platform_branding: () => import("@/views/platform/branding/index.vue"),
   platform_config: () => import("@/views/platform/config/index.vue"),
   platform_content: () => import("@/views/platform/content/index.vue"),
   platform_dashboard: () => import("@/views/platform/dashboard/index.vue"),

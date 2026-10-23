@@ -118,4 +118,93 @@ button {
 .gc-text-tertiary {
   color: $color-ink-tertiary;
 }
+
+
+/* ── 底部弹窗把手 ─────────────────────────────────────────
+ * 视觉上仍然是 36×4 的小横条，但把可触摸区域扩大到整条顶部（26px 高）。
+ * 否则 4px 的把手在手机上几乎点不中，用户会觉得「下滑关闭没生效」。
+ * 各页面自己的 .sheet-handle 样式用 !important 覆盖。
+ */
+.sheet-handle {
+  width: 100% !important;
+  height: dp(26) !important;
+  margin: 0 auto dp(6) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(#e8e1da, #e8e1da) center / dp(36) dp(4) no-repeat !important;
+}
+
+
+/* 底部弹窗入场：从底部抬起，轻微淡入。下滑手势的 transform 在动画结束后接管。 */
+@keyframes sheet-rise {
+  from {
+    transform: translateY(100%);
+    opacity: 0.65;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sheet {
+  animation: sheet-rise 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* 首次加载的骨架屏容器：页面自己控制上下留白 */
+.gc-loading-page {
+  padding: dp(16);
+}
+
+/* ── 页面模块依次入场 ─────────────────────────────────────
+ * 给容器加 .gc-stagger，直接子级会按顺序淡入上浮。
+ * 用于卡片列表、内容区模块；不要加到包含固定弹窗 / 遮罩的容器上。
+ */
+@keyframes gc-reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(dp(14));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gc-stagger > view {
+  animation: gc-reveal-up 360ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.gc-stagger > view:nth-child(1) {
+  animation-delay: 20ms;
+}
+.gc-stagger > view:nth-child(2) {
+  animation-delay: 60ms;
+}
+.gc-stagger > view:nth-child(3) {
+  animation-delay: 100ms;
+}
+.gc-stagger > view:nth-child(4) {
+  animation-delay: 140ms;
+}
+.gc-stagger > view:nth-child(5) {
+  animation-delay: 180ms;
+}
+.gc-stagger > view:nth-child(6) {
+  animation-delay: 220ms;
+}
+.gc-stagger > view:nth-child(7) {
+  animation-delay: 260ms;
+}
+.gc-stagger > view:nth-child(8) {
+  animation-delay: 300ms;
+}
+.gc-stagger > view:nth-child(n + 9) {
+  animation-delay: 340ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gc-stagger > view {
+    animation: none;
+  }
+}
 </style>

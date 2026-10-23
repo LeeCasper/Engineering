@@ -37,7 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 文件 | 内容 |
 | --- | --- |
-| `需求文档.md` | 产品需求（v2.8），**一切实现的最终依据** |
+| `需求文档.md` | 产品需求（v2.10），**一切实现的最终依据** |
 | `CLAUDE.md` | 本文件：架构约定、常用命令、90 条约束编号索引 |
 | `docs/constraints/` | 90 条约束的完整说明，按主题拆分；编号与源码注释一一对应 |
 | `README.md` | 环境准备、数据库初始化、快速开始、交付进度 |
@@ -64,12 +64,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | M13 | **SaaS 多租户改造**（平台 → 租户 → 项目三层隔离） | ✅ 已完成（P0~P6；P2 的权限矩阵在 P1/P3/P4 中一并落地） |
 | V1.2-A | **考察计划与路线规划**（§4.6 / C-6.3~C-6.12） | ✅ 已完成：多选项目、起点、推荐顺序、手动重排、逐段导航、保存复用、坐标变更失效、地图降级；现场签到仍属后续 |
 | V2.9 | **平台运营数据看板 + 租户地区字段**（§5.7.6 / AC-T23~T25） | ✅ 已完成：中国地图省级着色、省 → 市行政区划下钻、未分配地区统计、地区租户列表；开通/调整租户录入省 + 市 |
+| V2.10 | **平台小程序品牌**（§5.7.6 / B-7.12 / AC-T26） | ✅ 已完成：平台设置小程序名称与 Logo、Logo 上传、公开 `GET /branding`；小程序登录页 / 首页 / 角色页 / 管理端登录页读取 |
 | — | 租户侧项目数据看板（AC-AD36~43） | 明确不在本轮（V1.2 的项目/工长/财务统计，与平台运营看板是两套口径） |
 | — | 管理后台页面（`admin/`） | ✅ 基座 / 平台与租户双登录 / 项目 / 平台租户 / **平台数据看板** / 平台基础配置 / 基础内容页 / 平台日志中心 / 阶段模板 / 账号 / 配置 / 操作与登录日志 / 内容页 / 反馈 / 排障授权 / 平台只读排障 / 我的导出 |
 | — | C 端小程序（`miniapp/`） | 🚧 已开始：首页（我的项目）、项目详情页、工程动态页、记账页、验收页、验收详情页、登录页、角色说明页、我的页 1:1 还原；我的项目 / 项目详情 / 工程动态 / 记账总览、流水与对账 / 消息中心 / 订阅状态 / 意见反馈 / 注销账号 / 租户管理员移动管理端 / **考察计划与路线规划** / **门锁密码（业主管理、工长监理查看）** / 搜索筛选 / 邀请确认 / 无项目引导 / 跨项目验收收件箱 / 业主签名已接通 |
 
-**后端 M1~M13、V1.2-A 路线规划与 V2.9 平台运营看板已完成**：151 条路由、40 张业务表、
-893 条自动化测试（38 个测试文件）、123~124 项端到端冒烟断言
+**后端 M1~M13、V1.2-A 路线规划、V2.9 看板与 V2.10 小程序品牌已完成**：153 条路由、40 张业务表、
+898 条自动化测试（38 个测试文件）、123~124 项端到端冒烟断言
 （平台账号首登改密那条只在首次运行时出现）。
 
 管理后台页面已交付；剩余的是 C 端小程序的进度汇报提交页。
@@ -116,8 +117,10 @@ pnpm geo:generate           # 重新生成全国/省级地图与地区树（需�
 # 小程序（miniapp/）
 npm run dev:h5              # 浏览器预览（需后端 WX_MOCK=true，固定 dev code 登录）
 npm run dev:mp-weixin       # 用微信开发者工具导入 dist/dev/mp-weixin
-npm run build:mp-weixin
+npm run build:mp-weixin     # 默认接口回落到 127.0.0.1:3000，仅本地调试用
 npm run build:h5
+# 生产包必须显式指定 HTTPS API，否则真机会报 url not in domain list
+VITE_API_BASE=https://bzg.yanxinn.com/api/v1 npm run build:mp-weixin
 node scripts/gen-assets.js  # 从 design-refs/ 重新生成 PNG 静态资源
 
 # 服务探针
@@ -152,6 +155,28 @@ H5 预览与冒烟测试需要 `WX_MOCK=true`（集成测试会自行强制该�
 `npm run build:h5 && npm run build:mp-weixin`，交互用 `dev:h5` 跑通。
 只改小程序样式时也不能只看构建成功 —— 用 H5 / 微信开发者工具实际看一眼主色、
 tabBar 选中态和底部安全区。
+
+## 生产部署（当前环境）
+
+> 以下是**本机现在这台生产服务器**的实际情况，不是通用部署模板。
+> 服务器上的完整路径、端口、备份与更新命令见 `/srv/renovation/DEPLOY-NOTES.md`。
+
+- 线上入口：`https://bzg.yanxinn.com`。管理后台静态文件由 Nginx 直接服务，
+  `/api/v1` 与 `/uploads` 反代到后端；MySQL、Redis 不对公网开放。
+- 后端用 **systemd**，不是 PM2：`renovation-api.service` 监听 `127.0.0.1:3100`。
+  `systemctl status/restart renovation-api`、`journalctl -u renovation-api`。
+- MySQL 8 与 Redis 是独立 Docker 容器：`renovation-mysql`（127.0.0.1:3307）、
+  `renovation-redis`（127.0.0.1:6380），刻意避开宿主机已有的 3306/6379。
+- 这台机器的 Nginx 是**宝塔的** `/www/server/nginx`，站点配置必须放
+  `/www/server/panel/vhost/nginx/*.conf`；放 `/etc/nginx` 不会生效。
+  重载命令是 `/www/server/nginx/sbin/nginx -s reload`。
+- 证书由 certbot 的 webroot 方式签发，续期后自动 reload 宝塔 Nginx。
+  站点配置：`/www/server/panel/vhost/nginx/bzg.yanxinn.com.conf`。
+- 发布流程：后端 `rsync` 代码 → `npm ci --omit=dev` → `npm run migrate` →
+  `systemctl restart renovation-api`；前端在本机构建后只同步 `admin/dist`。
+- 生产变量只存在服务器 `/srv/renovation/app/server/.env`（600，`renovation` 用户）；
+  `DOOR_CODE_KEY` 必须另外离线保存。服务器上还有宝塔、Java 服务与 `ab-prod` Docker 栈，
+  **不要为了本项目重启或修改无关服务**。
 
 ## 架构要点
 
@@ -306,9 +331,45 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   `scripts/gen-assets.js` 用 sharp 把背景、天际线、图标转成 3x PNG。
   角色卡实景图保留原 JPG，左侧羽化用白色渐变覆盖层实现 ——
   带 alpha 的大 PNG 会把主包顶过微信 2MB 限制（这是实际的踩坑点）。
+- **底部弹窗统一下滑关闭**：`src/composables/useSwipeClose.js` 负责把手 /
+  标题区的下拉手势，阈值约 90px（向下速度 > 0.6px/ms 也算），不足阈值用
+  `cubic-bezier(.22,1,.36,1)` 平滑回弹；入场有全局 `sheet-rise` 动画，
+  关闭用加速曲线淡出。
+  只把 touch 绑定在 `.sheet-handle` / `.sheet-head` / `.sheet-header` 上，
+  **不要绑整个 `.sheet`** —— 面板里有输入框和可滚动列表，整面板手势会抢滚动。
+  每个页面的遮罩必须带 `@touchmove.stop.prevent="sheetSwipe.onMaskTouchMove"`，
+  否则拖动时背景页面会跟着滚；把手实际触摸区域由 `App.vue` 的全局
+  `.sheet-handle` 样式撑到整条顶部，**不要改回 4px 高的胶囊**。
+  composable 必须把 `onTouchStart / onTouchMove / onTouchEnd` 直接返回给模板，
+  只放在 `handlers` 对象里会导致模板绑定到 `undefined`，表现为完全拖不动。
+- **tab 页 `onShow` 静默刷新不能先清空旧数据**：切回「我的」与「验收」时，
+  页面会重新拉取数据；旧实现先把 `stats.value = null` / 展示「加载中…」，
+  于是每次切 tab 都闪一下。现在「我的」用 `statsScopeKey` 区分同范围刷新与切换项目，
+  同范围保留旧值直到新值返回；「验收」用 `loaded` 标记，只有首次进入才显示首屏加载态。
+  新增 tab 页的 `onShow` 刷新时沿用这个原则：**保留旧内容 + 后台更新，
+  只有切换项目 / 范围变化才清空**。
+- **页面模块依次入场**：给内容容器加 `.gc-stagger`，直接子级会按
+  `:nth-child` 以 20~340ms 的延迟依次淡入上浮（`gc-reveal-up`）。
+  只加在纯内容容器（`.content`、`.card-list`、`.project-list`）上，
+  **不要加到包含固定弹窗 / 遮罩的容器**，否则面板会被重复动画。
+- **加载态统一用 `gc-loading` / `gc-skeleton`**（easycom，目录
+  `src/components/gc-loading/gc-loading.vue`、`gc-skeleton/gc-skeleton.vue`）：
+  列表首屏用骨架屏（`gc-skeleton`，带 shimmer），详情页 / 面板内 / 加载更多用
+  品牌色跳动圆点（`gc-loading`，`inline` 为横排）。不要在各页面重新写
+  「加载中…」纯文本；小程序管理端的 `AdminPageState` 已内置 `gc-loading`。
+- **小程序名称与 Logo 由平台后台配置**：`miniapp_name` / `miniapp_logo` 是
+  `platformOnly` 配置，租户只读；Logo 通过 `POST /admin/platform/branding/logo`
+  上传，配置值存绝对 URL。小程序登录前读 `GET /branding`（`auth:false`），
+  登录页 / 首页 / 角色页 / 管理端登录页用 `store/branding.js` 的 `branding.name`
+  与 `branding.logoUrl`，未配置时回落到各自的内置 Logo。不要把品牌名再写死。
+- **生产小程序包必须显式传 API 基址**：构建命令是
+  `VITE_API_BASE=https://<域名>/api/v1 npm run build:mp-weixin`，默认值会回落到 `127.0.0.1:3000`。真机预览/发布前，
+  微信公众平台的 request / uploadFile / downloadFile 合法域名都要加入该 HTTPS 域名，
+  否则会报 `request:fail url not in domain list`（请求根本到不了后端）。
+  构建产物是 `dist/build/mp-weixin`；不要拿 `dist/dev/mp-weixin` 去真机预览。
 - **构建**：`npm run build:mp-weixin` → `dist/build/mp-weixin`；
   `npm run dev:h5` 可在浏览器里走通登录（固定 dev code，后端 mock 派生稳定账号）。
-  微信开发者工具需勾选「不校验合法域名」才能访问 `127.0.0.1`。
+  微信开发者工具需勾选「不校验合法域名」才能访问 `127.0.0.1`（仅本地）。
 
 ### 管理后台（`admin/`）
 
@@ -392,6 +453,7 @@ Vue 3 + Vite + TypeScript + Element Plus + UnoCSS，基座是 **Soybean Admin El
   项目详情（概览 / 阶段工序 / 成员 / 付款节点）、
   平台租户管理（开通 / 配额 / 停用 / 退租 / 专属地址 / 地区）、
   平台数据看板（中国地图 / 省市级下钻 / 未分配地区 / 地区租户列表）、
+  平台小程序品牌（名称 / Logo 上传与预览）、
   平台基础配置 / 基础内容页 / 平台日志中心、
   阶段模板编辑器、账号管理、系统配置、操作日志 / 登录日志、
   内容页、意见反馈、排障授权、我的导出、个人中心。

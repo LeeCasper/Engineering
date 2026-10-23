@@ -194,6 +194,7 @@ const routeMap: RouteMap = {
   "log_operation": "/log/operation",
   "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?",
   "platform": "/platform",
+  "platform_branding": "/platform/branding",
   "platform_config": "/platform/config",
   "platform_content": "/platform/content",
   "platform_dashboard": "/platform/dashboard",

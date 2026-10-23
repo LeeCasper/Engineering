@@ -4,9 +4,9 @@
 
     <view class="admin-content">
       <view class="login-hero">
-        <image class="login-logo" src="/static/images/logo.png" mode="aspectFit" />
+        <image class="login-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
         <view class="login-hero-text">
-          <text class="login-title">柏总管 · 管理端</text>
+          <text class="login-title">{{ branding.name }} · 管理端</text>
           <text class="login-sub">使用租户管理员账号登录，与网页后台同一套数据</text>
         </view>
       </view>
@@ -124,6 +124,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { branding, loadBranding } from '../../../store/branding'
 import AdminNav from '../../../components/admin/AdminNav.vue'
 import {
   fetchAdminCaptchaPng,
@@ -170,6 +171,7 @@ const loggingBindingId = ref(null)
 const redirect = ref('/pages/admin/projects/index')
 
 onLoad((options) => {
+  loadBranding()
   // 401 跳转时把原路径放进 storage；兼容直接把 redirect 放在 query 的旧链接
   const stored = consumeAdminRedirect()
   const queryTarget = options && options.redirect ? decodeTarget(options.redirect) : ''

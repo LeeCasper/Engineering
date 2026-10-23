@@ -28,8 +28,8 @@
       </view>
     </scroll-view>
 
-    <view v-if="loading && !messages.length" class="state">
-      <text class="state-text">加载中…</text>
+    <view v-if="loading && !messages.length" class="gc-loading-page">
+      <gc-skeleton :rows="4" />
     </view>
 
     <view v-else-if="error && !messages.length" class="state">
@@ -70,7 +70,8 @@
       </view>
 
       <view v-if="messages.length < total" class="load-more" @tap="loadMore">
-        {{ loadingMore ? '加载中…' : '加载更多' }}
+        <gc-loading v-if="loadingMore" inline text="加载中" />
+        <text v-else>加载更多</text>
       </view>
       <view v-else class="list-end">— 没有更多消息了 —</view>
     </view>

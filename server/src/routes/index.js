@@ -49,6 +49,7 @@ router.use('/admin', require('./admin/index'))
 
 // C 端路径逐字照搬 §7.3，因此这里用 '/' 挂载而不是加前缀
 router.use('/auth', require('./mini/auth.routes'))
+router.use('/branding', require('./mini/branding.routes'))
 router.use('/invitations', require('./mini/invitation.routes'))
 
 const reportRoutes = require('./mini/report.routes')

@@ -310,3 +310,66 @@ describe('平台日志中心：只看平台级事件', () => {
     expect(login.status).toBe(403)
   })
 })
+
+describe('小程序品牌：平台名称与 Logo', () => {
+  const PNG_1PX = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  )
+
+  it('未配置时公开接口返回默认名称与空 Logo', async () => {
+    const res = await request.get('/branding')
+
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual({ name: '柏总管', logoUrl: null })
+  })
+
+  it('平台修改名称和 Logo 后，登录前的公开接口立即生效', async () => {
+    const platform = await platformLogin()
+
+    await request
+      .authed('put', '/admin/platform/sys-configs/miniapp_name', platform.token)
+      .send({ value: '住好家' })
+      .expect(200)
+
+    await request
+      .authed('put', '/admin/platform/sys-configs/miniapp_logo', platform.token)
+      .send({ value: 'https://cdn.example.com/logo.png' })
+      .expect(200)
+
+    const publicRes = await request.get('/branding')
+    expect(publicRes.status).toBe(200)
+    expect(publicRes.body.data).toEqual({
+      name: '住好家',
+      logoUrl: 'https://cdn.example.com/logo.png',
+    })
+  })
+
+  it('品牌配置是平台专属，租户不能修改', async () => {
+    const owner = await tenantOwner()
+
+    const res = await request
+      .authed('put', '/admin/sys-configs/miniapp_name', owner.token)
+      .send({ value: '租户自定义' })
+
+    expect(res.status).toBe(403)
+  })
+
+  it('平台可以上传 Logo，返回可访问地址；租户账号无上传权限', async () => {
+    const platform = await platformLogin()
+
+    const uploaded = await request
+      .authed('post', '/admin/platform/branding/logo', platform.token)
+      .attach('logo', PNG_1PX, { filename: 'logo.png', contentType: 'image/png' })
+
+    expect(uploaded.status).toBe(200)
+    expect(uploaded.body.data.url).toMatch(/\/uploads\/branding\//)
+    expect(uploaded.body.data.sizeBytes).toBe(PNG_1PX.length)
+
+    const owner = await tenantOwner()
+    const denied = await request
+      .authed('post', '/admin/platform/branding/logo', owner.token)
+      .attach('logo', PNG_1PX, { filename: 'logo.png', contentType: 'image/png' })
+    expect(denied.status).toBe(403)
+  })
+})

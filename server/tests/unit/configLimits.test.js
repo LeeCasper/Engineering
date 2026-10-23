@@ -83,6 +83,18 @@ describe('配置注册表自身的自洽性', () => {
     }
   })
 
+  it('小程序品牌配置是平台专属，名称与 Logo 都有合法的默认值', () => {
+    for (const key of ['miniapp_name', 'miniapp_logo']) {
+      expect(sysConfig.SCHEMA).toHaveProperty(key)
+      expect(sysConfig.SCHEMA[key].platformOnly).toBe(true)
+      expect(sysConfig.DEFAULTS).toHaveProperty(key)
+    }
+
+    expect(sysConfig.normalizeValue('miniapp_name', '  住好家  ')).toBe('住好家')
+    expect(() => sysConfig.normalizeValue('miniapp_name', 'x'.repeat(31))).toThrow(AppError)
+    expect(sysConfig.normalizeValue('miniapp_logo', '')).toBe('')
+  })
+
   it('可配置的附件上限不得超过传输层的文件数硬上限', () => {
     const imageMax = sysConfig.SCHEMA.report_max_images.max
     const videoMax = sysConfig.SCHEMA.report_max_videos.max

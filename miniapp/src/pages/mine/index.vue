@@ -10,7 +10,7 @@
       <text class="nav-title">我的</text>
     </view>
 
-    <view class="content">
+    <view class="content gc-stagger">
       <!-- 用户资料 -->
       <view class="profile-card" @tap="profileSheetOpen = true">
         <view class="profile-row">
@@ -22,7 +22,10 @@
               <text class="name">{{ displayName }}</text>
               <text v-if="roleLabel" class="role-badge">{{ roleLabel }}</text>
             </view>
-            <text class="phone" :class="{ 'phone--empty': !profile?.hasPhone }">{{ phoneText }}</text>
+            <view v-if="!profile" class="phone phone--loading">
+              <gc-loading inline text="加载中" />
+            </view>
+            <text v-else class="phone" :class="{ 'phone--empty': !profile.hasPhone }">{{ phoneText }}</text>
           </view>
           <image class="chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
         </view>
@@ -172,14 +175,14 @@
         <image class="deactivate-icon" src="/static/images/icon-logout-gray.png" mode="aspectFit" />
         <text>{{ deactivating ? '注销中…' : '注销账号' }}</text>
       </button>
-      <text class="version">柏总管 v{{ appVersion }}</text>
+      <text class="version">{{ branding.name }} v{{ appVersion }}</text>
     </view>
 
     <!-- 项目切换面板：第一项为「全部项目」 -->
-    <view v-if="projectSheetOpen" class="sheet-mask" @tap="closeProjectSheet">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="projectSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeProjectSheet">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">切换项目</text>
             <text class="sheet-sub">选择「全部项目」查看汇总，或进入单个项目</text>
@@ -226,10 +229,10 @@
     </view>
 
     <!-- 个人资料面板 -->
-    <view v-if="profileSheetOpen" class="sheet-mask" @tap="profileSheetOpen = false">
-      <view class="sheet" @tap.stop>
-        <view class="sheet-handle" />
-        <view class="sheet-head">
+    <view v-if="profileSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="profileSheetOpen = false">
+      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+        <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
+        <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">个人资料</text>
             <text class="sheet-sub">头像与昵称来自微信账号</text>
@@ -279,9 +282,15 @@ import {
   syncProjectContext,
   clearCurrentProject,
 } from '../../store/projectContext'
+import { branding, loadBranding } from '../../store/branding'
 import { myProjects, projectContacts, projectMyStats, projectMyStatsAll } from '../../api/project'
 import { deactivateAccount, getProfile } from '../../api/auth'
 import { refreshMineTabBadge, setMineTabBadge } from '../../utils/notificationBadge'
+import { useSwipeClose } from '../../composables/useSwipeClose'
+
+// 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
+const sheetSwipe = useSwipeClose(() => closeActiveSheet())
+const sheetSwipeStyle = sheetSwipe.style
 
 defineOptions({ name: 'MinePage' })
 
@@ -310,7 +319,7 @@ const serviceRows = [
   {
     key: 'about',
     title: '关于我们',
-    sub: '了解柏总管',
+    sub: '了解品牌故事',
     icon: '/static/images/icon-info-accent.png',
   },
   {
@@ -329,6 +338,10 @@ const projects = ref([])
 const supportContact = ref('')
 const contacts = ref([])
 const stats = ref(null)
+// 统计对应的范围（all / project:<id>）。用于区分「同一范围的后台刷新」与
+// 「切换项目」：前者保留旧值直到新值返回，后者必须先清空，避免串项目。
+const statsScopeKey = ref('')
+const contactsScopeId = ref(null)
 const unreadTotal = ref(0)
 const profileSheetOpen = ref(false)
 const projectSheetOpen = ref(false)
@@ -440,6 +453,7 @@ const emptyProjectState = computed(() => {
 })
 
 onLoad(() => {
+  loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 
@@ -538,29 +552,55 @@ async function loadProfileAndRole() {
 }
 
 async function loadRoleSection() {
-  contacts.value = []
-  stats.value = null
-
   if (!profile.value) return
 
-  if (accountRole.value === 'owner') {
-    if (!currentProject.value) return
+  const role = accountRole.value
+
+  if (role !== 'owner') {
+    contacts.value = []
+    contactsScopeId.value = null
+  }
+  if (role !== 'foreman') {
+    stats.value = null
+    statsScopeKey.value = ''
+  }
+
+  if (role === 'owner') {
+    if (!currentProject.value) {
+      contacts.value = []
+      contactsScopeId.value = null
+      return
+    }
+    // 切换项目时先清空，避免把上一个项目的联系人显示在新项目下；
+    // 同一项目的后台刷新保留旧数据。
+    if (contactsScopeId.value !== currentProject.value.id) contacts.value = []
     try {
       const data = await projectContacts(currentProject.value.id)
       contacts.value = (data && data.contacts) || []
+      contactsScopeId.value = currentProject.value.id
     } catch (err) {
       // 业主联系人只对业主开放；角色刚变化时静默降级即可
     }
     return
   }
 
-  if (accountRole.value === 'foreman') {
+  if (role === 'foreman') {
+    const nextScopeKey = currentProject.value ? `project:${currentProject.value.id}` : 'all'
+
+    // 关键：只有范围真正变化时才清空。每次 onShow 的静默刷新如果先置 null，
+    // 页面会先闪一下空白再加载，这就是「切到我的要等一下才显示汇报」的原因。
+    if (statsScopeKey.value !== nextScopeKey) stats.value = null
+
     try {
-      stats.value = currentProject.value
+      const data = currentProject.value
         ? await projectMyStats(currentProject.value.id)
         : await projectMyStatsAll()
+      stats.value = data
+      statsScopeKey.value = nextScopeKey
     } catch (err) {
-      // 非工长 / 角色变化时后端会拒绝，页面隐藏统计即可
+      // 非工长 / 角色变化时后端会拒绝：只有切到新范围才隐藏，
+      // 同一范围的刷新失败保留上一次成功的数据。
+      if (statsScopeKey.value !== nextScopeKey) stats.value = null
     }
   }
 }
@@ -760,6 +800,13 @@ async function confirmDeactivate() {
     uni.showToast({ title: err.message || '注销失败，请稍后重试', icon: 'none' })
   } finally {
     deactivating.value = false
+  }
+}
+function closeActiveSheet() {
+  if (projectSheetOpen.value) {
+    closeProjectSheet()
+  } else if (profileSheetOpen.value) {
+    profileSheetOpen.value = false
   }
 }
 </script>
