@@ -213,7 +213,7 @@
                   {{ nodeBadge(node) }}
                 </text>
                 <view
-                  v-if="isOwner && node.status === 'paid'"
+                  v-if="isPrimaryOwner && node.status === 'paid'"
                   class="confirm-btn"
                   @tap.stop="confirmNode(node)"
                 >
@@ -535,7 +535,7 @@
               <text class="node-sheet-meta">¥{{ formatMoney(node.amount) }} · {{ nodeTriggerLabel(node) }}</text>
             </view>
             <view
-              v-if="isOwner && node.status === 'paid'"
+              v-if="isPrimaryOwner && node.status === 'paid'"
               class="confirm-btn"
               @tap.stop="confirmNode(node)"
             >
@@ -674,7 +674,7 @@
             </view>
 
             <view v-if="recDetail.confirmedAt" class="rec-confirmed-note">
-              已由业主确认于 {{ formatDateTime(recDetail.confirmedAt) }}，相关流水已锁定。
+              已由主业主确认于 {{ formatDateTime(recDetail.confirmedAt) }}，相关流水已锁定。
             </view>
           </template>
         </scroll-view>
@@ -691,13 +691,16 @@
           <view v-else-if="recDetail.status === 'confirmed'" class="rec-action-note">
             对账已确认，相关流水只能通过红冲更正。
           </view>
+          <view v-else-if="isOwner && !isPrimaryOwner" class="rec-action-note">
+            对账确认与异议需由主业主操作，临时业主可查看对账明细。
+          </view>
           <view
             v-else-if="!isOwner && recDetail.status === 'disputed'"
             class="rec-action-note rec-action-note--warn"
           >
-            业主提出了 {{ recDetail.disputeCount }} 条异议，请处理后重新提交对账。
+            主业主提出了 {{ recDetail.disputeCount }} 条异议，请处理后重新提交对账。
           </view>
-          <view v-else-if="!isOwner" class="rec-action-note">等待业主确认对账。</view>
+          <view v-else-if="!isOwner" class="rec-action-note">等待主业主确认对账。</view>
           <view v-else-if="recDetail.disputeCount > 0" class="rec-action-note rec-action-note--warn">
             有 {{ recDetail.disputeCount }} 条明细存在异议，需工长处理后再确认。
           </view>
@@ -1054,6 +1057,13 @@ const headerTitle = computed(() => (detail.value && detail.value.name) || (curre
 
 const myRole = computed(() => (detail.value && detail.value.myRole) || (current.value && current.value.role) || '')
 const isOwner = computed(() => myRole.value === 'owner')
+// 付款确认 / 对账确认与异议只属于主业主；临时业主仍可查看账目
+const isPrimaryOwner = computed(() =>
+  Boolean(
+    (detail.value && detail.value.isPrimaryOwner) ||
+      (current.value && current.value.isPrimaryOwner)
+  )
+)
 const isForeman = computed(() => myRole.value === 'foreman')
 const hasLedgerAccess = computed(() => isOwner.value || isForeman.value)
 
@@ -1072,7 +1082,7 @@ const pendingItems = computed(() => {
   if (!hasLedgerAccess.value) return []
 
   const items = []
-  if (isOwner.value) {
+  if (isPrimaryOwner.value) {
     for (const node of nodes.value) {
       if (node.status !== 'paid') continue
       items.push({
@@ -1086,7 +1096,7 @@ const pendingItems = computed(() => {
   }
 
   for (const rec of reconciliations.value) {
-    if (isOwner.value && rec.status === 'pending') {
+    if (isPrimaryOwner.value && rec.status === 'pending') {
       items.push({
         key: `reconcile-${rec.id}`,
         type: 'reconciliation',
@@ -1181,14 +1191,14 @@ const expenseRows = computed(() => {
 })
 
 const canConfirmRec = computed(() => {
-  if (!recDetail.value || !isOwner.value) return false
+  if (!recDetail.value || !isPrimaryOwner.value) return false
   const status = recDetail.value.status
   if (status !== 'pending' && status !== 'disputed') return false
   return Number(recDetail.value.disputeCount) === 0
 })
 
 const canDisputeRow = computed(() => {
-  if (!isOwner.value || !recDetail.value) return false
+  if (!isPrimaryOwner.value || !recDetail.value) return false
   const status = recDetail.value.status
   return status === 'pending' || status === 'disputed'
 })
@@ -1686,7 +1696,11 @@ function previewReceipt(entry, index) {
 }
 
 function confirmNode(node) {
-  if (!isOwner.value || confirmingNodeId) return
+  if (confirmingNodeId) return
+  if (!isPrimaryOwner.value) {
+    uni.showToast({ title: '付款确认需由主业主操作', icon: 'none' })
+    return
+  }
 
   uni.showModal({
     title: '确认已支付',

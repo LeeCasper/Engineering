@@ -369,12 +369,13 @@ const accountRole = computed(
 const role = accountRole
 const roleLabel = computed(() => {
   if (!role.value) return ''
-  if (role.value === 'foreman' && currentProject.value && profile.value.isPrimaryForeman) {
-    return '主工长'
+  if (currentProject.value) {
+    if (role.value === 'foreman' && profile.value.isPrimaryForeman) return '主工长'
+    // 业主在当前项目下细分为主业主 / 临时业主；没有项目上下文时才显示账号角色「业主」
+    if (profile.value.roleLabel) return profile.value.roleLabel
   }
   return (
     profile.value.accountRoleLabel ||
-    profile.value.roleLabel ||
     ROLE_LABELS[role.value] ||
     role.value
   )

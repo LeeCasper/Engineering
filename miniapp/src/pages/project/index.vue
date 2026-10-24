@@ -341,8 +341,8 @@
           <view class="section-head">
             <view class="finance-head-left">
               <text class="section-title">账目概览</text>
-              <text v-if="pendingPaymentCount > 0" class="finance-badge">
-                有 {{ pendingPaymentCount }} 笔付款待您确认
+              <text v-if="pendingPaymentBadge" class="finance-badge">
+                {{ pendingPaymentBadge }}
               </text>
             </view>
             <view class="link link--accent" @tap="openLedger">
@@ -618,6 +618,8 @@ const activeReport = ref(null)
 let loadedOnce = false
 
 const isOwner = computed(() => detail.value?.myRole === 'owner')
+// 临时业主与业主共享查看能力，但验收/付款/对账只有主业主能操作
+const isPrimaryOwner = computed(() => Boolean(detail.value && detail.value.isPrimaryOwner))
 const isForeman = computed(() => detail.value?.myRole === 'foreman')
 const isSupervisor = computed(() => detail.value?.myRole === 'supervisor')
 
@@ -658,7 +660,8 @@ const pendingAcceptances = computed(() =>
 )
 
 const pendingPayments = computed(() => {
-  if (!isOwner.value) return []
+  // 临时业主可以看账目，但付款确认只属于主业主；这里不给他生成可操作的待办
+  if (!isPrimaryOwner.value) return []
   return paymentNodes.value.filter(
     (node) => node.status === 'paid' && !dismissedPaymentIds.value.includes(node.id)
   )
@@ -748,6 +751,12 @@ const showLedger = computed(() => Boolean(ledger.value) && (isOwner.value || isF
 const pendingPaymentCount = computed(
   () => paymentNodes.value.filter((node) => node.status === 'paid').length
 )
+const pendingPaymentBadge = computed(() => {
+  if (pendingPaymentCount.value <= 0) return ''
+  return isPrimaryOwner.value
+    ? `有 ${pendingPaymentCount.value} 笔付款待您确认`
+    : `有 ${pendingPaymentCount.value} 笔付款待主业主确认`
+})
 const nextNode = computed(() => {
   // 节点按 seq 返回；「下一节点」取第一个尚未确认的节点。
   // 不优先挑 unlocked：已付款待确认的节点同样需要业主处理，跳过它会让
@@ -1113,6 +1122,10 @@ function goAcceptance(task) {
 
 async function confirmNode(node) {
   if (!node) return
+  if (!isPrimaryOwner.value) {
+    uni.showToast({ title: '付款确认需由主业主操作', icon: 'none' })
+    return
+  }
   uni.showModal({
     title: '确认收款',
     content: `确认已收到「${node.name}」¥ ${formatMoney(node.amount)}？系统只记录状态，不进行资金划转。`,

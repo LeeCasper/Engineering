@@ -26,6 +26,8 @@ const compositionMissing = computed(() => {
   if (!c.foremanCount) missing.push('至少 1 名已确认的工长');
   if (c.foremanCount && !c.primaryForemanUserId) missing.push('指定 1 名主工长');
   if (!c.ownerCount) missing.push('至少 1 名已确认的业主');
+  if (c.ownerCount && !c.primaryOwnerUserId) missing.push('指定 1 名主业主');
+  if (c.primaryOwnerUserId && !c.primaryOwnerActive) missing.push('主业主确认邀请');
 
   return missing;
 });

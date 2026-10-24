@@ -15,6 +15,7 @@ const db = require('../db/pool')
 const userModel = require('../models/user.model')
 const projectMemberModel = require('../models/projectMember.model')
 const miniAuthService = require('./miniAuth.service')
+const { ownerRoleLabel, isPrimaryOwner } = require('../utils/ownerType')
 
 const ROLE_LABELS = { foreman: '工长', supervisor: '监理', owner: '业主' }
 
@@ -49,6 +50,8 @@ async function getProfile(userId, { projectId } = {}) {
     projectId: projectId ?? null,
     role: null,
     roleLabel: null,
+    ownerType: null,
+    isPrimaryOwner: false,
     isPrimaryForeman: false,
   }
 
@@ -60,10 +63,12 @@ async function getProfile(userId, { projectId } = {}) {
   return {
     ...profile,
     role: member.role,
-    roleLabel: ROLE_LABELS[member.role] || member.role,
+    roleLabel: ownerRoleLabel(member.role, member.owner_type),
+    ownerType: member.owner_type ?? null,
+    isPrimaryOwner: isPrimaryOwner(member),
     // 主工长标记（Q11）：界面上要能区分「工长」与「主工长」，
     // 因为只有后者能发起验收 —— 不显示的话，普通工长会以为自己也能
-    isPrimaryForeman: member.is_primary === 1,
+    isPrimaryForeman: member.role === 'foreman' && member.is_primary === 1,
   }
 }
 

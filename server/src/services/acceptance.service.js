@@ -28,6 +28,7 @@ const logger = require('../utils/logger')
 const storage = require('../storage')
 const watermark = require('../utils/watermark')
 const signedUrl = require('../utils/signedUrl')
+const { OWNER_TYPE, assertPrimaryOwner, isPrimaryOwner } = require('../utils/ownerType')
 const notificationService = require('./notification.service')
 const sysConfigService = require('./sysConfig.service')
 const acceptancePdfService = require('./acceptancePdf.service')
@@ -437,6 +438,7 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
     // AC-A10：对非本环节的验收单操作返回 403
     throw AppError.forbidden(`当前处于「${STATUS_LABELS[acceptance.status]}」，仅该项目${roleLabel(expectedRole)}可处理`)
   }
+  if (expectedRole === 'owner') assertPrimaryOwner(viewer, '确认验收')
 
   const step = expectedRole === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER
 
@@ -511,6 +513,7 @@ async function reject(userId, acceptanceId, { reason, files }) {
   if (viewer.role !== expectedRole) {
     throw AppError.forbidden(`当前处于「${STATUS_LABELS[acceptance.status]}」，仅该项目${roleLabel(expectedRole)}可处理`)
   }
+  if (expectedRole === 'owner') assertPrimaryOwner(viewer, '驳回验收')
 
   const text = String(reason || '').trim()
   if (!text) throw AppError.badRequest('驳回原因必填')
@@ -673,9 +676,11 @@ async function notifyStepHandlers(projectId, acceptanceId, status, stageId) {
   const role = STEP_ROLE[status]
   if (!role) return
 
+  // 业主环节只催主业主：临时业主没有处理权限，发给他只会制造「点进去 403」
   const targets = await db.query(
     `SELECT DISTINCT user_id FROM project_member
-      WHERE project_id = ? AND role = ? AND status = 'active' AND deleted_at IS NULL`,
+      WHERE project_id = ? AND role = ? AND status = 'active' AND deleted_at IS NULL
+        AND (role <> 'owner' OR owner_type = 'primary')`,
     [projectId, role]
   )
   if (targets.length === 0) return
@@ -819,6 +824,9 @@ async function getDetail(userId, acceptanceId) {
       remark: row.remark,
     })),
     flow: flow.map(toFlowView),
+    myRole: viewer.role,
+    ownerType: viewer.owner_type ?? null,
+    isPrimaryOwner: isPrimaryOwner(viewer),
     // 当前访问者在这张单子上能做什么 —— 前端据此决定按钮的可用性，
     // 但**服务端仍然独立校验**（AC-A10/A15/A24），前端只是体验层的提示
     myActions: buildMyActions(acceptance, viewer),
@@ -856,7 +864,11 @@ function buildMyActions(acceptance, viewer) {
   if (acceptance.status === STATUS.PASSED) return actions
 
   const expectedRole = STEP_ROLE[acceptance.status]
-  if (expectedRole && viewer.role === expectedRole) {
+  const canActAtStep =
+    expectedRole &&
+    viewer.role === expectedRole &&
+    (expectedRole !== 'owner' || isPrimaryOwner(viewer))
+  if (canActAtStep) {
     actions.push('approve', 'reject')
   }
 
@@ -901,6 +913,8 @@ async function listAcceptances(userId, projectId) {
     rejectCount: Number(row.reject_count),
     hasSignature: Boolean(row.signature_url),
     reportPdfStatus: row.report_pdf_status,
+    ownerType: viewer.owner_type ?? null,
+    isPrimaryOwner: isPrimaryOwner(viewer),
     // 是否为「待我处理」—— 由当前访问者的角色与单子所处环节共同决定
     isMine: isAwaitingMe(row, viewer),
   }))
@@ -919,7 +933,9 @@ async function listAcceptances(userId, projectId) {
     // tab 红点角标 = 待我处理数，与上面的 count 同源
     todoCount: todo.length,
     myRole: viewer.role,
-    isPrimaryForeman: viewer.is_primary === 1,
+    ownerType: viewer.owner_type ?? null,
+    isPrimaryOwner: isPrimaryOwner(viewer),
+    isPrimaryForeman: viewer.role === 'foreman' && viewer.is_primary === 1,
   }
 }
 
@@ -943,7 +959,7 @@ async function inbox(userId) {
   ])
 
   const acceptanceItems = rows.map((row) => {
-    const viewer = { role: row.my_role, is_primary: row.my_primary }
+    const viewer = { role: row.my_role, is_primary: row.my_primary, owner_type: row.my_owner_type }
     return {
       kind: 'acceptance',
       id: row.id,
@@ -975,6 +991,8 @@ async function inbox(userId) {
       foremanName: memberDisplayName(row.foreman_nickname, row.foreman_phone, '待分配'),
       submitterName: row.submitter_nickname || null,
       myRole: row.my_role,
+      ownerType: row.my_owner_type ?? null,
+      isPrimaryOwner: row.my_role === 'owner' && row.my_owner_type === OWNER_TYPE.PRIMARY,
     }
   })
 
@@ -1097,7 +1115,8 @@ function isAwaitingMe(row, viewer) {
   }
 
   const expectedRole = STEP_ROLE[row.status]
-  return Boolean(expectedRole) && viewer.role === expectedRole
+  if (!expectedRole || viewer.role !== expectedRole) return false
+  return expectedRole !== 'owner' || isPrimaryOwner(viewer)
 }
 
 /** 流转记录（C-3.9 / AC-A26：对任何角色只读） */

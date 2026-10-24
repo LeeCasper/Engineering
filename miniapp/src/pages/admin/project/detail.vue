@@ -69,7 +69,7 @@
             <view class="admin-section-head">
               <view>
                 <text class="admin-section-title">人员配置</text>
-                <text class="admin-section-sub">进入施工前必须至少配置 1 名工长、1 名主工长与 1 名业主</text>
+                <text class="admin-section-sub">进入施工前必须至少配置 1 名工长、1 名主工长、1 名业主与 1 名主业主</text>
               </view>
             </view>
             <view class="composition-row">
@@ -86,6 +86,12 @@
                   {{ memberComposition.primaryForemanName || '未指定' }}
                 </text>
                 <text class="composition-label">主工长</text>
+              </view>
+              <view class="composition-item">
+                <text class="composition-value composition-value--text">
+                  {{ memberComposition.primaryOwnerName || '未指定' }}
+                </text>
+                <text class="composition-label">主业主</text>
               </view>
             </view>
             <view v-if="!memberComposition.meetsRequirement" class="admin-warning composition-warning">
@@ -233,6 +239,10 @@ const memberComposition = computed(
       foremanCount: 0,
       ownerCount: 0,
       primaryForemanName: null,
+      primaryOwnerUserId: null,
+      primaryOwnerName: null,
+      primaryOwnerActive: false,
+      temporaryOwnerCount: 0,
       meetsRequirement: false,
     }
 )

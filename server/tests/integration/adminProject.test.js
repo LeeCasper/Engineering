@@ -1107,6 +1107,93 @@ describe('AC-AD18~21 / 58 / 59 成员管理', () => {
   })
 })
 
+describe('主业主与临时业主（v2.12）', () => {
+  async function setupProject() {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+    const created = await request
+      .authed('post', '/admin/projects', token)
+      .send({ ...VALID_PROJECT, templateId })
+    return { token, projectId: created.body.data.id }
+  }
+
+  async function inviteOwner(token, projectId, phone) {
+    return request.authed('post', `/admin/projects/${projectId}/members`, token).send({ phone, role: 'owner' })
+  }
+
+  it('首位业主自动成为主业主，后续业主是临时业主，数据库只有一个主业主', async () => {
+    const { token, projectId } = await setupProject()
+
+    const first = await inviteOwner(token, projectId, '13800007001')
+    expect(first.status).toBe(200)
+    expect(first.body.data.ownerType).toBe('primary')
+    expect(first.body.data.isPrimaryOwner).toBe(true)
+
+    const second = await inviteOwner(token, projectId, '13800007002')
+    expect(second.status).toBe(200)
+    expect(second.body.data.ownerType).toBe('temporary')
+    expect(second.body.data.isPrimaryOwner).toBe(false)
+
+    const rows = await db.query(
+      "SELECT owner_type FROM project_member WHERE project_id = ? AND role = 'owner' ORDER BY id",
+      [projectId]
+    )
+    expect(rows.map((row) => row.owner_type)).toEqual(['primary', 'temporary'])
+  })
+
+  it('重新邀请 pending 主业主不会把他降为临时业主', async () => {
+    const { token, projectId } = await setupProject()
+    await inviteOwner(token, projectId, '13800007101')
+    const again = await inviteOwner(token, projectId, '13800007101')
+    expect(again.status).toBe(200)
+    expect(again.body.data.ownerType).toBe('primary')
+  })
+
+  it('active 主业主不可移除；临时业主可以移除', async () => {
+    const { token, projectId } = await setupProject()
+    const primary = await inviteOwner(token, projectId, '13800007201')
+    const temporary = await inviteOwner(token, projectId, '13800007202')
+
+    await db.query("UPDATE project_member SET status = 'active', confirmed_at = NOW() WHERE id = ?", [
+      primary.body.data.memberId,
+    ])
+    await db.query("UPDATE project_member SET status = 'active', confirmed_at = NOW() WHERE id = ?", [
+      temporary.body.data.memberId,
+    ])
+
+    const blocked = await request.authed(
+      'delete',
+      `/admin/projects/${projectId}/members/${primary.body.data.memberId}`,
+      token
+    )
+    expect(blocked.status).toBe(409)
+    expect(blocked.body.data && blocked.body.data.isPrimaryOwner).toBe(true)
+
+    const removed = await request.authed(
+      'delete',
+      `/admin/projects/${projectId}/members/${temporary.body.data.memberId}`,
+      token
+    )
+    expect(removed.status).toBe(200)
+  })
+
+  it('成员列表返回主业主信息与临时业主数量', async () => {
+    const { token, projectId } = await setupProject()
+    await inviteOwner(token, projectId, '13800007301')
+    await inviteOwner(token, projectId, '13800007302')
+
+    const members = await request.authed('get', `/admin/projects/${projectId}/members`, token)
+    expect(members.status).toBe(200)
+    expect(members.body.data.composition.primaryOwnerUserId).toBeTruthy()
+    expect(members.body.data.composition.primaryOwnerActive).toBe(false)
+    expect(members.body.data.composition.temporaryOwnerCount).toBe(0)
+
+    const ownerRows = members.body.data.members.filter((m) => m.role === 'owner')
+    expect(ownerRows.find((m) => m.isPrimaryOwner).ownerTypeLabel).toBe('主业主')
+    expect(ownerRows.find((m) => m.ownerType === 'temporary').ownerTypeLabel).toBe('临时业主')
+  })
+})
+
 describe('AC-AD22 / AC-L18 付款节点配置', () => {
   async function setup() {
     const { token } = await superAdmin()
@@ -1238,7 +1325,7 @@ describe('C 端项目详情与可见性（AC-P26）', () => {
 
     const res = await miniAuth.authed('get', `/projects/${projectId}`, user.token)
     expect(res.status).toBe(200)
-    expect(res.body.data.myRoleLabel).toBe('业主')
+    expect(res.body.data.myRoleLabel).toBe('主业主')
     expect(res.body.data.stages).toHaveLength(2)
   })
 
@@ -1271,7 +1358,7 @@ describe('C 端项目详情与可见性（AC-P26）', () => {
     const miniAuth = require('./helpers/mini')
     const user = await miniAuth.login('code-pending-c')
     await db.query(
-      "INSERT INTO project_member (project_id, user_id, role, status) VALUES (?, ?, 'owner', 'pending')",
+      "INSERT INTO project_member (project_id, user_id, role, status, owner_type) VALUES (?, ?, 'owner', 'pending', 'primary')",
       [created.body.data.id, user.userId]
     )
 
@@ -1306,8 +1393,8 @@ async function createWechatUser(openid) {
 /** 直接建一条 active 成员关系。isPrimary 显式传，避免夹具偷偷替业务逻辑做决定 */
 async function addActiveMember(projectId, userId, role, isPrimary = false) {
   await db.query(
-    `INSERT INTO project_member (project_id, user_id, role, status, is_primary, confirmed_at, joined_at)
-     VALUES (?, ?, ?, 'active', ?, NOW(), NOW())`,
-    [projectId, userId, role, isPrimary ? 1 : 0]
+    `INSERT INTO project_member (project_id, user_id, role, status, is_primary, owner_type, confirmed_at, joined_at)
+     VALUES (?, ?, ?, 'active', ?, ?, NOW(), NOW())`,
+    [projectId, userId, role, isPrimary ? 1 : 0, role === 'owner' ? 'primary' : null]
   )
 }

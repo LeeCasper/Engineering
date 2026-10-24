@@ -112,7 +112,8 @@ async function findStepHandlers(projectId, role) {
     `SELECT DISTINCT u.id
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id AND u.deleted_at IS NULL AND u.status = 'active'
-      WHERE pm.project_id = ? AND pm.role = ? AND pm.status = 'active' AND pm.deleted_at IS NULL`,
+      WHERE pm.project_id = ? AND pm.role = ? AND pm.status = 'active' AND pm.deleted_at IS NULL
+        AND (pm.role <> 'owner' OR pm.owner_type = 'primary')`,
     [projectId, role]
   )
   return rows.map((r) => r.id)

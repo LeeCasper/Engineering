@@ -271,7 +271,7 @@ async function listInboxForUser(userId) {
             i.name AS item_name,
             u.nickname AS submitter_nickname,
             fu.nickname AS foreman_nickname, fu.phone AS foreman_phone,
-            pm.role AS my_role, pm.is_primary AS my_primary,
+            pm.role AS my_role, pm.is_primary AS my_primary, pm.owner_type AS my_owner_type,
             (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count
        FROM acceptance a
        JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL

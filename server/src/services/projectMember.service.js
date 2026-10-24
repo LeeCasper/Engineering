@@ -20,6 +20,7 @@ const db = require('../db/pool')
 const projectMemberModel = require('../models/projectMember.model')
 const miniAuthService = require('./miniAuth.service')
 const operationLog = require('./operationLog.service')
+const { OWNER_TYPE, OWNER_TYPE_LABELS, isPrimaryOwner } = require('../utils/ownerType')
 
 const VALID_ROLES = ['foreman', 'supervisor', 'owner']
 const ROLE_LABELS = { foreman: '工长', supervisor: '监理', owner: '业主' }
@@ -105,7 +106,7 @@ async function invite(operator, projectId, input) {
 
     // 3. 看这个人当前在本项目里是什么角色
     const existing = await tx.queryOne(
-      'SELECT id, role, status FROM project_member WHERE project_id = ? AND user_id = ?',
+      'SELECT id, role, status, owner_type FROM project_member WHERE project_id = ? AND user_id = ?',
       [projectId, user.id]
     )
 
@@ -142,18 +143,49 @@ async function invite(operator, projectId, input) {
       isPrimary = !currentPrimary
     }
 
+    // 4b. 确定主业主 / 临时业主。
+    //
+    // 与主工长同理：首个业主（含 pending）占住主业主名额，后续业主是临时业主。
+    // 查询必须排除本人，否则重新邀请当前 pending 主业主时会把自己降为临时。
+    let ownerType = null
+    if (input.role === 'owner') {
+      const currentPrimary = await tx.queryOne(
+        `SELECT id FROM project_member
+          WHERE project_id = ? AND role = 'owner' AND owner_type = 'primary'
+            AND status IN ('pending', 'active') AND deleted_at IS NULL
+            AND user_id <> ?`,
+        [projectId, user.id]
+      )
+      ownerType = currentPrimary ? OWNER_TYPE.TEMPORARY : OWNER_TYPE.PRIMARY
+    }
+
     // 5. 写入或更新成员关系
-    await projectMemberModel.invite({
-      projectId,
-      userId: user.id,
-      role: input.role,
-      invitedBy: operator.id,
-      isPrimary,
-      tx,
-    })
+    const writeMember = () =>
+      projectMemberModel.invite({
+        projectId,
+        userId: user.id,
+        role: input.role,
+        invitedBy: operator.id,
+        isPrimary,
+        ownerType,
+        tx,
+      })
+
+    try {
+      await writeMember()
+    } catch (err) {
+      // 两个管理员同时邀请首位业主时，双方都读到「没有主业主」，
+      // 唯一索引 uk_pm_primary_owner 会让其中一条失败。
+      // 这不是业务错误：把后来者降为临时业主即可。
+      const duplicatePrimaryKey =
+        err.code === 'ER_DUP_ENTRY' && String(err.message || '').includes('uk_pm_primary_owner')
+      if (ownerType !== OWNER_TYPE.PRIMARY || !duplicatePrimaryKey) throw err
+      ownerType = OWNER_TYPE.TEMPORARY
+      await writeMember()
+    }
 
     const member = await tx.queryOne(
-      'SELECT id, role, status, is_primary FROM project_member WHERE project_id = ? AND user_id = ?',
+      'SELECT id, role, status, is_primary, owner_type FROM project_member WHERE project_id = ? AND user_id = ?',
       [projectId, user.id]
     )
 
@@ -169,11 +201,15 @@ async function invite(operator, projectId, input) {
         targetId: member.id,
         projectId,
         detail: {
-          before: existing ? { role: existing.role, status: existing.status } : null,
+          before: existing
+            ? { role: existing.role, status: existing.status, ownerType: existing.owner_type ?? null }
+            : null,
           after: {
             role: member.role,
             status: member.status,
             isPrimaryForeman: member.is_primary === 1,
+            ownerType: member.owner_type ?? null,
+            isPrimaryOwner: isPrimaryOwner(member),
             phoneMasked: miniAuthService.maskPhone(phone),
             isNewUser: user.__created === true,
           },
@@ -187,6 +223,9 @@ async function invite(operator, projectId, input) {
       userId: user.id,
       role: member.role,
       roleLabel: ROLE_LABELS[member.role],
+      ownerType: member.owner_type ?? null,
+      ownerTypeLabel: member.owner_type ? OWNER_TYPE_LABELS[member.owner_type] : null,
+      isPrimaryOwner: isPrimaryOwner(member),
       status: member.status,
       isPrimaryForeman: member.is_primary === 1,
       // 占位账号：说明这个人还没注册过小程序，等他绑定手机号才能看到邀请
@@ -298,11 +337,19 @@ async function removeMember(operator, projectId, memberId) {
   await loadWritableProject(operator, projectId)
 
   const member = await db.queryOne(
-    'SELECT id, user_id, role, status, is_primary FROM project_member WHERE id = ? AND project_id = ? AND deleted_at IS NULL',
+    'SELECT id, user_id, role, status, is_primary, owner_type FROM project_member WHERE id = ? AND project_id = ? AND deleted_at IS NULL',
     [memberId, projectId]
   )
   if (!member) throw AppError.notFound('成员不存在')
   if (member.status === 'removed') throw AppError.conflict('该成员已被移除')
+
+  // 主业主身份一经确认不可变更、不可移除。
+  // pending 的主业主邀请还没有生效，可以撤销（撤销后下一位被邀请的业主成为主业主）。
+  if (member.role === 'owner' && member.owner_type === OWNER_TYPE.PRIMARY && member.status === 'active') {
+    throw AppError.conflict('该成员是本项目的主业主。主业主身份一经确认不可移除或改指', {
+      detail: { isPrimaryOwner: true },
+    })
+  }
 
   // 不能直接移除主工长（Q11 的决策）。
   // 若自动把下一位工长提为主工长，就会**静默地**改变「谁能发起验收」——
@@ -335,8 +382,13 @@ async function removeMember(operator, projectId, memberId) {
     targetId: memberId,
     projectId,
     detail: {
-      before: { userId: member.user_id, role: member.role, status: member.status },
-      after: { status: 'removed' },
+      before: {
+        userId: member.user_id,
+        role: member.role,
+        status: member.status,
+        ownerType: member.owner_type ?? null,
+      },
+      after: { status: 'removed', ownerType: null },
     },
   })
 
@@ -389,8 +441,11 @@ function toMemberView(row) {
     userId: row.user_id,
     role: row.role,
     roleLabel: ROLE_LABELS[row.role] || row.role,
+    ownerType: row.owner_type ?? null,
+    ownerTypeLabel: row.owner_type ? OWNER_TYPE_LABELS[row.owner_type] : null,
+    isPrimaryOwner: row.role === 'owner' && row.owner_type === OWNER_TYPE.PRIMARY,
     // Q11：主工长是「仅他能发起验收、提交结算单」的那个人
-    isPrimaryForeman: row.is_primary === 1,
+    isPrimaryForeman: row.role === 'foreman' && row.is_primary === 1,
     status: row.status,
     statusLabel: MEMBER_STATUS_LABELS[row.status] || row.status,
     nickname: row.nickname,
@@ -412,6 +467,11 @@ async function listMembers(operator, projectId) {
 
   const activeForemen = members.filter((m) => m.role === 'foreman' && m.status === 'active')
   const primary = activeForemen.find((m) => m.isPrimaryForeman)
+  const activeOwners = members.filter((m) => m.role === 'owner' && m.status === 'active')
+  // 主业主名额包含 pending：邀请弹窗要靠它判断下一位业主是不是临时业主
+  const primaryOwnerSlot = members.find(
+    (m) => m.role === 'owner' && m.ownerType === OWNER_TYPE.PRIMARY && m.status !== 'removed'
+  )
 
   return {
     members,
@@ -419,9 +479,13 @@ async function listMembers(operator, projectId) {
       // 只统计 active：AC-AD18 明确 pending 不计入任何权限判定，
       // 而人数约束（AC-AD58）约束的正是「实际有权限的人」
       foremanCount: activeForemen.length,
-      ownerCount: members.filter((m) => m.role === 'owner' && m.status === 'active').length,
+      ownerCount: activeOwners.length,
       primaryForemanUserId: primary ? primary.userId : null,
       primaryForemanName: primary ? primary.nickname : null,
+      primaryOwnerUserId: primaryOwnerSlot ? primaryOwnerSlot.userId : null,
+      primaryOwnerName: primaryOwnerSlot ? primaryOwnerSlot.nickname : null,
+      primaryOwnerActive: Boolean(primaryOwnerSlot && primaryOwnerSlot.status === 'active'),
+      temporaryOwnerCount: activeOwners.filter((m) => m.ownerType === OWNER_TYPE.TEMPORARY).length,
     },
   }
 }

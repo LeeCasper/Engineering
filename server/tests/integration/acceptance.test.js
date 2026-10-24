@@ -105,7 +105,7 @@ async function setup({ withSupervisor = true, completeStage = true, gateStatus }
     [projectId, foreman.userId]
   )
   await db.query(
-    "INSERT INTO project_member (project_id, user_id, role, status, confirmed_at, joined_at) VALUES (?, ?, 'owner', 'active', NOW(), NOW())",
+    "INSERT INTO project_member (project_id, user_id, role, status, owner_type, confirmed_at, joined_at) VALUES (?, ?, 'owner', 'active', 'primary', NOW(), NOW())",
     [projectId, owner.userId]
   )
 
@@ -1236,5 +1236,83 @@ describe('C-3.1 跨项目验收收件箱（验收 tab）', () => {
 
     const anonymous = await request.get('/acceptances')
     expect(anonymous.status).toBe(401)
+  })
+})
+
+describe('主业主 / 临时业主（v2.12）', () => {
+  async function addTemporaryOwner(ctx, code = 'code-owner-temp') {
+    const temporary = await mini.login(code)
+    await mini.addMember({
+      projectId: ctx.projectId,
+      userId: temporary.userId,
+      role: 'owner',
+      ownerType: 'temporary',
+    })
+    return temporary
+  }
+
+  async function toPendingOwner(ctx) {
+    const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
+    await mini
+      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
+      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await mini.authed('post', `/acceptances/${created.body.data.id}/approve`, ctx.supervisor.token)
+    return created.body.data.id
+  }
+
+  it('临时业主不能确认或驳回，myActions 为空且不算待我处理', async () => {
+    const ctx = await setup()
+    const temporary = await addTemporaryOwner(ctx)
+    const acceptanceId = await toPendingOwner(ctx)
+
+    const detail = await mini.authed('get', `/acceptances/${acceptanceId}`, temporary.token)
+    expect(detail.status).toBe(200)
+    expect(detail.body.data.myRole).toBe('owner')
+    expect(detail.body.data.ownerType).toBe('temporary')
+    expect(detail.body.data.isPrimaryOwner).toBe(false)
+    expect(detail.body.data.myActions).not.toContain('approve')
+    expect(detail.body.data.myActions).not.toContain('reject')
+
+    const list = await mini.authed('get', `/projects/${ctx.projectId}/acceptances`, temporary.token)
+    const item = list.body.data.groups.flatMap((g) => g.items).find((i) => i.id === acceptanceId)
+    expect(item.isMine).toBe(false)
+    expect(item.ownerType).toBe('temporary')
+
+    const rejected = await mini
+      .authed('post', `/acceptances/${acceptanceId}/reject`, temporary.token)
+      .send({ reason: '不同意' })
+    expect(rejected.status).toBe(403)
+    expect(rejected.body.message).toMatch(/主业主/)
+
+    const approved = await mini
+      .authed('post', `/acceptances/${acceptanceId}/approve`, temporary.token)
+      .attach('signature', await makeSignature(), { filename: 'sign.png', contentType: 'image/png' })
+    expect(approved.status).toBe(403)
+    expect(approved.body.message).toMatch(/主业主/)
+  })
+
+  it('验收超时提醒只发给主业主，不发给临时业主', async () => {
+    const ctx = await setup()
+    const temporary = await addTemporaryOwner(ctx, 'code-owner-temp-timeout')
+    await toPendingOwner(ctx)
+
+    const datetime = require('../../src/utils/datetime')
+    await db.query('UPDATE acceptance SET step_entered_at = ? WHERE status = ?', [
+      datetime.now().subtract(49, 'hour').format('YYYY-MM-DD HH:mm:ss'),
+      'pending_owner',
+    ])
+
+    await acceptanceTimeoutJob.runOnce()
+
+    const primaryNotice = await db.queryOne(
+      "SELECT id FROM notification WHERE user_id = ? AND title LIKE '%等待超过%'",
+      [ctx.owner.userId]
+    )
+    const tempNotice = await db.queryOne(
+      "SELECT id FROM notification WHERE user_id = ? AND title LIKE '%等待超过%'",
+      [temporary.userId]
+    )
+    expect(primaryNotice).toBeTruthy()
+    expect(tempNotice).toBeNull()
   })
 })

@@ -171,22 +171,33 @@ async function deactivate(userId, operator) {
 
   // 影响到的项目与「是否留下了无人接手的主工长」，在事务里收集、事务外发消息 ——
   // 消息是外部副作用，不能跟着事务一起回滚（发了又没注销，用户会收到莫名其妙的提醒）
-  const affected = await db.withTransaction(async (tx) => {
+  const { affected, promotions } = await db.withTransaction(async (tx) => {
     const memberships = await tx.query(
-      `SELECT pm.id, pm.project_id, pm.role, pm.is_primary, p.name AS project_name
+      `SELECT pm.id, pm.project_id, pm.role, pm.is_primary, pm.owner_type, p.name AS project_name
          FROM project_member pm
          JOIN project p ON p.id = pm.project_id AND p.deleted_at IS NULL
         WHERE pm.user_id = ? AND pm.status IN ('pending', 'active') AND pm.deleted_at IS NULL`,
       [userId]
     )
 
+    const promoted = []
     for (const member of memberships) {
       // 置为 removed 而不是删行：AC-U19 要求历史记录保留，
       // 而「曾是成员后离开」与「从未加入」是两件事（CLAUDE.md 第 15 条）
       await tx.query(
-        `UPDATE project_member SET status = 'removed', left_at = NOW(), is_primary = 0 WHERE id = ?`,
+        `UPDATE project_member
+            SET status = 'removed', left_at = NOW(), is_primary = 0, owner_type = NULL
+          WHERE id = ?`,
         [member.id]
       )
+
+      // 主业主注销是唯一由系统发起的身份转移：项目不能因为一个人注销账号
+      // 就永久失去确认验收 / 付款 / 对账的能力。必须先把上一条 owner_type
+      // 清空，再提升临时业主，否则会撞 uk_pm_primary_owner。
+      if (member.role === 'owner' && member.owner_type === 'primary') {
+        const next = await projectMemberModel.promoteFirstTemporaryOwner(member.project_id, tx)
+        promoted.push({ projectId: member.project_id, projectName: member.project_name, next })
+      }
     }
 
     // 注销会清空 openid，之后再也找不到这些绑定；必须在匿名化之前撤销。
@@ -196,7 +207,7 @@ async function deactivate(userId, operator) {
     await notificationModel.deleteSubscriptions(userId, tx)
     await feedbackModel.detachUser(userId, tx)
 
-    return memberships
+    return { affected: memberships, promotions: promoted }
   })
 
   // 事务外：通知项目管理员（AC-AD18 的邀请确认走的是另一条路，这里只发提醒）
@@ -217,6 +228,24 @@ async function deactivate(userId, operator) {
       })
   }
 
+  // 主业主注销：系统已尝试自动提升临时业主；没有可提升的人时必须明确告知管理员。
+  for (const item of promotions) {
+    await adminNotification
+      .notifyProjectAdmin({
+        projectId: item.projectId,
+        title: item.next ? '项目主业主已变更' : '项目暂无主业主',
+        content: item.next
+          ? `「${item.projectName}」的主业主已注销账号，系统已将最早的临时业主升为主业主。`
+          : `「${item.projectName}」的主业主已注销账号，且项目没有可提升的临时业主。请邀请一位新业主，首位确认后将成为主业主，否则无法确认验收、付款与对账。`,
+      })
+      .catch((err) => {
+        logger.error('注销后通知项目管理员（主业主）失败', {
+          projectId: item.projectId,
+          message: err.message,
+        })
+      })
+  }
+
   await operationLog.record({
     ...operationLog.fromOperator(operator),
     action: operationLog.ACTIONS.ACCOUNT_DEACTIVATE,
@@ -227,7 +256,13 @@ async function deactivate(userId, operator) {
     // 把昵称抄进日志等于把刚抹掉的个人信息换个地方存了一份
     detail: {
       before: { status: user.status, hasPhone: Boolean(user.phone) },
-      after: { anonymized: true, membershipsRemoved: affected.length, primaryForemanOf: affected.filter((m) => m.is_primary === 1).length },
+      after: {
+        anonymized: true,
+        membershipsRemoved: affected.length,
+        primaryForemanOf: affected.filter((m) => m.is_primary === 1).length,
+        primaryOwnerOf: affected.filter((m) => m.role === 'owner' && m.owner_type === 'primary').length,
+        promotedPrimaryOwnerOf: promotions.filter((item) => item.next).length,
+      },
     },
   })
 

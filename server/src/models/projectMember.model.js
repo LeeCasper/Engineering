@@ -25,7 +25,9 @@ async function findActiveRole(projectId, userId) {
   // is_primary 一并返回：验收发起、阶段结算单提交的权限判定要用它（Q11），
   // 让调用方不必再查一次
   return db.queryOne(
-    `SELECT id, role, is_primary FROM project_member pm WHERE pm.project_id = ? AND pm.user_id = ? AND ${ACTIVE}`,
+    `SELECT id, role, is_primary, owner_type
+       FROM project_member pm
+      WHERE pm.project_id = ? AND pm.user_id = ? AND ${ACTIVE}`,
     [projectId, userId]
   )
 }
@@ -50,10 +52,10 @@ async function listUserTenants(userId) {
 
 /** 查某人在某项目中的成员记录（含 pending），用于判断「是否已被邀请」 */
 async function findAny(projectId, userId) {
-  return db.queryOne('SELECT id, role, status FROM project_member WHERE project_id = ? AND user_id = ?', [
-    projectId,
-    userId,
-  ])
+  return db.queryOne(
+    'SELECT id, role, status, owner_type FROM project_member WHERE project_id = ? AND user_id = ?',
+    [projectId, userId]
+  )
 }
 
 /**
@@ -81,19 +83,20 @@ async function countByRole(projectId, role) {
  *
  * 重复分配时**替换角色**而不是新增 —— AC-AD20 明确要求「提示替换而非新增」。
  */
-async function invite({ projectId, userId, role, invitedBy, isPrimary = false, tx = db }) {
+async function invite({ projectId, userId, role, invitedBy, isPrimary = false, ownerType = null, tx = db }) {
   await tx.query(
-    `INSERT INTO project_member (project_id, user_id, role, status, invited_by, is_primary)
-     VALUES (?, ?, ?, 'pending', ?, ?)
+    `INSERT INTO project_member (project_id, user_id, role, status, invited_by, is_primary, owner_type)
+     VALUES (?, ?, ?, 'pending', ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        role       = VALUES(role),
        status     = 'pending',
        invited_by = VALUES(invited_by),
        is_primary = VALUES(is_primary),
+       owner_type = VALUES(owner_type),
        confirmed_at = NULL,
        left_at    = NULL,
        deleted_at = NULL`,
-    [projectId, userId, role, invitedBy ?? null, isPrimary ? 1 : 0]
+    [projectId, userId, role, invitedBy ?? null, isPrimary ? 1 : 0, ownerType ?? null]
   )
 
   return findAny(projectId, userId)
@@ -108,6 +111,62 @@ async function findPrimaryForeman(projectId) {
         AND pm.status = 'active' AND pm.deleted_at IS NULL`,
     [projectId]
   )
+}
+
+/** 已确认的主业主（active）；重要决策判定的数据来源 */
+async function findPrimaryOwner(projectId) {
+  return db.queryOne(
+    `SELECT pm.id, pm.user_id, u.nickname, u.openid
+       FROM project_member pm JOIN user u ON u.id = pm.user_id
+      WHERE pm.project_id = ? AND pm.role = 'owner' AND pm.owner_type = 'primary'
+        AND pm.status = 'active' AND pm.deleted_at IS NULL`,
+    [projectId]
+  )
+}
+
+/**
+ * 主业主名额（含 pending）。
+ *
+ * 管理员邀请业主时要用它判断「本次会不会产生主业主」：一个还没确认的
+ * 主业主邀请同样占着名额，不能因为 pending 不计入权限就再安排一个主业主。
+ */
+async function findPrimaryOwnerSlot(projectId) {
+  return db.queryOne(
+    `SELECT pm.id, pm.user_id, pm.status, pm.owner_type, u.nickname
+       FROM project_member pm JOIN user u ON u.id = pm.user_id
+      WHERE pm.project_id = ? AND pm.role = 'owner' AND pm.owner_type = 'primary'
+        AND pm.status IN ('pending', 'active') AND pm.deleted_at IS NULL`,
+    [projectId]
+  )
+}
+
+/**
+ * 注销主业主后提升最早的临时业主。
+ *
+ * 只在 miniAuth.deactivate 中使用，且调用前必须先把原主业主的
+ * owner_type 清空 —— 否则会撞 uk_pm_primary_owner。
+ * active 优先于 pending：先让已确认的人接手。
+ */
+async function promoteFirstTemporaryOwner(projectId, tx = db) {
+  const candidate = await tx.queryOne(
+    `SELECT id, user_id, status
+       FROM project_member
+      WHERE project_id = ? AND role = 'owner' AND owner_type = 'temporary'
+        AND status IN ('pending', 'active') AND deleted_at IS NULL
+      ORDER BY FIELD(status, 'active', 'pending'), id ASC
+      LIMIT 1`,
+    [projectId]
+  )
+  if (!candidate) return null
+
+  const result = await tx.query(
+    `UPDATE project_member
+        SET owner_type = 'primary'
+      WHERE id = ? AND role = 'owner' AND owner_type = 'temporary'
+        AND status IN ('pending', 'active') AND deleted_at IS NULL`,
+    [candidate.id]
+  )
+  return result.affectedRows > 0 ? candidate : null
 }
 
 /**
@@ -174,7 +233,7 @@ async function confirm(projectId, userId) {
 async function reject(projectId, userId) {
   const result = await db.query(
     `UPDATE project_member
-        SET status = 'removed', left_at = NOW()
+        SET status = 'removed', left_at = NOW(), owner_type = NULL
       WHERE project_id = ? AND user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
     [projectId, userId]
   )
@@ -185,7 +244,7 @@ async function reject(projectId, userId) {
 async function remove(projectId, userId) {
   const result = await db.query(
     `UPDATE project_member
-        SET status = 'removed', left_at = NOW()
+        SET status = 'removed', left_at = NOW(), owner_type = NULL
       WHERE project_id = ? AND user_id = ? AND status <> 'removed' AND deleted_at IS NULL`,
     [projectId, userId]
   )
@@ -201,13 +260,14 @@ async function remove(projectId, userId) {
  */
 async function listByProject(projectId) {
   return db.query(
-    `SELECT pm.id, pm.user_id, pm.role, pm.status, pm.invited_by, pm.is_primary,
+    `SELECT pm.id, pm.user_id, pm.role, pm.status, pm.invited_by, pm.is_primary, pm.owner_type,
             pm.created_at AS invited_at, pm.confirmed_at, pm.left_at,
             u.nickname, u.phone
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id
       WHERE pm.project_id = ? AND pm.deleted_at IS NULL
-      ORDER BY FIELD(pm.role, 'foreman', 'supervisor', 'owner'), pm.id`,
+      ORDER BY FIELD(pm.role, 'foreman', 'supervisor', 'owner'),
+               FIELD(pm.owner_type, 'primary', 'temporary'), pm.id`,
     [projectId]
   )
 }
@@ -221,7 +281,7 @@ async function listByProject(projectId) {
  */
 async function findPendingById(memberId, userId) {
   return db.queryOne(
-    `SELECT id, project_id, role
+    `SELECT id, project_id, role, owner_type
        FROM project_member
       WHERE id = ? AND user_id = ? AND status = 'pending' AND deleted_at IS NULL`,
     [memberId, userId]
@@ -244,7 +304,7 @@ async function findPendingInvitations(userId, { tenantId } = {}) {
   return db.query(
     // admin_user 表没有 nickname 字段（§6.1 只定义了 username），
     // 邀请人展示名就用 username
-    `SELECT pm.id, pm.project_id, pm.role, pm.created_at AS invited_at,
+    `SELECT pm.id, pm.project_id, pm.role, pm.owner_type, pm.created_at AS invited_at,
             p.name AS project_name, p.address AS project_address,
             p.tenant_id, t.name AS tenant_name,
             u.username AS inviter_username
@@ -272,14 +332,15 @@ async function listKeyMembersOfProjects(projectIds) {
 
   const placeholders = projectIds.map(() => '?').join(', ')
   return db.query(
-    `SELECT pm.project_id, pm.role, pm.is_primary,
+    `SELECT pm.project_id, pm.role, pm.is_primary, pm.owner_type,
             u.nickname, u.phone
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id
       WHERE pm.project_id IN (${placeholders})
         AND pm.role IN ('owner', 'foreman')
         AND pm.status = 'active' AND pm.deleted_at IS NULL
-      ORDER BY pm.project_id, FIELD(pm.role, 'foreman', 'owner'), pm.is_primary DESC, pm.id ASC`,
+      ORDER BY pm.project_id, FIELD(pm.role, 'foreman', 'owner'),
+               pm.is_primary DESC, FIELD(pm.owner_type, 'primary', 'temporary'), pm.id ASC`,
     projectIds
   )
 }
@@ -295,6 +356,9 @@ module.exports = {
   reject,
   remove,
   findPrimaryForeman,
+  findPrimaryOwner,
+  findPrimaryOwnerSlot,
+  promoteFirstTemporaryOwner,
   setPrimary,
   listByProject,
   listKeyMembersOfProjects,

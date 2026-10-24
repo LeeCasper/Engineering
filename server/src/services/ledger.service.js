@@ -26,6 +26,7 @@ const db = require('../db/pool')
 const logger = require('../utils/logger')
 const storage = require('../storage')
 const watermark = require('../utils/watermark')
+const { assertPrimaryOwner } = require('../utils/ownerType')
 const notificationService = require('./notification.service')
 const operationLog = require('./operationLog.service')
 const sysConfigService = require('./sysConfig.service')
@@ -706,7 +707,7 @@ async function confirmPaymentNode(userId, projectId, nodeId, context = {}) {
   const viewer = await resolveViewer(userId, projectId)
   const project = await loadProject(projectId)
 
-  if (viewer.role !== 'owner') throw AppError.forbidden('仅业主可确认付款')
+  assertPrimaryOwner(viewer, '确认付款')
   assertNotArchived(project)
 
   return db.withTransaction(async (tx) => {

@@ -24,6 +24,7 @@ const datetime = require('../utils/datetime')
 const db = require('../db/pool')
 const logger = require('../utils/logger')
 const signedUrl = require('../utils/signedUrl')
+const { assertPrimaryOwner, isPrimaryOwner } = require('../utils/ownerType')
 const notificationService = require('./notification.service')
 const operationLog = require('./operationLog.service')
 const ledgerModel = require('../models/ledger.model')
@@ -166,7 +167,7 @@ async function confirm(userId, reconciliationId, context = {}) {
   if (!reconciliation) throw AppError.notFound('对账单不存在')
 
   const viewer = await resolveViewer(userId, reconciliation.project_id)
-  if (viewer.role !== 'owner') throw AppError.forbidden('仅业主可确认对账')
+  assertPrimaryOwner(viewer, '确认对账')
 
   if (reconciliation.status !== STATUS.PENDING && reconciliation.status !== STATUS.DISPUTED) {
     throw AppError.conflict(`对账单当前为「${STATUS_LABELS[reconciliation.status]}」，不能确认`)
@@ -239,7 +240,7 @@ async function dispute(userId, reconciliationId, { detailId, remark }, context =
   if (!reconciliation) throw AppError.notFound('对账单不存在')
 
   const viewer = await resolveViewer(userId, reconciliation.project_id)
-  if (viewer.role !== 'owner') throw AppError.forbidden('仅业主可提出异议')
+  assertPrimaryOwner(viewer, '提出异议')
 
   if (reconciliation.status !== STATUS.PENDING && reconciliation.status !== STATUS.DISPUTED) {
     throw AppError.conflict(`对账单当前为「${STATUS_LABELS[reconciliation.status]}」，不能提出异议`)
@@ -282,7 +283,7 @@ async function dispute(userId, reconciliationId, { detailId, remark }, context =
 // ─────────────────────────────────────────────────────────────
 
 async function getDetail(userId, projectId, reconciliationId) {
-  await resolveViewer(userId, projectId)
+  const viewer = await resolveViewer(userId, projectId)
 
   const reconciliation = await reconciliationModel.findById(reconciliationId)
   if (!reconciliation || Number(reconciliation.project_id) !== Number(projectId)) {
@@ -329,12 +330,15 @@ async function getDetail(userId, projectId, reconciliationId) {
       disputeRemark: row.dispute_remark,
     })),
     disputeCount: details.filter((row) => row.dispute === 1).length,
+    myRole: viewer.role,
+    ownerType: viewer.owner_type ?? null,
+    isPrimaryOwner: isPrimaryOwner(viewer),
   }
 }
 
 /** 对账单列表（AC-L22：完整展示周期、金额合计、状态、提交人、确认人及各自时间） */
 async function list(userId, projectId) {
-  await resolveViewer(userId, projectId)
+  const viewer = await resolveViewer(userId, projectId)
   await loadProject(projectId)
 
   const rows = await reconciliationModel.listByProject(projectId, { scopeType: 'period' })
@@ -363,6 +367,9 @@ async function list(userId, projectId) {
       settlementPdfUrl: row.settlement_pdf_url,
     })),
     total: rows.length,
+    myRole: viewer.role,
+    ownerType: viewer.owner_type ?? null,
+    isPrimaryOwner: isPrimaryOwner(viewer),
   }
 }
 
@@ -384,7 +391,8 @@ async function notifyOwner(projectId, reconciliationId, title, content) {
   const owners = await db.query(
     `SELECT DISTINCT u.id FROM project_member pm
        JOIN user u ON u.id = pm.user_id AND u.deleted_at IS NULL AND u.status = 'active'
-      WHERE pm.project_id = ? AND pm.role = 'owner' AND pm.status = 'active' AND pm.deleted_at IS NULL`,
+      WHERE pm.project_id = ? AND pm.role = 'owner' AND pm.owner_type = 'primary'
+        AND pm.status = 'active' AND pm.deleted_at IS NULL`,
     [projectId]
   )
 

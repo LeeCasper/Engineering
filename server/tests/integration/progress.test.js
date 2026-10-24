@@ -384,9 +384,9 @@ describe('AC-P25 / 归属校验：谁能改进度、能改谁的', () => {
     ]) {
       const outsider = await mini.login(code)
       await db.query(
-        `INSERT INTO project_member (project_id, user_id, role, status, confirmed_at, joined_at)
-         VALUES (?, ?, ?, 'active', NOW(), NOW())`,
-        [projectId, outsider.userId, role]
+        `INSERT INTO project_member (project_id, user_id, role, status, owner_type, confirmed_at, joined_at)
+         VALUES (?, ?, ?, 'active', ?, NOW(), NOW())`,
+        [projectId, outsider.userId, role, role === 'owner' ? 'primary' : null]
       )
 
       await expect(setProgress(projectId, items[0].id, outsider.userId, 50)).rejects.toThrow(/仅该项目的工长/)

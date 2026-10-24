@@ -66,12 +66,29 @@ async function createStage({
   return result.insertId
 }
 
-/** 直接建成员关系。status 默认 active，传 pending 可验证「未确认不计入权限」 */
-async function addMember({ projectId, userId, role, status = 'active', invitedBy = null }) {
+/**
+ * 直接建成员关系。status 默认 active，传 pending 可验证「未确认不计入权限」。
+ *
+ * 业主需要 owner_type：未显式传时按「项目是否已有 pending/active 主业主」
+ * 自动选择 primary / temporary，避免每个用例重复写。
+ */
+async function addMember({ projectId, userId, role, status = 'active', invitedBy = null, ownerType = null }) {
+  let resolvedOwnerType = ownerType
+  if (role === 'owner' && !resolvedOwnerType) {
+    const primary = await db.queryOne(
+      `SELECT id FROM project_member
+        WHERE project_id = ? AND role = 'owner' AND owner_type = 'primary'
+          AND status IN ('pending', 'active') AND deleted_at IS NULL`,
+      [projectId]
+    )
+    resolvedOwnerType = primary ? 'temporary' : 'primary'
+  }
+
   const result = await db.query(
-    `INSERT INTO project_member (project_id, user_id, role, status, invited_by, confirmed_at, joined_at)
-     VALUES (?, ?, ?, ?, ?, ${status === 'active' ? 'NOW()' : 'NULL'}, ${status === 'active' ? 'NOW()' : 'NULL'})`,
-    [projectId, userId, role, status, invitedBy]
+    `INSERT INTO project_member
+       (project_id, user_id, role, status, invited_by, owner_type, confirmed_at, joined_at)
+     VALUES (?, ?, ?, ?, ?, ?, ${status === 'active' ? 'NOW()' : 'NULL'}, ${status === 'active' ? 'NOW()' : 'NULL'})`,
+    [projectId, userId, role, status, invitedBy, resolvedOwnerType]
   )
   return result.insertId
 }

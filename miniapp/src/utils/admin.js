@@ -19,6 +19,11 @@ export const MEMBER_ROLE_LABELS = {
   supervisor: '监理',
 }
 
+export const OWNER_TYPE_LABELS = {
+  primary: '主业主',
+  temporary: '临时业主',
+}
+
 export const MEMBER_STATUS_LABELS = {
   pending: '待确认',
   active: '已加入',

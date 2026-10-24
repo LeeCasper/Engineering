@@ -25,6 +25,9 @@ export function setCurrentProject(project) {
     tenantName: project.tenantName ?? project.tenant_name ?? null,
     name: project.name || '',
     role: project.myRole || project.my_role || null,
+    myRoleLabel: project.myRoleLabel || project.my_role_label || null,
+    ownerType: project.ownerType || project.owner_type || null,
+    isPrimaryOwner: Boolean(project.isPrimaryOwner),
   })
 }
 

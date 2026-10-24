@@ -94,9 +94,9 @@ async function setup() {
     [supervisor, 'supervisor'],
   ]) {
     await db.query(
-      `INSERT INTO project_member (project_id, user_id, role, status, is_primary, confirmed_at, joined_at)
-       VALUES (?, ?, ?, 'active', ?, NOW(), NOW())`,
-      [projectId, user.userId, role, role === 'foreman' ? 1 : 0]
+      `INSERT INTO project_member (project_id, user_id, role, status, is_primary, owner_type, confirmed_at, joined_at)
+       VALUES (?, ?, ?, 'active', ?, ?, NOW(), NOW())`,
+      [projectId, user.userId, role, role === 'foreman' ? 1 : 0, role === 'owner' ? 'primary' : null]
     )
   }
 
@@ -617,6 +617,36 @@ describe('AC-L13 ~ L18 付款节点', () => {
     )
     expect(res.status).toBe(403)
   })
+
+  it('临时业主不能确认付款，主业主可以（v2.12）', async () => {
+    const ctx = await setup()
+    const temporary = await mini.login('code-owner-temp-pay')
+    await mini.addMember({
+      projectId: ctx.projectId,
+      userId: temporary.userId,
+      role: 'owner',
+      ownerType: 'temporary',
+    })
+
+    await unlockNode(ctx.manualNodeId)
+    await mini.authed('post', `/projects/${ctx.projectId}/payment-nodes/${ctx.manualNodeId}/pay`, ctx.foreman.token)
+
+    const denied = await mini.authed(
+      'post',
+      `/projects/${ctx.projectId}/payment-nodes/${ctx.manualNodeId}/confirm`,
+      temporary.token
+    )
+    expect(denied.status).toBe(403)
+    expect(denied.body.message).toMatch(/主业主/)
+
+    const confirmed = await mini.authed(
+      'post',
+      `/projects/${ctx.projectId}/payment-nodes/${ctx.manualNodeId}/confirm`,
+      ctx.owner.token
+    )
+    expect(confirmed.status).toBe(200)
+    expect(confirmed.body.data.status).toBe('confirmed')
+  })
 })
 
 describe('AC-L19 ~ L22 对账与锁定', () => {
@@ -797,6 +827,41 @@ describe('AC-L19 ~ L22 对账与锁定', () => {
         .authed('post', `/reconciliations/${id}/dispute`, ctx.foreman.token)
         .send({ detailId: created.body.data.details[0].id, remark: 'x' })).status
     ).toBe(403)
+  })
+
+  it('临时业主不能确认对账或提异议，主业主可以（v2.12）', async () => {
+    const ctx = await withLedger()
+    const temporary = await mini.login('code-owner-temp-rec')
+    await mini.addMember({
+      projectId: ctx.projectId,
+      userId: temporary.userId,
+      role: 'owner',
+      ownerType: 'temporary',
+    })
+
+    const created = await mini
+      .authed('post', `/projects/${ctx.projectId}/reconciliations`, ctx.foreman.token)
+      .send({ periodStart: '2026-03-01', periodEnd: '2026-03-31' })
+    const id = created.body.data.id
+
+    const deniedConfirm = await mini.authed('post', `/reconciliations/${id}/confirm`, temporary.token)
+    expect(deniedConfirm.status).toBe(403)
+    expect(deniedConfirm.body.message).toMatch(/主业主/)
+
+    const deniedDispute = await mini
+      .authed('post', `/reconciliations/${id}/dispute`, temporary.token)
+      .send({ detailId: created.body.data.details[0].id, remark: '金额不对' })
+    expect(deniedDispute.status).toBe(403)
+    expect(deniedDispute.body.message).toMatch(/主业主/)
+
+    const confirmed = await mini.authed('post', `/reconciliations/${id}/confirm`, ctx.owner.token)
+    expect(confirmed.status).toBe(200)
+    expect(confirmed.body.data.status).toBe('confirmed')
+
+    // 临时业主仍然可以查看对账单
+    const detail = await mini.authed('get', `/reconciliations/${id}`, temporary.token)
+    expect(detail.status).toBe(200)
+    expect(detail.body.data.isPrimaryOwner).toBe(false)
   })
 })
 

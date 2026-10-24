@@ -418,6 +418,30 @@ describe('C-1.2 我的项目列表按角色分组', () => {
     expect(res.body.data.hasCoordinates).toBe(false)
   })
 
+  it('项目详情区分主业主与临时业主，ownerName 取主业主（v2.12）', async () => {
+    const primary = await mini.login('code-primary-owner-detail')
+    await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['主业主张先生', primary.userId])
+    const projectId = await mini.createProject({ name: '双业主项目' })
+    await mini.addMember({ projectId, userId: primary.userId, role: 'owner' })
+
+    const temporary = await mini.login('code-temp-owner-detail')
+    await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['临时业主李女士', temporary.userId])
+    await mini.addMember({ projectId, userId: temporary.userId, role: 'owner' })
+
+    const primaryView = await mini.authed('get', `/projects/${projectId}`, primary.token)
+    expect(primaryView.body.data.myRoleLabel).toBe('主业主')
+    expect(primaryView.body.data.ownerType).toBe('primary')
+    expect(primaryView.body.data.isPrimaryOwner).toBe(true)
+    expect(primaryView.body.data.ownerName).toBe('主业主张先生')
+
+    const temporaryView = await mini.authed('get', `/projects/${projectId}`, temporary.token)
+    expect(temporaryView.body.data.myRoleLabel).toBe('临时业主')
+    expect(temporaryView.body.data.ownerType).toBe('temporary')
+    expect(temporaryView.body.data.isPrimaryOwner).toBe(false)
+    // 首页/详情展示的业主必须是主业主，不能因为临时业主 id 更小就显示临时业主
+    expect(temporaryView.body.data.ownerName).toBe('主业主张先生')
+  })
+
   it('延期判定遵循 §5.4 的统计口径', async () => {
     const { token, userId } = await mini.login('code-overdue')
 

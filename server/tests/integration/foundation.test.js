@@ -176,6 +176,25 @@ describe('基建 · 数据层连接', () => {
     }
   })
 
+  it('主业主迁移已建出 owner_type、生成列与唯一索引', async () => {
+    const columns = await db.query(
+      `SELECT column_name AS name, extra AS generation
+         FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'project_member'
+          AND column_name IN ('owner_type', 'primary_owner_key')`
+    )
+    expect(columns.map((c) => c.name).sort()).toEqual(['owner_type', 'primary_owner_key'])
+    expect(columns.find((c) => c.name === 'primary_owner_key').generation).toContain('STORED GENERATED')
+
+    const indexes = await db.query(
+      `SELECT index_name AS name
+         FROM information_schema.statistics
+        WHERE table_schema = DATABASE() AND table_name = 'project_member'
+          AND index_name = 'uk_pm_primary_owner'`
+    )
+    expect(indexes).toHaveLength(1)
+  })
+
   it('DECIMAL 以字符串返回（AC-L11 的前提）', async () => {
     await db.query(
       `INSERT INTO project (id, tenant_id, name, address, contract_amount, start_date, plan_end_date, created_by)

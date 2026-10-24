@@ -363,6 +363,30 @@ describe('AC-U15 业主一键联系工长 / 监理', () => {
     expect(res.status).toBe(403)
   })
 
+  it('临时业主可以查看联系人，资料里的角色是「临时业主」（v2.12）', async () => {
+    const owner = await setupMember('owner')
+    seq += 1
+    const temporary = await mini.login(`temporary-owner-${seq}`)
+    await mini.addMember({ projectId: owner.projectId, userId: temporary.userId, role: 'owner' })
+    const foremanId = await mini.createWechatUser(`temp-foreman-${(seq += 1)}`)
+    await db.query("UPDATE user SET phone = '13900004444' WHERE id = ?", [foremanId])
+    await mini.addMember({ projectId: owner.projectId, userId: foremanId, role: 'foreman' })
+
+    const contacts = await request.authed('get', `/projects/${owner.projectId}/contacts`, temporary.token)
+    expect(contacts.status).toBe(200)
+    expect(contacts.body.data.contacts).toHaveLength(1)
+
+    const profile = await request.authed(
+      'get',
+      `/auth/profile?projectId=${owner.projectId}`,
+      temporary.token
+    )
+    expect(profile.status).toBe(200)
+    expect(profile.body.data.role).toBe('owner')
+    expect(profile.body.data.roleLabel).toBe('临时业主')
+    expect(profile.body.data.isPrimaryOwner).toBe(false)
+  })
+
   it('不返回其他业主的联系方式', async () => {
     const ownerA = await setupMember('owner')
     const ownerB = await mini.createWechatUser(`owner-b-${(seq += 1)}`)

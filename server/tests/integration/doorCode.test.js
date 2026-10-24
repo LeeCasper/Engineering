@@ -78,6 +78,20 @@ describe('AC-K01 仅业主可新增 / 修改 / 失效', () => {
     expect(res.body.data.id).toBeTruthy()
   })
 
+  it('临时业主也可以管理门锁密码（v2.12：不属于重要决策限制）', async () => {
+    const { owner, projectId } = await setupProjectWithTeam()
+    const temporary = await mini.login(`door-temp-owner-${(seq += 1)}`)
+    await mini.addMember({ projectId, userId: temporary.userId, role: 'owner' })
+
+    const created = await addCode(temporary.token, projectId, { code: '654321' })
+    expect(created.status).toBe(200)
+
+    const list = await request.authed('get', `/projects/${projectId}/door-codes`, temporary.token)
+    expect(list.status).toBe(200)
+    expect(list.body.data.myRole).toBe('owner')
+    expect(list.body.data.canManage).toBe(true)
+  })
+
   it('工长、监理新增一律 403', async () => {
     const { foreman, supervisor, projectId } = await setupProjectWithTeam()
 

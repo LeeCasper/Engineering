@@ -102,8 +102,12 @@
           邀请人：{{ inv.invitedBy || '管理员' }} · {{ formatTime(inv.invitedAt) }}
         </text>
         <view class="invite-actions">
-          <button class="invite-reject" @tap="onReject(inv)">拒绝</button>
-          <button class="invite-accept" @tap="onAccept(inv)">确认加入</button>
+          <view class="invite-reject" @tap="onReject(inv)">
+            <text class="invite-btn-text">拒绝</text>
+          </view>
+          <view class="invite-accept" @tap="onAccept(inv)">
+            <text class="invite-btn-text">确认加入</text>
+          </view>
         </view>
       </view>
     </view>
@@ -1254,8 +1258,26 @@ function closeActiveSheet() {
   flex: 1;
   height: dp(40);
   border-radius: dp(8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: dp(14);
   font-weight: 600;
+  line-height: 1;
+}
+
+.invite-btn-text {
+  font-size: dp(14);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.invite-reject .invite-btn-text {
+  color: #51463e;
+}
+
+.invite-accept .invite-btn-text {
+  color: #fff;
 }
 
 .invite-reject {

@@ -40,6 +40,12 @@
                 </text>
                 <text class="composition-label">主工长</text>
               </view>
+              <view class="composition-item">
+                <text class="composition-value composition-value--text">
+                  {{ composition.primaryOwnerName || '未指定' }}
+                </text>
+                <text class="composition-label">主业主</text>
+              </view>
             </view>
           </view>
 
@@ -56,6 +62,18 @@
                     <text class="member-name">{{ member.nickname || member.phoneMasked || '待确认用户' }}</text>
                     <text class="admin-badge" :class="roleTone(member.role)">{{ member.roleLabel }}</text>
                     <text v-if="member.isPrimaryForeman" class="admin-badge admin-badge--green">主工长</text>
+                    <text
+                      v-if="member.isPrimaryOwner"
+                      class="admin-badge admin-badge--accent"
+                    >
+                      {{ member.status === 'active' ? '主业主' : '确认后成为主业主' }}
+                    </text>
+                    <text
+                      v-else-if="member.ownerType === 'temporary' && member.status !== 'removed'"
+                      class="admin-badge admin-badge--gray"
+                    >
+                      临时业主
+                    </text>
                     <text v-if="member.status !== 'active'" class="admin-badge admin-badge--gray">
                       {{ member.statusLabel }}
                     </text>
@@ -73,7 +91,11 @@
                   设为主工长
                 </button>
                 <button
-                  v-if="!member.isPrimaryForeman && member.status !== 'removed'"
+                  v-if="
+                    !member.isPrimaryForeman &&
+                    member.status !== 'removed' &&
+                    !(member.isPrimaryOwner && member.status === 'active')
+                  "
                   class="admin-btn admin-btn--danger admin-btn--small"
                   @tap="removeMember(member)"
                 >
@@ -81,6 +103,12 @@
                 </button>
                 <text v-else-if="member.isPrimaryForeman" class="member-lock-hint">
                   先改指主工长后可移除
+                </text>
+                <text
+                  v-else-if="member.isPrimaryOwner && member.status === 'active'"
+                  class="member-lock-hint"
+                >
+                  主业主不可移除
                 </text>
               </view>
             </view>
@@ -134,6 +162,14 @@
           </view>
         </view>
 
+        <text v-if="invite.role === 'owner'" class="invite-owner-hint">
+          {{
+            hasPrimaryOwnerSlot
+              ? '项目已有主业主（含待确认邀请），本次将添加为临时业主。临时业主可查看项目、账目、联系人与门锁密码，但不能确认验收、付款与对账。'
+              : '该邀请确认后将成为主业主。主业主身份不可更改、不可移除，且只有主业主能确认验收、付款与对账。'
+          }}
+        </text>
+
         <text v-if="inviteError" class="invite-error">{{ inviteError }}</text>
 
         <view class="admin-sheet-actions">
@@ -170,7 +206,7 @@ defineOptions({ name: 'AdminProjectMembersPage' })
 
 const INVITE_ROLES = [
   { key: 'foreman', label: '工长' },
-  { key: 'owner', label: '业主' },
+  { key: 'owner', label: '业主（首位为主业主）' },
   { key: 'supervisor', label: '监理' },
 ]
 
@@ -181,6 +217,10 @@ const composition = ref({
   foremanCount: 0,
   ownerCount: 0,
   primaryForemanName: null,
+  primaryOwnerUserId: null,
+  primaryOwnerName: null,
+  primaryOwnerActive: false,
+  temporaryOwnerCount: 0,
   meetsRequirement: false,
 })
 const loading = ref(false)
@@ -193,10 +233,16 @@ const invite = reactive({ phone: '', role: 'foreman' })
 let loadedOnce = false
 
 const canWrite = computed(() => Boolean(project.value && project.value.status !== 'archived'))
+// 含 pending：一个还没确认的主业主邀请同样占着名额
+const hasPrimaryOwnerSlot = computed(() =>
+  members.value.some(
+    (member) => member.role === 'owner' && member.ownerType === 'primary' && member.status !== 'removed'
+  )
+)
 const compositionHint = computed(() =>
   composition.value.meetsRequirement
-    ? '至少 1 名工长、1 名主工长与 1 名业主，可以进入施工'
-    : '进入施工前必须配齐工长、主工长与业主'
+    ? '至少 1 名工长、1 名主工长、1 名业主与 1 名主业主，可以进入施工'
+    : '进入施工前必须配齐工长、主工长、业主与主业主'
 )
 
 onLoad(async (options) => {
@@ -245,7 +291,8 @@ async function load(silent = false) {
       meetsRequirement:
         Number(comp.foremanCount) > 0 &&
         Boolean(comp.primaryForemanUserId) &&
-        Number(comp.ownerCount) > 0,
+        Number(comp.ownerCount) > 0 &&
+        Boolean(comp.primaryOwnerActive),
     }
   } catch (err) {
     error.value = err.message || '成员加载失败'
@@ -285,6 +332,20 @@ async function submitInvite() {
   inviteError.value = validateInvite()
   if (inviteError.value) return
 
+  if (invite.role === 'owner' && !hasPrimaryOwnerSlot.value) {
+    const confirmed = await new Promise((resolve) => {
+      uni.showModal({
+        title: '设置主业主',
+        content:
+          '该成员确认邀请后将成为主业主。主业主身份一经确认不可更改、不可移除，且只有主业主能确认验收、付款与对账。',
+        confirmText: '确认邀请',
+        success: (res) => resolve(Boolean(res.confirm)),
+        fail: () => resolve(false),
+      })
+    })
+    if (!confirmed) return
+  }
+
   inviteSubmitting.value = true
   try {
     await inviteAdminMember(projectId.value, {
@@ -320,6 +381,10 @@ function setPrimary(member) {
 }
 
 function removeMember(member) {
+  if (member.isPrimaryOwner && member.status === 'active') {
+    uni.showToast({ title: '主业主不可移除', icon: 'none' })
+    return
+  }
   uni.showModal({
     title: '移除成员',
     content: `确定移除「${member.nickname || member.phoneMasked}」吗？主工长不能直接移除。`,
@@ -461,5 +526,16 @@ function removeMember(member) {
   margin-top: dp(8);
   color: #f53f3f;
   font-size: dp(11);
+}
+
+.invite-owner-hint {
+  display: block;
+  padding: dp(8) dp(10);
+  margin-top: dp(10);
+  color: #8a5a1f;
+  font-size: dp(11);
+  line-height: 1.5;
+  background: #fff7e8;
+  border-radius: dp(8);
 }
 </style>

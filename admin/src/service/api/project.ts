@@ -76,6 +76,9 @@ export interface ProjectMember {
   userId: number;
   role: MemberRole;
   roleLabel: string;
+  ownerType: 'primary' | 'temporary' | null;
+  ownerTypeLabel: string | null;
+  isPrimaryOwner: boolean;
   isPrimaryForeman: boolean;
   status: 'pending' | 'active' | 'removed';
   statusLabel: string;
@@ -103,6 +106,10 @@ export interface MemberComposition {
   ownerCount: number;
   primaryForemanUserId: number | null;
   primaryForemanName: string | null;
+  primaryOwnerUserId: number | null;
+  primaryOwnerName: string | null;
+  primaryOwnerActive: boolean;
+  temporaryOwnerCount: number;
   meetsRequirement: boolean;
 }
 

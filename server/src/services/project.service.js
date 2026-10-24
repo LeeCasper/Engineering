@@ -13,6 +13,7 @@ const logger = require('../utils/logger')
 const progress = require('../utils/progress')
 const { lockedReasonFor } = require('../utils/stage')
 const money = require('../utils/money')
+const { OWNER_TYPE, ownerRoleLabel, isPrimaryOwner } = require('../utils/ownerType')
 const dataScope = require('./dataScope.service')
 const projectAccess = require('./projectAccess.service')
 const mapService = require('./map.service')
@@ -95,7 +96,8 @@ async function myProjects(userId, { tenantId } = {}) {
       tenantId: row.tenant_id,
       tenantName: row.tenant_name,
       role: row.role,
-      roleLabel: ROLE_LABELS[row.role] || row.role,
+      roleLabel: ownerRoleLabel(row.role, row.owner_type),
+      ownerType: row.owner_type ?? null,
       invitedAt: row.invited_at,
       invitedBy: row.inviter_username,
     })),
@@ -109,7 +111,10 @@ async function myProjects(userId, { tenantId } = {}) {
 function toProjectSummary(row, stages, members = []) {
   const total = progress.projectProgress(stages.map((s) => ({ progress: s.progress, weight: s.weight })))
   const current = pickCurrentStage(stages)
-  const owner = members.find((m) => m.role === 'owner')
+  // 主业主优先；没有主业主时才回退第一位业主（兼容数据异常）
+  const owner =
+    members.find((m) => m.role === 'owner' && m.owner_type === OWNER_TYPE.PRIMARY) ||
+    members.find((m) => m.role === 'owner')
   const primaryForeman = members.find((m) => m.role === 'foreman' && Number(m.is_primary) === 1)
   const foreman = primaryForeman || members.find((m) => m.role === 'foreman')
 
@@ -122,7 +127,9 @@ function toProjectSummary(row, stages, members = []) {
     status: row.status,
     statusLabel: STATUS_LABELS[row.status] || row.status,
     myRole: row.my_role,
-    myRoleLabel: ROLE_LABELS[row.my_role] || row.my_role,
+    myRoleLabel: ownerRoleLabel(row.my_role, row.my_owner_type),
+    ownerType: row.my_owner_type ?? null,
+    isPrimaryOwner: row.my_role === 'owner' && row.my_owner_type === OWNER_TYPE.PRIMARY,
     // 首页卡片的「业主 / 工长」展示位。没有成员时返回「待分配」，
     // 让前端不必自己判断 null；昵称为空时用脱敏手机号（AC-U02）。
     ownerName: memberDisplayName(owner, '待分配'),
@@ -224,7 +231,13 @@ async function confirmInvitation(userId, memberId) {
   const done = await projectMemberModel.confirm(member.project_id, userId)
   if (!done) throw AppError.conflict('邀请已被处理')
 
-  return { projectId: member.project_id, role: member.role, roleLabel: ROLE_LABELS[member.role] || member.role }
+  return {
+    projectId: member.project_id,
+    role: member.role,
+    roleLabel: ownerRoleLabel(member.role, member.owner_type),
+    ownerType: member.owner_type ?? null,
+    isPrimaryOwner: member.role === 'owner' && member.owner_type === OWNER_TYPE.PRIMARY,
+  }
 }
 
 /** 拒绝项目邀请。文档未规定，按现实需要补充（手机号录错时不能永远挂着） */
@@ -265,7 +278,9 @@ async function getProjectForMember(userId, projectId) {
     projectMemberModel.countByRole(projectId, 'supervisor'),
   ])
 
-  const owner = keyMembers.find((m) => m.role === 'owner')
+  const owner =
+    keyMembers.find((m) => m.role === 'owner' && m.owner_type === OWNER_TYPE.PRIMARY) ||
+    keyMembers.find((m) => m.role === 'owner')
   const foreman =
     keyMembers.find((m) => m.role === 'foreman' && Number(m.is_primary) === 1) ||
     keyMembers.find((m) => m.role === 'foreman')
@@ -286,9 +301,12 @@ async function getProjectForMember(userId, projectId) {
     latitude: project.latitude,
     hasCoordinates: project.longitude !== null && project.latitude !== null,
     myRole: role.role,
-    myRoleLabel: ROLE_LABELS[role.role] || role.role,
+    myRoleLabel: ownerRoleLabel(role.role, role.owner_type),
+    ownerType: role.owner_type ?? null,
+    // 主业主才能确认验收 / 付款 / 对账；临时业主的普通能力与业主一致
+    isPrimaryOwner: isPrimaryOwner(role),
     // Q11：主工长才能发起验收。详情页据此决定「发起验收」是否出现
-    isPrimaryForeman: Number(role.is_primary) === 1,
+    isPrimaryForeman: role.role === 'foreman' && Number(role.is_primary) === 1,
     ownerName: memberDisplayName(owner, '待分配'),
     foremanName: memberDisplayName(foreman, '待分配'),
     memberCount,
@@ -396,8 +414,12 @@ async function getProjectDetail(operator, projectId) {
   ])
 
   const activeForemen = members.filter((m) => m.role === 'foreman' && m.status === 'active')
-  const ownerCount = members.filter((m) => m.role === 'owner' && m.status === 'active').length
+  const activeOwners = members.filter((m) => m.role === 'owner' && m.status === 'active')
+  const ownerCount = activeOwners.length
   const primary = activeForemen.find((m) => m.is_primary === 1)
+  const primaryOwnerSlot = members.find(
+    (m) => m.role === 'owner' && m.owner_type === OWNER_TYPE.PRIMARY && m.status !== 'removed'
+  )
 
   return {
     id: project.id,
@@ -463,9 +485,18 @@ async function getProjectDetail(operator, projectId) {
       ownerCount,
       primaryForemanUserId: primary ? primary.user_id : null,
       primaryForemanName: primary ? primary.nickname : null,
-      // 与 assertMemberComposition 的口径一致：至少 1 名工长且有主工长、至少 1 名业主。
+      // 主业主名额包含 pending：管理员邀请下一位业主时要据此判断是否为临时业主
+      primaryOwnerUserId: primaryOwnerSlot ? primaryOwnerSlot.user_id : null,
+      primaryOwnerName: primaryOwnerSlot ? primaryOwnerSlot.nickname : null,
+      primaryOwnerActive: Boolean(primaryOwnerSlot && primaryOwnerSlot.status === 'active'),
+      temporaryOwnerCount: activeOwners.filter((m) => m.owner_type === OWNER_TYPE.TEMPORARY).length,
+      // 与 assertMemberComposition 的口径一致：至少 1 名工长且有主工长、至少 1 名业主且有主业主。
       // 两处的条件必须一样，否则会出现「详情显示已配齐、流转时却被拒」
-      meetsRequirement: activeForemen.length >= 1 && Boolean(primary) && ownerCount >= 1,
+      meetsRequirement:
+        activeForemen.length >= 1 &&
+        Boolean(primary) &&
+        ownerCount >= 1 &&
+        Boolean(primaryOwnerSlot && primaryOwnerSlot.status === 'active'),
     },
   }
 }
@@ -772,10 +803,12 @@ async function changeStatus(operator, projectId, targetStatus, { confirmReverse 
  * 因此「邀请了一个还没确认的工长」不算配齐。
  */
 async function assertMemberComposition(projectId) {
-  const [foremanCount, ownerCount, primaryForeman] = await Promise.all([
+  const [foremanCount, ownerCount, primaryForeman, primaryOwner, primaryOwnerSlot] = await Promise.all([
     projectMemberModel.countByRole(projectId, 'foreman'),
     projectMemberModel.countByRole(projectId, 'owner'),
     projectMemberModel.findPrimaryForeman(projectId),
+    projectMemberModel.findPrimaryOwner(projectId),
+    projectMemberModel.findPrimaryOwnerSlot(projectId),
   ])
 
   const problems = []
@@ -786,7 +819,15 @@ async function assertMemberComposition(projectId) {
     // 属于数据异常而非用户操作问题，因此提示写得更直接
     problems.push('尚未指定主工长（仅主工长可发起验收）')
   }
-  if (ownerCount === 0) problems.push('尚未指定业主')
+  if (ownerCount === 0) {
+    problems.push('尚未指定业主')
+  } else if (!primaryOwner) {
+    problems.push(
+      primaryOwnerSlot
+        ? '主业主尚未确认邀请（确认后才能确认验收、付款与对账）'
+        : '尚未指定主业主（仅主业主可确认验收、付款与对账）'
+    )
+  }
 
   if (problems.length > 0) {
     throw AppError.conflict(`无法进入施工中：${problems.join('；')}`)

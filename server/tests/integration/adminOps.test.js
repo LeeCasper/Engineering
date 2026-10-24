@@ -479,9 +479,9 @@ describe('AC-L24 结算单 PDF', () => {
       [owner, 'owner'],
     ]) {
       await db.query(
-        `INSERT INTO project_member (project_id, user_id, role, status, is_primary, confirmed_at, joined_at)
-         VALUES (?, ?, ?, 'active', ?, NOW(), NOW())`,
-        [projectId, user.userId, role, role === 'foreman' ? 1 : 0]
+        `INSERT INTO project_member (project_id, user_id, role, status, is_primary, owner_type, confirmed_at, joined_at)
+         VALUES (?, ?, ?, 'active', ?, ?, NOW(), NOW())`,
+        [projectId, user.userId, role, role === 'foreman' ? 1 : 0, role === 'owner' ? 'primary' : null]
       )
     }
 

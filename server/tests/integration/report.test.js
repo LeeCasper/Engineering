@@ -224,7 +224,7 @@ describe('AC-P05 / AC-P08 提交前置校验', () => {
     const { projectId, items } = await setup()
     const owner = await mini.login('code-owner')
     await db.query(
-      "INSERT INTO project_member (project_id, user_id, role, status, confirmed_at) VALUES (?, ?, 'owner', 'active', NOW())",
+      "INSERT INTO project_member (project_id, user_id, role, status, owner_type, confirmed_at) VALUES (?, ?, 'owner', 'active', 'primary', NOW())",
       [projectId, owner.userId]
     )
 
@@ -664,7 +664,7 @@ describe('AC-P21 / AC-P22 评论', () => {
     const ctx = await setup()
     const owner = await mini.login('code-owner-c')
     await db.query(
-      "INSERT INTO project_member (project_id, user_id, role, status, confirmed_at) VALUES (?, ?, 'owner', 'active', NOW())",
+      "INSERT INTO project_member (project_id, user_id, role, status, owner_type, confirmed_at) VALUES (?, ?, 'owner', 'active', 'primary', NOW())",
       [ctx.projectId, owner.userId]
     )
 
@@ -751,7 +751,7 @@ describe('AC-P23 连续未汇报提醒', () => {
     const ctx = await setup({ status: 'building' })
     const owner = await mini.login('code-owner-stale')
     await db.query(
-      "INSERT INTO project_member (project_id, user_id, role, status, confirmed_at) VALUES (?, ?, 'owner', 'active', NOW())",
+      "INSERT INTO project_member (project_id, user_id, role, status, owner_type, confirmed_at) VALUES (?, ?, 'owner', 'active', 'primary', NOW())",
       [ctx.projectId, owner.userId]
     )
 
@@ -897,7 +897,7 @@ describe('AC-P23 连续未汇报提醒', () => {
 
     const pendingOwner = await mini.login('code-pending-owner')
     await db.query(
-      "INSERT INTO project_member (project_id, user_id, role, status) VALUES (?, ?, 'owner', 'pending')",
+      "INSERT INTO project_member (project_id, user_id, role, status, owner_type) VALUES (?, ?, 'owner', 'pending', 'temporary')",
       [projectId, pendingOwner.userId]
     )
 

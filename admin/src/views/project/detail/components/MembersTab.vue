@@ -20,6 +20,10 @@ const emit = defineEmits<{ refresh: [] }>();
 const readOnly = useTenantReadOnly();
 const composition = computed(() => props.detail.memberComposition);
 const members = computed(() => props.detail.members);
+// 含 pending：一个还没确认的主业主邀请同样占着名额，下一位业主只能作为临时业主
+const hasPrimaryOwnerSlot = computed(() =>
+  members.value.some((m) => m.role === 'owner' && m.ownerType === 'primary' && m.status !== 'removed')
+);
 
 const inviteDialog = reactive({
   visible: false,
@@ -41,6 +45,18 @@ async function submitInvite() {
   if (!inviteForm.phone.trim()) {
     ElMessage.warning('请输入手机号');
     return;
+  }
+
+  if (inviteForm.role === 'owner' && !hasPrimaryOwnerSlot.value) {
+    try {
+      await ElMessageBox.confirm(
+        '该成员确认邀请后将成为本项目的「主业主」。主业主身份一经确认不可更改、不可移除，且只有主业主能确认验收、付款与对账。',
+        '设置主业主',
+        { type: 'warning', confirmButtonText: '确认邀请', cancelButtonText: '取消' }
+      );
+    } catch {
+      return;
+    }
   }
 
   inviteDialog.submitting = true;
@@ -117,7 +133,7 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
           ? '人员已配齐，可流转到「施工中」'
           : '人员尚未配齐，不能流转到「施工中」'
       "
-      :description="`已确认工长 ${composition.foremanCount} 名${composition.primaryForemanName ? `（主工长：${composition.primaryForemanName}）` : '（未指定主工长）'}，已确认业主 ${composition.ownerCount} 名。待确认（pending）成员不计入权限判定。`"
+      :description="`已确认工长 ${composition.foremanCount} 名${composition.primaryForemanName ? `（主工长：${composition.primaryForemanName}）` : '（未指定主工长）'}；已确认业主 ${composition.ownerCount} 名${composition.primaryOwnerName ? `（主业主：${composition.primaryOwnerName}${composition.primaryOwnerActive ? '' : '，待确认'}）` : '（未指定主业主）'}${composition.temporaryOwnerCount ? `，其中临时业主 ${composition.temporaryOwnerCount} 名` : ''}。待确认（pending）成员不计入权限判定。`"
     />
 
     <div v-if="!readOnly" class="my-14px flex justify-end">
@@ -146,6 +162,30 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
             size="small"
           >
             确认后成为主工长
+          </ElTag>
+          <ElTag
+            v-if="row.isPrimaryOwner && row.status === 'active'"
+            class="ml-6px"
+            type="danger"
+            size="small"
+          >
+            主业主
+          </ElTag>
+          <ElTag
+            v-else-if="row.isPrimaryOwner && row.status === 'pending'"
+            class="ml-6px"
+            type="info"
+            size="small"
+          >
+            确认后成为主业主
+          </ElTag>
+          <ElTag
+            v-else-if="row.ownerType === 'temporary' && row.status !== 'removed'"
+            class="ml-6px"
+            type="warning"
+            size="small"
+          >
+            临时业主
           </ElTag>
         </template>
       </ElTableColumn>
@@ -185,9 +225,17 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
           >
             设为主工长
           </ElButton>
-          <ElButton v-if="row.status !== 'removed'" link type="danger" @click="remove(row)">
+          <ElButton
+            v-if="row.status !== 'removed' && !(row.isPrimaryOwner && row.status === 'active')"
+            link
+            type="danger"
+            @click="remove(row)"
+          >
             移除
           </ElButton>
+          <span v-else-if="row.isPrimaryOwner && row.status === 'active'" class="text-12px text-#e6a23c">
+            主业主不可移除
+          </span>
         </template>
       </ElTableColumn>
 
@@ -215,10 +263,24 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
           <ElSelect v-model="inviteForm.role" class="w-full">
             <ElOption label="工长（可多名，首个自动成为主工长）" value="foreman" />
             <ElOption label="监理（0 名时验收自动跳过监理环节）" value="supervisor" />
-            <ElOption label="业主（至少 1 名）" value="owner" />
+            <ElOption label="业主（首位自动成为主业主，之后为临时业主）" value="owner" />
           </ElSelect>
         </ElFormItem>
       </ElForm>
+
+      <ElAlert
+        v-if="inviteForm.role === 'owner'"
+        class="mt-4px"
+        :type="hasPrimaryOwnerSlot ? 'info' : 'warning'"
+        :closable="false"
+        show-icon
+        :title="hasPrimaryOwnerSlot ? '本次将添加为临时业主' : '该邀请将成为主业主'"
+        :description="
+          hasPrimaryOwnerSlot
+            ? '项目已有主业主（含待确认邀请），新邀请的业主只能作为临时业主。临时业主可以查看项目、账目、联系人和门锁密码，但不能确认验收、付款与对账。'
+            : '主业主身份一经确认不可更改、不可移除，且只有主业主能确认验收、付款与对账。'
+        "
+      />
 
       <template #footer>
         <ElButton @click="inviteDialog.visible = false">取消</ElButton>

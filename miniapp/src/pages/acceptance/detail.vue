@@ -217,7 +217,7 @@
 
           <view v-if="reportStatus === 'success'" class="report-state">
             <text class="report-title">验收报告已生成</text>
-            <text class="report-text">包含验收项、现场照片、审核意见与业主签名。</text>
+            <text class="report-text">包含验收项、现场照片、审核意见与主业主签名。</text>
             <button class="report-btn" @tap="openReport">打开验收报告</button>
           </view>
           <view v-else-if="reportStatus === 'failed'" class="report-state">
@@ -233,7 +233,7 @@
           </view>
           <view v-else class="report-state">
             <text class="report-title">验收通过后生成报告</text>
-            <text class="report-text">业主确认并签名后，系统会自动生成 PDF 验收报告。</text>
+            <text class="report-text">主业主确认并签名后，系统会自动生成 PDF 验收报告。</text>
           </view>
         </view>
       </view>
@@ -255,11 +255,11 @@
       </view>
     </template>
 
-    <!-- 业主签名 -->
+    <!-- 主业主签名 -->
     <view v-if="signatureOpen" class="signature-mask">
       <view class="signature-sheet">
         <view class="signature-head">
-          <text class="signature-title">业主签名</text>
+          <text class="signature-title">主业主签名</text>
           <view class="signature-close" @tap="closeSignature">
             <image class="signature-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
           </view>
@@ -422,7 +422,7 @@ const overviewStatusLabel = computed(() => {
   const labels = {
     draft: '草稿',
     pending_supervisor: '待监理审核',
-    pending_owner: '待业主签字',
+    pending_owner: '待主业主签字',
     pending_rectify: '待整改',
     passed: '已通过',
   }
@@ -600,7 +600,7 @@ function computeSteps() {
   }
   const owner = {
     key: 'owner',
-    label: '业主签名',
+    label: '主业主签名',
     state: 'pending',
     stateLabel: '待签名',
     lineState: 'pending',
@@ -700,20 +700,20 @@ function computeNotice() {
     return '验收单尚未提交，请主工长完成自检后提交。'
   }
   if (status === 'pending_supervisor') {
-    return '工长已完成自检，等待监理审核。审核通过后由业主确认并签名。'
+    return '工长已完成自检，等待监理审核。审核通过后由主业主确认并签名。'
   }
   if (status === 'pending_owner') {
     return hasSupervisor
-      ? '本阶段已通过监理审核，等待业主确认并签名。签名后解锁付款节点，完成结算后解锁下一阶段。'
-      : '本项目未配置监理，工长已完成自检，等待业主确认并签名。签名后解锁付款节点，完成结算后解锁下一阶段。'
+      ? '本阶段已通过监理审核，等待主业主确认并签名。签名后解锁付款节点，完成结算后解锁下一阶段。'
+      : '本项目未配置监理，工长已完成自检，等待主业主确认并签名。签名后解锁付款节点，完成结算后解锁下一阶段。'
   }
   if (status === 'pending_rectify') {
     return '验收被驳回，等待工长整改后重新提交。整改过程与多轮记录会完整保留。'
   }
   if (status === 'passed') {
     if (gate === 'settled') return '本阶段已结清，下一阶段已解锁。'
-    if (gate === 'disputed') return '本阶段已验收，但阶段结算存在异议，请工长与业主核对后重新提交。'
-    return '本阶段已验收，付款节点已解锁。请完成阶段结算，业主确认无异议后解锁下一阶段。'
+    if (gate === 'disputed') return '本阶段已验收，但阶段结算存在异议，请工长与主业主核对后重新提交。'
+    return '本阶段已验收，付款节点已解锁。请完成阶段结算，主业主确认无异议后解锁下一阶段。'
   }
   return ''
 }

@@ -282,7 +282,7 @@ async function listByUser(userId, { tenantId } = {}) {
   }
 
   return db.query(
-    `SELECT ${LIST_COLUMNS}, pm.role AS my_role, pm.id AS member_id,
+    `SELECT ${LIST_COLUMNS}, pm.role AS my_role, pm.owner_type AS my_owner_type, pm.id AS member_id,
             t.name AS tenant_name, t.code AS tenant_code
        FROM project_member pm
        JOIN project p ON p.id = pm.project_id AND p.deleted_at IS NULL
