@@ -127,6 +127,7 @@
               active-color="#EB5C20"
               background-color="#F0EAE4"
               block-size="20"
+              @changing="onProgressChange"
               @change="onProgressChange"
             />
 
