@@ -58,6 +58,36 @@
       }
     },
     {
+      "path": "pages/report/submit",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/visit/checkin",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/visit/timeline",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/route-plan/index",
       "style": {
         "navigationStyle": "custom",

@@ -7,7 +7,7 @@
   "transformPx": false,
   "vueVersion": "3",
   "mp-weixin": {
-    "appid": "wxcae10f2824a5193d",
+    "appid": "wxa5809c94f722d824",
     "setting": {
       "urlCheck": false,
       "es6": true,
@@ -20,7 +20,10 @@
         "desc": "用于规划考察路线、从当前位置出发以及到达工地后的现场签到"
       }
     },
-    "requiredPrivateInfos": ["getLocation", "chooseLocation"],
+    "requiredPrivateInfos": [
+      "getLocation",
+      "chooseLocation"
+    ],
     "optimization": {
       "subPackages": true
     }

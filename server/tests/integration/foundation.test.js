@@ -151,9 +151,10 @@ describe('基建 · 数据层连接', () => {
     //   content_page、feedback（迁移 013，M11 补的两处 §6.3 漏项）
     //   report_media_staging（迁移 017，小程序逐文件上传的暂存）
     //   admin_wechat_binding（迁移 018，小程序管理员微信免密绑定）
+    //   visit_media_staging（迁移 024，现场签到照片逐张暂存）
     // 这个数字每加一张表就要改一次，是刻意的 —— 它逼着改动者确认
     // 「新表是不是真的该建」，而不是随手加一张
-    expect(names).toHaveLength(40)
+    expect(names).toHaveLength(41)
 
     for (const expected of [
       'user',
@@ -169,6 +170,7 @@ describe('基建 · 数据层连接', () => {
       'tenant',
       'platform_access_grant',
       'admin_wechat_binding',
+      'visit_media_staging',
     ]) {
       expect(names).toContain(expected)
     }

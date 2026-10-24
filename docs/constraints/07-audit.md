@@ -31,13 +31,15 @@ C 端 `user.id` 与后台 `admin_user.id` 是**两套独立的自增空间**，`
 
 ### 62. 配置项「改完不生效」必须如实标注
 
-§5.5 的配置表里有几项对应的功能还没做（`sign_in_distance_threshold`、
-`route_max_points` 属于 V1.2 的签到与路线，`operation_log_retention` 的清理任务还没写）。
-这些值改完**不会立即生效**。
+§5.5 的配置表里有几项对应的能力还没做。**当前只剩
+`operation_log_retention`**：它的清理任务还没写，改完不会立即生效。
+`sign_in_distance_threshold` 与 `route_max_points` 已随 V1.2 的签到 / 路线规划交付，
+必须标记为生效；把已交付项继续标成「暂未生效」，同样是误导管理员。
 
 若接口一律返回「保存成功」，管理员会以为自己调好了阈值而实际什么都没发生 ——
 那种「配置项存在但没人读」的界面比没有这个界面更糟。因此 `SCHEMA` 里用
-`effective: false` + `note` 显式标注，由接口透出给前端如实说明。
+`effective: false` + `note` 显式标注，由接口透出给前端如实说明；
+新增配置项时要先确认「有没有代码读它」，再决定 `effective`。
 
 另外三条相关的自洽性由 `tests/unit/configLimits.test.js` 锁着：
 DEFAULTS 的取值必须在 SCHEMA 的合法区间内（否则系统一出厂就带着一个**改不回去**的坏值——

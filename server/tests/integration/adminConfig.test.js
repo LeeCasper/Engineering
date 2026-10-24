@@ -61,10 +61,9 @@ describe('GET /admin/sys-configs 配置清单', () => {
     const res = await request.authed('get', '/admin/sys-configs', token)
     const list = res.body.data.list
 
-    // 签到尚未交付、日志清理任务还没写。这些值改完不会立即生效 ——
-    // 界面必须能如实说明，否则管理员会以为调好了而实际什么都没发生。
-    // 路线规划已交付，途经点上限必须如实标记为生效
-    expect(list.find((i) => i.key === 'sign_in_distance_threshold').effective).toBe(false)
+    // 现场签到与路线规划都已交付，签到阈值和途经点上限必须如实标记为生效；
+    // 日志清理任务还没写，operation_log_retention 仍应标注「暂未生效」。
+    expect(list.find((i) => i.key === 'sign_in_distance_threshold').effective).toBe(true)
     expect(list.find((i) => i.key === 'route_max_points').effective).toBe(true)
     expect(list.find((i) => i.key === 'stale_report_days').effective).toBe(true)
   })

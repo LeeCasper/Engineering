@@ -168,6 +168,41 @@ async function findPointsByPlanId(planId) {
   return rows
 }
 
+/**
+ * 取某个考察计划中的指定站点，并校验方案属于本人。
+ *
+ * 供现场签到使用：只有从自己的考察计划发起的签到才能回填 `visited_at`，
+ * 不能让用户拿别人的 planId 把别人的「已考察」点亮。
+ */
+async function findOwnedPoint({ planId, ownerId, seq }) {
+  return db.queryOne(
+    `SELECT rpp.id, rpp.route_plan_id, rpp.seq, rpp.project_id, rpp.visited_at
+       FROM route_plan_point rpp
+       JOIN route_plan rp ON rp.id = rpp.route_plan_id
+      WHERE rpp.route_plan_id = ? AND rpp.seq = ?
+        AND rp.owner_id = ? AND rp.deleted_at IS NULL
+        AND rpp.deleted_at IS NULL`,
+    [planId, seq, ownerId]
+  )
+}
+
+/**
+ * 签到成功后回填途经点的「已考察」时间。
+ *
+ * 条件里带 `visited_at IS NULL`：同一站点重复签到（不同日期）时保留第一次
+ * 到达时间，不让后一次覆盖。返回 0 表示已经考察过，不是错误。
+ */
+async function markPointVisited({ planId, seq, projectId, visitedAt }, tx = db) {
+  const result = await tx.query(
+    `UPDATE route_plan_point
+        SET visited_at = ?
+      WHERE route_plan_id = ? AND seq = ? AND project_id = ?
+        AND visited_at IS NULL AND deleted_at IS NULL`,
+    [visitedAt, planId, seq, projectId]
+  )
+  return result.affectedRows
+}
+
 async function softDelete(id, ownerId, tx = db) {
   const result = await tx.query(
     'UPDATE route_plan SET deleted_at = NOW() WHERE id = ? AND owner_id = ? AND deleted_at IS NULL',
@@ -199,6 +234,8 @@ module.exports = {
   findByIdForOwner,
   findPointsByPlanIds,
   findPointsByPlanId,
+  findOwnedPoint,
+  markPointVisited,
   softDelete,
   markStale,
 }

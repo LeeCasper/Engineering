@@ -48,9 +48,19 @@
                   <image class="overview-location" src="/static/images/icon-location-accent.png" mode="aspectFit" />
                   <text class="overview-address-text">{{ detail.address || '未填写地址' }}</text>
                 </view>
-                <view class="nav-pill" @tap="navigateToProject">
-                  <image class="nav-pill-icon" src="/static/images/icon-navigation-accent.png" mode="aspectFit" />
-                  <text>导航</text>
+                <view class="overview-actions">
+                  <view v-if="canCheckin" class="nav-pill nav-pill--checkin" @tap="goCheckin">
+                    <image
+                      class="nav-pill-icon nav-pill-icon--plain"
+                      src="/static/images/icon-checklist-green.png"
+                      mode="aspectFit"
+                    />
+                    <text>签到</text>
+                  </view>
+                  <view class="nav-pill" @tap="navigateToProject">
+                    <image class="nav-pill-icon" src="/static/images/icon-navigation-accent.png" mode="aspectFit" />
+                    <text>导航</text>
+                  </view>
                 </view>
               </view>
 
@@ -222,9 +232,12 @@
               <text class="section-title">工程动态</text>
               <text class="feed-recent">最近汇报：{{ latestReportTime }}</text>
             </view>
-            <view class="link" @tap="showAllFeed">
-              全部
-              <image class="link-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
+            <view class="feed-head-actions">
+              <view v-if="canReportProgress" class="feed-report-btn" @tap="goReport">汇报进度</view>
+              <view class="link" @tap="showAllFeed">
+                全部
+                <image class="link-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
+              </view>
             </view>
           </view>
 
@@ -251,7 +264,11 @@
 
             <text v-if="latestReport.content" class="feed-content">{{ latestReport.content }}</text>
 
-            <view v-if="feedGridMedia.length" class="feed-media-grid">
+            <view
+              v-if="feedGridMedia.length"
+              class="feed-media-grid"
+              :class="`feed-media-grid--${feedGridMedia.length}`"
+            >
               <view
                 v-for="(media, index) in feedGridMedia"
                 :key="`${latestReport.id}-${media.id}`"
@@ -271,6 +288,52 @@
             </view>
           </view>
           <view v-else class="empty-text">工长还没有提交进度汇报</view>
+        </view>
+
+        <!-- 现场考察记录（C-6.18）：所有项目角色都能看到 -->
+        <view v-if="visits.length" class="card visit-card">
+          <view class="section-head">
+            <view class="visit-head-left">
+              <text class="section-title">考察记录</text>
+              <text class="visit-count">最近 {{ visits.length }} 条</text>
+            </view>
+            <view class="link" @tap="goVisits">
+              全部
+              <image class="link-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
+            </view>
+          </view>
+
+          <view class="visit-list">
+            <view v-for="visit in visits" :key="visit.id" class="visit-row">
+              <view class="visit-rail">
+                <view class="visit-dot" :class="{ 'visit-dot--abnormal': visit.isAbnormal }" />
+                <view class="visit-line" />
+              </view>
+
+              <view class="visit-main">
+                <view class="visit-line-row">
+                  <text class="visit-name">{{ visit.signer.nickname || '项目成员' }}</text>
+                  <text v-if="visit.signer.roleLabel" class="visit-role">{{ visit.signer.roleLabel }}</text>
+                  <text v-if="visit.isAbnormal" class="visit-abnormal">异常</text>
+                </view>
+                <text class="visit-meta">
+                  {{ visit.checkinAt }} · 距项目 {{ formatVisitDistance(visit.distanceM) }}
+                </text>
+                <text v-if="visit.remark" class="visit-remark">{{ visit.remark }}</text>
+              </view>
+
+              <view v-if="visit.media.length" class="visit-thumbs">
+                <image
+                  v-for="photo in visit.media.slice(0, 2)"
+                  :key="photo.id"
+                  class="visit-thumb"
+                  :src="resolveMediaUrl(photo.url)"
+                  mode="aspectFill"
+                  @tap="previewVisitPhoto(visit, photo)"
+                />
+              </view>
+            </view>
+          </view>
         </view>
 
         <!-- 账目概览 -->
@@ -504,6 +567,7 @@ import {
   confirmPaymentNode,
 } from '../../api/project'
 import { fetchReportComments, addReportComment } from '../../api/report'
+import { fetchProjectVisits } from '../../api/visit'
 import { resolveMediaUrl } from '../../api/request'
 import { getToken } from '../../store/session'
 import {
@@ -535,6 +599,7 @@ const reports = ref([])
 const paymentNodes = ref([])
 const ledger = ref(null)
 const contacts = ref([])
+const visits = ref([])
 const dismissedPaymentIds = ref([])
 const expandedStageId = ref(null)
 
@@ -559,6 +624,21 @@ const isSupervisor = computed(() => detail.value?.myRole === 'supervisor')
 // 门锁密码对三种项目角色都可见；后台管理员不属于项目成员，不会进到这里
 const isDoorViewer = computed(() => isOwner.value || isForeman.value || isSupervisor.value)
 const isArchived = computed(() => detail.value?.status === 'archived')
+// 只有工长 / 监理能签到；没有项目坐标时后端也无法计算偏差，入口直接隐藏
+const canCheckin = computed(
+  () =>
+    Boolean(detail.value) &&
+    (isForeman.value || isSupervisor.value) &&
+    !isArchived.value &&
+    Boolean(detail.value.hasCoordinates)
+)
+// 进度汇报只有工长能提交；至少要有一个 canReport 的阶段才显示入口
+const canReportProgress = computed(
+  () =>
+    isForeman.value &&
+    !isArchived.value &&
+    stageListRaw.value.some((stage) => stage.canReport)
+)
 const doorSubtitle = computed(() => {
   if (isArchived.value) return '项目已归档，门锁密码不可查看'
   if (isOwner.value) return '管理门锁密码，工长与监理可直接查看'
@@ -851,16 +931,26 @@ async function load(silent = false) {
   loadError.value = ''
 
   try {
-    const [project, stageData, acceptance, reportData, nodeData, ledgerData, contactData] =
-      await Promise.all([
-        projectDetail(id.value),
-        projectStages(id.value).catch(() => null),
-        projectAcceptances(id.value).catch(() => null),
-        projectReports(id.value, { page: 1, pageSize: 20 }).catch(() => null),
-        projectPaymentNodes(id.value).catch(() => null),
-        projectLedgerSummary(id.value).catch(() => null),
-        projectContacts(id.value).catch(() => null),
-      ])
+    const [
+      project,
+      stageData,
+      acceptance,
+      reportData,
+      nodeData,
+      ledgerData,
+      contactData,
+      visitData,
+    ] = await Promise.all([
+      projectDetail(id.value),
+      projectStages(id.value).catch(() => null),
+      projectAcceptances(id.value).catch(() => null),
+      projectReports(id.value, { page: 1, pageSize: 20 }).catch(() => null),
+      projectPaymentNodes(id.value).catch(() => null),
+      projectLedgerSummary(id.value).catch(() => null),
+      projectContacts(id.value).catch(() => null),
+      // 考察记录不是项目详情的主数据；失败时不能把整页拖进错误态
+      fetchProjectVisits(id.value, { page: 1, pageSize: 3 }).catch(() => null),
+    ])
 
     detail.value = project
     stageListRaw.value = (stageData && stageData.stages) || project.stages || []
@@ -869,6 +959,7 @@ async function load(silent = false) {
     paymentNodes.value = (nodeData && nodeData.nodes) || []
     ledger.value = ledgerData || null
     contacts.value = (contactData && contactData.contacts) || []
+    visits.value = (visitData && visitData.list) || []
 
     if (!expandedStageId.value) {
       expandedStageId.value = currentStage.value ? currentStage.value.id : null
@@ -910,28 +1001,70 @@ function goBack() {
 }
 
 function openMore() {
-  // 考察计划只对工长 / 监理开放（AC-N15）。入口放在「更多」里，
-  // 不挤占项目详情的主操作区；真正的主入口在「我的」页。
-  const items = ['刷新', '复制项目地址']
-  if (isForeman.value || isSupervisor.value) items.push('考察计划')
-  items.push('返回项目列表')
+  // 用 key 而不是下标：后面再加「现场签到」「考察记录」时，
+  // 原来按 tapIndex === 2 判断「考察计划」的写法会静默错位。
+  const actions = [
+    { key: 'refresh', label: '刷新' },
+    { key: 'copy', label: '复制项目地址' },
+  ]
+
+  if (isForeman.value || isSupervisor.value) {
+    if (canCheckin.value) actions.push({ key: 'checkin', label: '现场签到' })
+    actions.push({ key: 'route-plan', label: '考察计划' })
+  }
+  if (visits.value.length) actions.push({ key: 'visits', label: '考察记录' })
+  actions.push({ key: 'back', label: '返回项目列表' })
 
   uni.showActionSheet({
-    itemList: items,
+    itemList: actions.map((action) => action.label),
     success: (res) => {
-      if (res.tapIndex === 0) load(true)
-      if (res.tapIndex === 1) copyAddress()
-      if (res.tapIndex === 2 && items[2] === '考察计划') {
-        goRoutePlan()
-        return
-      }
-      if (res.tapIndex === items.length - 1) goBack()
+      const action = actions[res.tapIndex]
+      if (!action) return
+
+      if (action.key === 'refresh') load(true)
+      else if (action.key === 'copy') copyAddress()
+      else if (action.key === 'checkin') goCheckin()
+      else if (action.key === 'route-plan') goRoutePlan()
+      else if (action.key === 'visits') goVisits()
+      else if (action.key === 'back') goBack()
     },
   })
 }
 
 function goRoutePlan() {
   uni.navigateTo({ url: '/pages/route-plan/index' })
+}
+
+function goCheckin() {
+  if (!detail.value) return
+  if (!detail.value.hasCoordinates) {
+    uni.showToast({ title: '项目尚未设置坐标，请联系管理员补全', icon: 'none' })
+    return
+  }
+  uni.navigateTo({
+    url:
+      `/pages/visit/checkin?projectId=${detail.value.id}` +
+      `&name=${encodeURIComponent(detail.value.name || '')}`,
+  })
+}
+
+function goVisits() {
+  if (!detail.value) return
+  uni.navigateTo({
+    url: `/pages/visit/timeline?projectId=${detail.value.id}`,
+  })
+}
+
+function formatVisitDistance(meters) {
+  const value = Number(meters)
+  if (!Number.isFinite(value)) return '未知'
+  if (value < 1000) return `${Math.round(value)} 米`
+  return `${(value / 1000).toFixed(1)} 公里`
+}
+
+function previewVisitPhoto(visit, photo) {
+  const urls = visit.media.map((item) => resolveMediaUrl(item.url))
+  uni.previewImage({ urls, current: resolveMediaUrl(photo.url) })
 }
 
 function openDoorCode() {
@@ -1009,6 +1142,13 @@ function showAllTasks() {
 
 function showAllFeed() {
   uni.navigateTo({ url: `/pages/project/feed?projectId=${id.value}` })
+}
+
+function goReport() {
+  if (!detail.value) return
+  uni.navigateTo({
+    url: `/pages/report/submit?projectId=${detail.value.id}`,
+  })
 }
 
 function toggleStage(stage) {
@@ -1356,6 +1496,21 @@ function closeActiveSheet() {
   transform: rotate(45deg);
 }
 
+.overview-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.nav-pill--checkin {
+  background: #e8ffea;
+  color: #087a1e;
+}
+
+.nav-pill-icon--plain {
+  transform: none;
+}
+
 .overview-footer {
   margin-top: dp(10);
 }
@@ -1404,6 +1559,21 @@ function closeActiveSheet() {
   align-items: center;
   color: #8b8179;
   font-size: dp(11);
+}
+
+.feed-head-actions {
+  display: flex;
+  align-items: center;
+  gap: dp(8);
+}
+
+.feed-report-btn {
+  padding: dp(4) dp(10);
+  border-radius: dp(999);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(10);
+  font-weight: 600;
 }
 
 .link--accent {
@@ -1989,16 +2159,49 @@ function closeActiveSheet() {
 }
 
 .feed-media-grid {
-  display: flex;
+  display: grid;
   gap: dp(5);
   margin-top: dp(8);
 }
 
+/* 单图 / 双图不要拉成一条细横条：横条会把 4:3 照片裁掉大半，水印也常被裁掉 */
+.feed-media-grid--1 {
+  display: flex;
+}
+
+.feed-media-grid--1 .feed-media {
+  width: dp(120);
+  height: dp(90);
+  flex: none;
+}
+
+.feed-media-grid--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.feed-media-grid--2 .feed-media {
+  height: dp(110);
+}
+
+.feed-media-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.feed-media-grid--3 .feed-media {
+  height: dp(92);
+}
+
+.feed-media-grid--4 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.feed-media-grid--4 .feed-media {
+  height: dp(100);
+}
+
 .feed-media {
   position: relative;
-  flex: 1;
   min-width: 0;
-  height: dp(70);
   overflow: hidden;
   border-radius: dp(8);
   background: #f3efea;
@@ -2648,5 +2851,131 @@ function closeActiveSheet() {
 
 .comment-submit--disabled {
   opacity: 0.45;
+}
+
+/* ── 考察记录 ── */
+.visit-head-left {
+  display: flex;
+  align-items: baseline;
+  gap: dp(6);
+}
+
+.visit-count {
+  font-size: dp(10);
+  color: #8b8179;
+}
+
+.visit-list {
+  margin-top: dp(10);
+}
+
+.visit-row {
+  display: flex;
+  align-items: flex-start;
+  gap: dp(8);
+  padding: dp(10) 0;
+}
+
+.visit-row + .visit-row {
+  border-top: 1px solid #f0ebe6;
+}
+
+.visit-rail {
+  width: dp(8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: dp(5);
+  align-self: stretch;
+}
+
+.visit-dot {
+  width: dp(8);
+  height: dp(8);
+  border-radius: 50%;
+  background: #00b42a;
+  flex-shrink: 0;
+}
+
+.visit-dot--abnormal {
+  background: #f53f3f;
+}
+
+.visit-line {
+  width: 1px;
+  flex: 1;
+  min-height: dp(8);
+  margin-top: dp(4);
+  background: #e8e1da;
+}
+
+.visit-row:last-child .visit-line {
+  display: none;
+}
+
+.visit-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.visit-line-row {
+  display: flex;
+  align-items: center;
+  gap: dp(5);
+  flex-wrap: wrap;
+}
+
+.visit-name {
+  font-size: dp(13);
+  font-weight: 600;
+  color: #2b2119;
+}
+
+.visit-role {
+  padding: dp(1) dp(5);
+  border-radius: dp(7);
+  background: #f3efea;
+  color: #615850;
+  font-size: dp(9);
+}
+
+.visit-abnormal {
+  padding: dp(1) dp(5);
+  border-radius: dp(7);
+  background: #ffece8;
+  color: #b22a26;
+  font-size: dp(9);
+  font-weight: 600;
+}
+
+.visit-meta {
+  display: block;
+  margin-top: dp(3);
+  font-size: dp(10);
+  color: #8b8179;
+}
+
+.visit-remark {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: dp(4);
+  font-size: dp(11);
+  color: #51463e;
+  line-height: 1.6;
+}
+
+.visit-thumbs {
+  display: flex;
+  gap: dp(4);
+  flex-shrink: 0;
+}
+
+.visit-thumb {
+  width: dp(42);
+  height: dp(42);
+  border-radius: dp(8);
+  background: #f8f4ef;
 }
 </style>

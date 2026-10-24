@@ -26,7 +26,7 @@
             <text class="hero-title">{{ plan.name }}</text>
             <text class="hero-sub">
               {{ plan.origin.type === 'custom' ? plan.origin.name || '自定义起点' : '当前位置出发' }}
-              · {{ plan.pointCount }} 个工地
+              · {{ plan.pointCount }} 个工地 · 已考察 {{ plan.visitedCount }}/{{ plan.pointCount }}
             </text>
           </view>
           <view class="hero-badge">{{ plan.pointCount }} 站</view>
@@ -129,7 +129,11 @@
               <text class="route-leg">{{ legLabel(point, index) }}</text>
             </view>
 
-            <button class="nav-btn" @tap.stop="navigatePoint(point)">导航</button>
+            <view class="point-actions">
+              <text v-if="point.visitedAt" class="visited-badge">已考察</text>
+              <button v-else class="checkin-btn" @tap.stop="goCheckin(point)">签到</button>
+              <button class="nav-btn" @tap.stop="navigatePoint(point)">导航</button>
+            </view>
           </view>
         </view>
       </view>
@@ -155,7 +159,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onLoad, onShow, onPullDownRefresh, onUnload } from '@dcloudio/uni-app'
 import { getToken } from '../../store/session'
 import { deleteRoutePlan, fetchRoutePlan, previewRoutePlan } from '../../api/routePlan'
 
@@ -285,7 +289,29 @@ onLoad((options) => {
   }
 
   load()
+  uni.$on('visit:created', onVisitCreated)
 })
+
+onUnload(() => {
+  uni.$off('visit:created', onVisitCreated)
+})
+
+/** 从考察计划发起的签到成功后，刷新「已考察」状态与进度 */
+function onVisitCreated(payload) {
+  if (!payload) return
+  if (Number(payload.routePlanId) !== Number(planId.value)) return
+  load()
+}
+
+function goCheckin(point) {
+  if (!plan.value) return
+  uni.navigateTo({
+    url:
+      `/pages/visit/checkin?projectId=${point.projectId}` +
+      `&routePlanId=${plan.value.id}&seqInPlan=${point.seq}` +
+      `&name=${encodeURIComponent(point.name || '')}`,
+  })
+}
 
 /**
  * 从系统地图返回后继续下一站。
@@ -953,6 +979,15 @@ function goBack() {
   font-size: dp(9);
 }
 
+.point-actions {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: dp(5);
+  margin-bottom: dp(13);
+  flex-shrink: 0;
+}
+
 .nav-btn {
   display: flex;
   align-items: center;
@@ -968,6 +1003,42 @@ function goBack() {
   font-weight: 500;
   line-height: 1;
   flex-shrink: 0;
+}
+
+.point-actions .nav-btn {
+  margin-bottom: 0;
+}
+
+.checkin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: dp(26);
+  padding: 0 dp(9);
+  border-radius: dp(6);
+  border: 1px solid #00b42a;
+  background: #e8ffea;
+  color: #087a1e;
+  font-size: dp(9);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.checkin-btn::after {
+  border: none;
+}
+
+.visited-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: dp(26);
+  padding: 0 dp(8);
+  border-radius: dp(6);
+  background: #e8ffea;
+  color: #087a1e;
+  font-size: dp(9);
+  font-weight: 600;
 }
 
 .footnote {

@@ -55,6 +55,7 @@ router.use('/invitations', require('./mini/invitation.routes'))
 const reportRoutes = require('./mini/report.routes')
 const acceptanceRoutes = require('./mini/acceptance.routes')
 const doorCodeRoutes = require('./mini/doorCode.routes')
+const visitRoutes = require('./mini/visit.routes')
 // 子资源挂在项目路由下，顶层挂「以子资源自身为主语」的接口。
 // §7.3 就是这么分的：/projects/:id/reports 与 /reports/:id/comments 并列，
 // 前者关心「某项目的汇报」，后者关心「某条汇报的评论」。
@@ -68,9 +69,12 @@ router.use(
   require('./mini/ledger.routes'),
   reconciliationRoutes.projectRouter,
   // 门锁密码（§4.8）：列表按项目，改动按条目
-  doorCodeRoutes.projectRouter
+  doorCodeRoutes.projectRouter,
+  // 现场签到（§4.6）：照片逐张暂存，提交时消费 mediaIds
+  visitRoutes.projectRouter
 )
 router.use('/reports', reportRoutes.reportRouter)
+router.use('/visits', visitRoutes.visitRouter)
 router.use('/acceptances', acceptanceRoutes.acceptanceRouter)
 router.use('/reconciliations', reconciliationRoutes.reconciliationRouter)
 // 门锁密码的条目级接口。**只有 C 端有**：§4.8.2 的权限表里，

@@ -161,11 +161,11 @@ function getGateStrength(tenantId) {
  * 定义集中在这里之后，新增配置项时**必须**同时写清楚它的合法范围。
  *
  * ── `effective` 字段是诚实性要求 ──
- * `sign_in_distance_threshold` 属于尚未交付的现场签到模块，
- * `operation_log_retention` 对应的清理任务也还没写。这些值改完**不会立即生效**。
- * 若接口一律显示「保存成功」，管理员会以为自己调好了阈值而实际什么都没发生 ——
- * 那种「配置项存在但没人读」的界面比没有这个界面更糟。因此这里显式标注，
- * 由接口透出给前端，让界面能如实说明。
+ * `operation_log_retention` 对应的清理任务还没写，改完**不会立即生效**；
+ * 现场签到与路线规划已经交付，`sign_in_distance_threshold` / `route_max_points`
+ * 必须如实标记为生效。若接口一律显示「保存成功」，管理员会以为自己调好了阈值
+ * 而实际什么都没发生 —— 那种「配置项存在但没人读」的界面比没有这个界面更糟。
+ * 因此这里显式标注，由接口透出给前端，让界面能如实说明。
  */
 const SCHEMA = {
   sign_in_distance_threshold: {
@@ -175,8 +175,7 @@ const SCHEMA = {
     unit: 'm',
     label: '签到偏差阈值',
     requirement: 'B-5.1',
-    effective: false,
-    note: '现场签到模块（V1.2）上线后生效',
+    note: '按项目所属租户读取；修改后只影响新签到，历史记录保留当时的阈值快照',
   },
   stale_report_days: {
     type: 'int',

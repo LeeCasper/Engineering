@@ -60,6 +60,7 @@ async function bootstrap() {
   require('./jobs/staleReportReminder').start()
   require('./jobs/acceptanceTimeout').start()
   require('./jobs/reportMediaCleanup').start()
+  require('./jobs/visitMediaCleanup').start()
 
   const server = app.listen(config.server.port, () => {
     logger.info('服务已启动', {

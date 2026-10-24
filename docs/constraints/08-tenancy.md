@@ -86,7 +86,8 @@
   `content_page`、`feedback`、`operation_log`、`admin_notification`、`export_task`、
   `admin_login_log`、`user_subscription`、`notification`、`route_plan`。
 - **靠 `project` 派生**：`ledger`、`acceptance`、`progress_*`、`project_member`、
-  `payment_node`、`reconciliation`、`project_door_code`、`visit_*`。
+  `payment_node`、`reconciliation`、`project_door_code`、`visit_*`、
+  `visit_media_staging`（签到照片暂存，绑定 project_id + user_id）。
 
 派生之所以成立，靠的是一条既有不变量：**子表行只按 id 被读取，读完之后必定经过一次
 项目级校验**（`projectAccess.load` 或 `findActiveRole`）。新增任何「按 id 直接返回子表数据」

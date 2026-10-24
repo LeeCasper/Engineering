@@ -86,8 +86,8 @@ const GROUP_DEFS: GroupDef[] = [
   },
   {
     key: 'route',
-    title: '签到与路线（V1.2）',
-    description: '签到与路线规划模块的参数；当前功能属于 V1.2，修改暂不生效。',
+    title: '签到与路线',
+    description: '签到偏差阈值与路线途经点上限；修改后对新签到 / 新规划生效，历史记录保留当时的判定。',
     keys: ['sign_in_distance_threshold', 'route_max_points']
   },
   {

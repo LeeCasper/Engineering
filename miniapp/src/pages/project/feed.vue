@@ -147,7 +147,11 @@
             <text v-if="!isSupervisorReport(report) && report.content" class="feed-content">{{ report.content }}</text>
 
             <!-- 媒体 -->
-            <view v-if="!isSupervisorReport(report) && gridMedia(report).length" class="media-grid">
+            <view
+              v-if="!isSupervisorReport(report) && gridMedia(report).length"
+              class="media-grid"
+              :class="`media-grid--${gridMedia(report).length}`"
+            >
               <view
                 v-for="(media, index) in gridMedia(report)"
                 :key="media.id"
@@ -201,6 +205,12 @@
           <image class="contact-btn-icon" src="/static/images/icon-phone-white.png" mode="aspectFit" />
           <text>联系工长</text>
         </view>
+      </view>
+
+      <!-- 工长：提交进度汇报 -->
+      <view v-if="canReportProgress" class="report-fab" @tap="goReport">
+        <image class="report-fab-icon" src="/static/images/icon-plus-white.png" mode="aspectFit" />
+        <text>汇报进度</text>
       </view>
     </template>
 
@@ -311,6 +321,14 @@ const currentStageName = computed(
 
 // 工长自己看工程动态时，「联系工长」是在联系自己，隐藏
 const isForeman = computed(() => detail.value?.myRole === 'foreman')
+
+// 有可汇报阶段时才显示「汇报进度」入口；具体权限后端还会再校验
+const canReportProgress = computed(
+  () =>
+    isForeman.value &&
+    detail.value?.status !== 'archived' &&
+    stageList.value.some((stage) => stage.canReport)
+)
 
 // 筛选栏是「全部 + 项目的全部阶段 + 仅看图片 + 最近7天」，
 // 阶段数量随模板变化，整行放在 scroll-view 里横向滑动，不截断阶段。
@@ -510,6 +528,10 @@ function goBack() {
   uni.navigateBack({
     fail: () => uni.reLaunch({ url: '/pages/projects/index' }),
   })
+}
+
+function goReport() {
+  uni.navigateTo({ url: `/pages/report/submit?projectId=${projectId.value}` })
 }
 
 function contactForeman() {
@@ -1129,16 +1151,40 @@ function closeActiveSheet() {
 }
 
 .media-grid {
-  display: flex;
+  display: grid;
   gap: dp(6);
   margin-top: dp(9);
 }
 
+.media-grid--1 {
+  display: flex;
+}
+
+.media-grid--1 .media-tile {
+  width: dp(140);
+  height: dp(105);
+  flex: none;
+}
+
+.media-grid--2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.media-grid--2 .media-tile {
+  height: dp(140);
+}
+
+.media-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.media-grid--3 .media-tile {
+  height: dp(100);
+}
+
 .media-tile {
   position: relative;
-  flex: 1;
   min-width: 0;
-  height: dp(100);
   overflow: hidden;
   border: 1px solid rgba(229, 231, 235, 0.8);
   border-radius: dp(8);
@@ -1301,6 +1347,33 @@ function closeActiveSheet() {
   font-size: dp(15);
   font-weight: 600;
   box-shadow: 0 dp(4) dp(12) rgba(235, 92, 32, 0.25);
+}
+
+.report-fab {
+  position: fixed;
+  right: dp(16);
+  bottom: calc(#{dp(24)} + env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: dp(5);
+  height: dp(42);
+  padding: 0 dp(16);
+  border-radius: dp(999);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(13);
+  font-weight: 600;
+  box-shadow: 0 dp(6) dp(18) rgba(235, 92, 32, 0.35);
+}
+
+.report-fab:active {
+  background: #c44710;
+}
+
+.report-fab-icon {
+  width: dp(14);
+  height: dp(14);
 }
 
 .contact-btn:active {
