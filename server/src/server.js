@@ -21,12 +21,22 @@ async function bootstrap() {
     require('./services/wx.service').assertSafeConfig()
     require('./utils/password').assertSecureConfig()
     require('./services/doorCode.service').assertKeyConfigured()
+    require('./services/esign/config').assertSafeConfig()
   } catch (err) {
     logger.error(`配置自检未通过，进程退出：${err.message}`)
     process.exit(1)
   }
 
   const app = createApp()
+
+  if (config.esign.enabled) {
+    try {
+      await require('./storage').assertPrivateWritable()
+    } catch (err) {
+      logger.error(`电子签私有存储不可写，进程退出：${err.message}`)
+      process.exit(1)
+    }
+  }
 
   // 启动自检：数据库连不上就直接退出，而不是带着一个坏掉的服务接流量。
   // 容器编排下这会触发重启，通常比「起来了但每个请求都 500」更快暴露问题。
@@ -61,6 +71,8 @@ async function bootstrap() {
   require('./jobs/acceptanceTimeout').start()
   require('./jobs/reportMediaCleanup').start()
   require('./jobs/visitMediaCleanup').start()
+  require('./jobs/esignSync').start()
+  require('./jobs/acceptancePostPassRetry').start()
 
   const server = app.listen(config.server.port, () => {
     logger.info('服务已启动', {

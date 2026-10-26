@@ -35,13 +35,21 @@ function createApp() {
 
   app.use(requestContext)
   app.use(attachResponseHelpers)
+  app.use(accessLog)
+
+  // 电子签回调必须在 express.json() 之前：验签依赖原始 body。
+  // 也放在 globalRateLimit 之前，避免服务商重试被误伤。
+  app.use(
+    `${config.server.apiPrefix}/esign/callback`,
+    express.raw({ type: '*/*', limit: '1mb' }),
+    require('./routes/esignCallback.routes')
+  )
 
   // 请求体大小限制：附件走 multipart（multer），JSON body 不该很大。
   // 不限的话一个超大 JSON 就能把进程内存打满。
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: false, limit: '1mb' }))
 
-  app.use(accessLog)
   app.use(globalRateLimit)
 
   // 健康检查放在业务前缀之外：它服务于负载均衡与运维探针，

@@ -87,3 +87,23 @@ export function rejectAcceptance(id, reason, photoPath = '') {
 export function retryAcceptanceReport(id) {
   return request({ url: `/acceptances/${id}/report/retry`, method: 'POST' })
 }
+
+/** 发起/复用可靠电子签名任务 */
+export function createEsignTask(id, data) {
+  return request({ url: `/acceptances/${id}/esign`, method: 'POST', data })
+}
+
+/** 读取电子签任务状态 */
+export function fetchEsignStatus(id) {
+  return request({ url: `/acceptances/${id}/esign` })
+}
+
+/** 主动向服务商查单（从签署页返回后调用） */
+export function syncEsignTask(id) {
+  return request({ url: `/acceptances/${id}/esign/sync`, method: 'POST' })
+}
+
+/** 取消进行中的签署任务 */
+export function cancelEsignTask(id) {
+  return request({ url: `/acceptances/${id}/esign/cancel`, method: 'POST' })
+}

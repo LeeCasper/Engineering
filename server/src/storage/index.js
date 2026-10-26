@@ -42,6 +42,14 @@ const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov'])
 const GENERATED_EXTENSIONS = new Set(['pdf', 'png', 'jpg', 'xlsx'])
 
 /**
+ * 私有存储允许的扩展名。
+ *
+ * 电子签的签署前 PDF、已签 PDF、证据报告都走这里。这些文件包含合同内容、
+ * 证书主体等敏感信息，**不能**放在 `UPLOAD_DIR` 下由 express.static 直接服务。
+ */
+const PRIVATE_EXTENSIONS = new Set(['pdf', 'json', 'zip', 'txt'])
+
+/**
  * 生成存储 key：`<category>/<年>/<月>/<日>/<随机>.<ext>`。
  *
  * 按日期分目录不是为了好看：单目录下堆几十万文件时，
@@ -159,6 +167,70 @@ function extractKey(keyOrUrl) {
   return index >= 0 ? value.slice(index + marker.length) : value
 }
 
+// ─────────────────────────────────────────────────────────────
+// 私有存储（电子签证据）
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 解析私有存储的绝对路径，并做目录逃逸检查。
+ *
+ * `key` 来自数据库，理论上是我们自己生成的；但数据库也可能被人工改过，
+ * 所以这里仍然要校验。没有这条检查，一个 `../../etc/passwd` 就能读到
+ * 私有目录之外的文件。
+ */
+function privatePath(key) {
+  const root = path.resolve(config.esign.privateDir)
+  const full = path.resolve(root, String(key || ''))
+  if (full !== root && !full.startsWith(`${root}${path.sep}`)) {
+    throw new Error('私有存储路径非法')
+  }
+  return full
+}
+
+/** 保存私有文件。返回 key，不返回公网 URL —— 这些文件永远不该被直接公开访问。 */
+async function savePrivate(buffer, { category, ext }) {
+  const normalizedExt = String(ext || '').toLowerCase().replace(/^\./, '')
+  if (!PRIVATE_EXTENSIONS.has(normalizedExt)) {
+    throw new Error(`不支持的私有文件类型：${normalizedExt}`)
+  }
+
+  const key = buildKey({ category, ext: normalizedExt })
+  const fullPath = privatePath(key)
+  await fs.mkdir(path.dirname(fullPath), { recursive: true })
+  await fs.writeFile(fullPath, buffer)
+
+  logger.debug('私有文件已保存', { key, sizeBytes: buffer.length })
+  return { key, sizeBytes: buffer.length }
+}
+
+async function readPrivate(key) {
+  if (!key) throw new Error('私有存储 key 为空')
+  return fs.readFile(privatePath(key))
+}
+
+async function removePrivate(key) {
+  if (!key) return false
+  try {
+    await fs.unlink(privatePath(key))
+    return true
+  } catch (err) {
+    if (err.code === 'ENOENT') return false
+    logger.warn('删除私有文件失败（不影响业务流程）', { key, message: err.message })
+    return false
+  }
+}
+
+/** 启动自检：私有目录可写。 */
+async function assertPrivateWritable() {
+  const root = path.resolve(config.esign.privateDir)
+  await fs.mkdir(root, { recursive: true })
+  // 私有证据目录尽量只允许服务进程用户访问；失败不阻断（某些挂载点不支持 chmod）
+  await fs.chmod(root, 0o700).catch(() => {})
+  const probe = path.join(root, '.write-probe')
+  await fs.writeFile(probe, 'ok')
+  await fs.unlink(probe)
+}
+
 /** 存储层是否可用（启动自检用）。目录不存在时尝试创建 */
 async function assertWritable() {
   await fs.mkdir(config.upload.dir, { recursive: true })
@@ -170,12 +242,17 @@ async function assertWritable() {
 module.exports = {
   ALLOWED_EXTENSIONS,
   GENERATED_EXTENSIONS,
+  PRIVATE_EXTENSIONS,
   save,
   saveGenerated,
+  savePrivate,
   urlFor,
   read,
+  readPrivate,
+  removePrivate,
   extractKey,
   remove,
   assertWritable,
+  assertPrivateWritable,
   buildKey,
 }

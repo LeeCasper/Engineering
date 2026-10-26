@@ -16,6 +16,7 @@
  */
 
 const fs = require('node:fs')
+const crypto = require('node:crypto')
 const PDFDocument = require('pdfkit')
 
 const config = require('../../config')
@@ -98,7 +99,247 @@ async function generate(acceptanceId) {
   }
 }
 
-/** 重试生成（AC-A19 的「提供可重试入口」） */
+/**
+ * 生成签署前的“验收确认书”PDF。
+ *
+ * 与 legacy 报告的区别：
+ *   - 这是**冻结文档**，生成后内容不可再变，服务商对这份字节签名；
+ *   - 严格检查照片与字体，缺一张照片就失败，不能在法律文件里留下“照片加载失败”；
+ *   - 返回内容快照与哈希，供回调时比对服务商证据里的 originalHash。
+ */
+async function buildForSign(acceptanceId) {
+  checkFontAvailable()
+
+  const acceptance = await acceptanceModel.findById(acceptanceId)
+  if (!acceptance) throw new Error(`验收单 ${acceptanceId} 不存在`)
+
+  const [items, flow, project, stage] = await Promise.all([
+    acceptanceModel.listItems(acceptanceId),
+    acceptanceModel.listFlow(acceptanceId),
+    projectModel.findByIdUnscoped(acceptance.project_id),
+    acceptance.project_stage_id ? projectStageModel.findById(acceptance.project_stage_id) : null,
+  ])
+
+  const photos = parseJson(acceptance.photos) || []
+  const photoUrls = photos.map((p) => p.watermarkUrl || p.url).filter(Boolean)
+  assertImagesReadable(photoUrls)
+
+  const round = Number(acceptance.resubmit_count || 0) + 1
+  const documentId = `AC-${acceptance.id}-R${round}`
+  const generatedAt = datetime.format()
+
+  const snapshot = {
+    version: 1,
+    documentId,
+    acceptanceId: acceptance.id,
+    projectId: acceptance.project_id,
+    round,
+    generatedAt,
+    project: project ? { id: project.id, name: project.name, address: project.address } : null,
+    stage: stage ? { id: stage.id, name: stage.name, progress: stage.progress } : null,
+    acceptance: {
+      type: acceptance.type,
+      description: acceptance.description,
+      submittedAt: acceptance.submitted_at,
+      resubmitCount: acceptance.resubmit_count,
+    },
+    items: items.map((row) => ({ id: row.id, seq: row.seq, name: row.name, result: row.result, remark: row.remark })),
+    flow: flow.map((row) => ({
+      id: row.id,
+      round: row.round,
+      step: row.step,
+      action: row.action,
+      operator: row.nickname || `用户${row.operator_id}`,
+      reason: row.reason,
+      operatedAt: row.operated_at,
+    })),
+    photos: photoUrls,
+  }
+
+  const snapshotHash = sha256(stableStringify(snapshot))
+  const signaturePage = await renderSigningDocument({ ...snapshot, acceptance, project, stage, items, flow: snapshot.flow, photoUrls })
+  const buffer = signaturePage.buffer
+
+  if (buffer.length > config.esign.maxDocumentMb * 1024 * 1024) {
+    throw new Error(`签署文件 ${(buffer.length / 1024 / 1024).toFixed(1)}MB，超过服务商上限 ${config.esign.maxDocumentMb}MB`)
+  }
+
+  const saved = await storage.savePrivate(buffer, { category: 'esign-documents', ext: 'pdf' })
+  return {
+    buffer,
+    key: saved.key,
+    sizeBytes: saved.sizeBytes,
+    hash: sha256(buffer),
+    snapshot,
+    snapshotHash,
+    signaturePage: signaturePage.pageCount,
+  }
+}
+
+/**
+ * 归档服务商回传的已签 PDF 与证据报告。
+ *
+ * 只写私有存储；acceptance.report_pdf_key 指向已签 PDF，report_pdf_source='signed'。
+ */
+async function archiveSigned(acceptanceId, task, { signedPdf, evidencePdf, evidenceJson }) {
+  if (!Buffer.isBuffer(signedPdf) || signedPdf.length === 0) {
+    throw new Error('服务商未返回已签 PDF')
+  }
+
+  const signed = await storage.savePrivate(signedPdf, { category: 'esign-signed', ext: 'pdf' })
+  let evidence = null
+  let evidenceBytes = null
+  if (Buffer.isBuffer(evidencePdf) && evidencePdf.length > 0) {
+    evidenceBytes = evidencePdf
+    evidence = await storage.savePrivate(evidenceBytes, { category: 'esign-evidence', ext: 'pdf' })
+  } else if (evidenceJson !== undefined && evidenceJson !== null) {
+    evidenceBytes = Buffer.isBuffer(evidenceJson) ? evidenceJson : Buffer.from(JSON.stringify(evidenceJson))
+    evidence = await storage.savePrivate(evidenceBytes, { category: 'esign-evidence', ext: 'json' })
+  }
+
+  const signedHash = sha256(signedPdf)
+
+  return {
+    signedKey: signed.key,
+    signedHash,
+    evidenceKey: evidence ? evidence.key : null,
+    evidenceHash: evidenceBytes ? sha256(evidenceBytes) : null,
+  }
+}
+
+function assertImagesReadable(urls) {
+  for (const url of urls) {
+    if (!storageBufferSync(url)) {
+      throw new Error(`签署文件中的图片读取失败：${url}`)
+    }
+  }
+}
+
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex')
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+    .join(',')}}`
+}
+
+/**
+ * 渲染签署确认书。
+ *
+ * 复用 legacy 的版式工具，但标题、声明与签署区不同；不嵌入业主签名图，
+ * 签名由服务商在 PDF 上完成。
+ */
+function renderSigningDocument({ documentId, generatedAt, acceptance, project, stage, items, flow, photoUrls }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true })
+    const chunks = []
+
+    doc.on('data', (chunk) => chunks.push(chunk))
+    doc.on('end', () => resolve({ buffer: Buffer.concat(chunks), pageCount: pageCount || 1 }))
+    doc.on('error', reject)
+    let pageCount = 1
+
+    try {
+      doc.registerFont('cn', config.acceptancePdf.fontPath, config.acceptancePdf.fontName)
+      doc.font('cn')
+
+      doc.fontSize(20).text('验收确认书', { align: 'center' })
+      doc.moveDown(0.3)
+      doc
+        .fontSize(9)
+        .fillColor('#888888')
+        .text(`文件编号：${documentId}　生成时间：${generatedAt}`, { align: 'center' })
+      doc.fillColor('#000000').moveDown(1.2)
+
+      sectionTitle(doc, '项目信息')
+      kv(doc, '项目名称', project ? project.name : '—')
+      kv(doc, '项目地址', project ? project.address : '—')
+      kv(doc, '验收对象', stage ? `阶段：${stage.name}` : '—')
+      if (acceptance.description) kv(doc, '验收说明', acceptance.description)
+
+      doc.moveDown(0.8)
+      sectionTitle(doc, `验收项（共 ${items.length} 项）`)
+      if (items.length === 0) {
+        doc.fontSize(10).text('本次验收未配置验收项清单。')
+      } else {
+        for (const item of items) {
+          const mark = item.result === 'pass' ? '☑' : item.result === 'fail' ? '☒' : '☐'
+          doc.fontSize(10).text(`${mark}  ${item.seq}. ${item.name}`, { width: CONTENT_WIDTH })
+          if (item.remark) {
+            doc.fontSize(9).fillColor('#666666').text(`　　备注：${item.remark}`, { width: CONTENT_WIDTH })
+            doc.fillColor('#000000')
+          }
+        }
+      }
+
+      doc.moveDown(0.8)
+      sectionTitle(doc, `现场照片（共 ${photoUrls.length} 张）`)
+      if (photoUrls.length === 0) {
+        doc.fontSize(10).text('本次验收未上传现场照片。')
+      } else {
+        renderImages(doc, photoUrls, '照片加载失败')
+      }
+
+      doc.moveDown(0.8)
+      sectionTitle(doc, '审核与流转记录')
+      if (flow.length === 0) {
+        doc.fontSize(10).text('暂无流转记录。')
+      } else {
+        for (const entry of flow) {
+          const actionLabel = { submit: '提交', approve: '通过', reject: '驳回' }[entry.action] || entry.action
+          const stepLabel = { self_check: '自检', supervisor: '监理审核', owner: '业主确认' }[entry.step] || entry.step
+          doc
+            .fontSize(10)
+            .text(`${entry.operated_at}　${stepLabel}　${entry.operator || '用户'}　${actionLabel}`, {
+              width: CONTENT_WIDTH,
+            })
+          if (entry.reason) {
+            doc.fontSize(9).fillColor('#666666').text(`　　意见：${entry.reason}`, { width: CONTENT_WIDTH })
+            doc.fillColor('#000000')
+          }
+        }
+      }
+
+      doc.moveDown(1)
+      sectionTitle(doc, '验收确认与电子签名')
+      doc
+        .fontSize(10)
+        .text(
+          '本人已阅读并确认以上验收内容，同意以电子签名方式签署本验收确认书。' +
+            '本文件由电子签服务商对上述内容进行数字签名并加盖可信时间戳。',
+          { width: CONTENT_WIDTH }
+        )
+      doc.moveDown(0.5)
+      doc.fontSize(11).text('【业主签署】', { width: CONTENT_WIDTH })
+
+      const range = doc.bufferedPageRange()
+      pageCount = range.count
+      for (let i = range.start; i < range.start + range.count; i += 1) {
+        doc.switchToPage(i)
+        doc
+          .fontSize(8)
+          .fillColor('#999999')
+          .text(
+            `第 ${i - range.start + 1} / ${range.count} 页　本文件由工程宝生成并交由电子签服务商签署`,
+            MARGIN,
+            doc.page.height - MARGIN / 2,
+            { align: 'center', width: CONTENT_WIDTH }
+          )
+      }
+
+      doc.end()
+    } catch (err) {
+      reject(err)
+    }
+  })
+}
+
+
 async function retry(acceptanceId) {
   const acceptance = await acceptanceModel.findById(acceptanceId)
   if (!acceptance) throw new Error(`验收单 ${acceptanceId} 不存在`)
@@ -311,4 +552,13 @@ function parseJson(value) {
   }
 }
 
-module.exports = { generate, retry, render, checkFontAvailable }
+module.exports = {
+  generate,
+  retry,
+  render,
+  checkFontAvailable,
+  buildForSign,
+  archiveSigned,
+  stableStringify,
+  sha256,
+}

@@ -646,7 +646,12 @@ describe('AC-U17 内容页', () => {
 
     const res = await request.authed('get', '/admin/contents', admin.token)
 
-    expect(res.body.data.list.map((i) => i.pageKey).sort()).toEqual(['about', 'agreement', 'privacy'])
+    expect(res.body.data.list.map((i) => i.pageKey).sort()).toEqual([
+      'about',
+      'agreement',
+      'esign_agreement',
+      'privacy',
+    ])
     expect(res.body.data.list.every((i) => i.exists === false)).toBe(true)
     // 隐私政策与用户协议是合规必需项，列表里要能标出来
     expect(res.body.data.list.find((i) => i.pageKey === 'privacy').required).toBe(true)

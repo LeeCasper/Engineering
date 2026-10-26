@@ -31,13 +31,14 @@ const signedUrl = require('../utils/signedUrl')
 const { OWNER_TYPE, assertPrimaryOwner, isPrimaryOwner } = require('../utils/ownerType')
 const notificationService = require('./notification.service')
 const sysConfigService = require('./sysConfig.service')
-const acceptancePdfService = require('./acceptancePdf.service')
+const acceptancePassService = require('./acceptancePass.service')
+const esignService = require('./esign.service')
+const esignConfig = require('./esign/config')
 const acceptanceModel = require('../models/acceptance.model')
 const projectModel = require('../models/project.model')
 const projectStageModel = require('../models/projectStage.model')
 const projectItemModel = require('../models/projectItem.model')
 const projectMemberModel = require('../models/projectMember.model')
-const paymentNodeModel = require('../models/paymentNode.model')
 
 const STATUS = {
   DRAFT: 'draft',
@@ -182,6 +183,7 @@ async function createAcceptance(userId, projectId, input) {
         type: target.itemId ? 'item' : 'stage',
         submitterId: userId,
         description: input.description ?? null,
+        signatureMode: esignConfig.isRequired() ? 'provider' : 'legacy',
       },
       tx
     )
@@ -442,9 +444,14 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
 
   const step = expectedRole === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER
 
-  // AC-A16：业主确认通过时必须完成手写电子签名，未签名无法提交
+  // AC-A16：业主确认通过时必须完成电子签名。
+  // 启用可靠电子签名后，手写图片接口一律拒绝，避免出现“同一种验收单有两种效力”。
   let signatureUrl = null
   if (step === STEP.OWNER) {
+    if (esignConfig.isRequired() || acceptance.signature_mode === 'provider') {
+      throw AppError.conflict('请使用电子签名完成验收')
+    }
+    await esignService.assertNoActiveTask(acceptanceId)
     if (!signatureFile) throw AppError.badRequest('请先完成电子签名再确认验收')
     const saved = await storage.save(signatureFile.buffer, { category: 'signatures', ext: signatureFile.ext })
     signatureUrl = saved.url
@@ -462,7 +469,17 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
 
     if (isFinal) {
       // AC-A17：签名与验收单一并归档
-      await acceptanceModel.markPassed(acceptanceId, { signatureUrl, finishedAt: datetime.format() }, tx)
+      const affected = await acceptanceModel.markPassed(
+        acceptanceId,
+        {
+          signatureUrl,
+          finishedAt: datetime.format(),
+          esignStatus: 'legacy',
+          esignCompletedAt: datetime.format(),
+        },
+        tx
+      )
+      if (affected === 0) throw AppError.conflict('验收状态已变化，请刷新后重试')
 
       // §4.7.1：验收通过后阶段门禁进入 accepted（待结算）。
       // 注意**不是**直接 settled —— 结算要等业主对账无异议（AC-S08），
@@ -514,6 +531,10 @@ async function reject(userId, acceptanceId, { reason, files }) {
     throw AppError.forbidden(`当前处于「${STATUS_LABELS[acceptance.status]}」，仅该项目${roleLabel(expectedRole)}可处理`)
   }
   if (expectedRole === 'owner') assertPrimaryOwner(viewer, '驳回验收')
+  if (expectedRole === 'owner' && acceptance.esign_status === 'signed') {
+    throw AppError.conflict('电子签名已完成，不能驳回')
+  }
+  if (expectedRole === 'owner') await esignService.assertNoActiveTask(acceptanceId)
 
   const text = String(reason || '').trim()
   if (!text) throw AppError.badRequest('驳回原因必填')
@@ -625,50 +646,7 @@ async function resubmit(userId, acceptanceId, input = {}) {
  * 下游任何一步失败都不该把它回滚。各自失败各自记录，可重试。
  */
 async function finalizeAfterPass(acceptance, operatorId) {
-  await unlockPaymentNodes(acceptance)
-  await notifyPassed(acceptance)
-
-  // AC-A19：PDF 生成失败不阻断验收单进入已通过 —— 因此这里是「尽力而为」，
-  // 失败只把 report_pdf_status 置为 failed 并记下原因，前端据此展示重试入口
-  await acceptancePdfService.generate(acceptance.id).catch((err) => {
-    logger.error('验收报告 PDF 生成失败，已标记为可重试', { acceptanceId: acceptance.id, err })
-  })
-
-  logger.info('验收通过后的联动处理完成', { acceptanceId: acceptance.id, operatorId })
-}
-
-/** AC-A21 / C-3.11 / AC-L14：解锁关联该阶段的付款节点 */
-async function unlockPaymentNodes(acceptance) {
-  if (!acceptance.project_stage_id) return []
-
-  const unlocked = await db.withTransaction((tx) =>
-    paymentNodeModel.unlockByStage(acceptance.project_id, acceptance.project_stage_id, tx)
-  )
-
-  if (unlocked.length === 0) return []
-
-  // AC-A21：在工长与业主的消息中心各生成一条通知
-  const targets = await db.query(
-    `SELECT DISTINCT user_id FROM project_member
-      WHERE project_id = ? AND role IN ('foreman', 'owner') AND status = 'active' AND deleted_at IS NULL`,
-    [acceptance.project_id]
-  )
-
-  for (const { user_id: userId } of targets) {
-    await notificationService
-      .notify({
-        userId,
-        projectId: acceptance.project_id,
-        type: notificationService.TYPES.PAYMENT,
-        title: '付款节点已解锁',
-        content: `验收通过，已解锁 ${unlocked.length} 个付款节点：${unlocked.map((n) => n.name).join('、')}`,
-        refType: 'acceptance',
-        refId: acceptance.id,
-      })
-      .catch((err) => logger.warn('付款节点解锁通知发送失败', { acceptanceId: acceptance.id, err }))
-  }
-
-  return unlocked
+  return acceptancePassService.finalizeAfterPass(acceptance, operatorId)
 }
 
 /** 通知某个状态的下一个处理人 */
@@ -727,32 +705,6 @@ async function notifyRectify(acceptance, reason) {
 }
 
 /** 验收通过后通知工长与业主 */
-async function notifyPassed(acceptance) {
-  const targets = await db.query(
-    `SELECT DISTINCT user_id FROM project_member
-      WHERE project_id = ? AND role IN ('foreman', 'owner') AND status = 'active' AND deleted_at IS NULL`,
-    [acceptance.project_id]
-  )
-
-  const stage = acceptance.project_stage_id
-    ? await projectStageModel.findById(acceptance.project_stage_id)
-    : null
-
-  for (const { user_id: userId } of targets) {
-    await notificationService
-      .notify({
-        userId,
-        projectId: acceptance.project_id,
-        type: notificationService.TYPES.ACCEPTANCE,
-        title: '验收已通过',
-        content: stage ? `「${stage.name}」验收通过，已归档` : '验收通过，已归档',
-        refType: 'acceptance',
-        refId: acceptance.id,
-      })
-      .catch((err) => logger.warn('验收通过通知发送失败', { acceptanceId: acceptance.id, err }))
-  }
-}
-
 // ─────────────────────────────────────────────────────────────
 // 读取
 // ─────────────────────────────────────────────────────────────
@@ -770,6 +722,7 @@ async function getDetail(userId, acceptanceId) {
   ])
 
   const photos = parseJson(acceptance.photos) || []
+  const esign = await esignService.describe(acceptance, viewer)
 
   return {
     id: acceptance.id,
@@ -804,6 +757,8 @@ async function getDetail(userId, acceptanceId) {
     reportPdf: {
       status: acceptance.report_pdf_status,
       url: acceptance.report_pdf_url,
+      source: acceptance.report_pdf_source || 'generated',
+      sha256: acceptance.report_pdf_sha256 || null,
       error: acceptance.report_pdf_error,
       // AC-A20：通过带签名的临时 URL 访问。**每次读取都重新签发**，
       // 因此过期后重新获取即可正常下载
@@ -827,9 +782,10 @@ async function getDetail(userId, acceptanceId) {
     myRole: viewer.role,
     ownerType: viewer.owner_type ?? null,
     isPrimaryOwner: isPrimaryOwner(viewer),
+    esign,
     // 当前访问者在这张单子上能做什么 —— 前端据此决定按钮的可用性，
     // 但**服务端仍然独立校验**（AC-A10/A15/A24），前端只是体验层的提示
-    myActions: buildMyActions(acceptance, viewer),
+    myActions: buildMyActions(acceptance, viewer, esign),
   }
 }
 
@@ -844,6 +800,7 @@ function toFlowView(row) {
     action: row.action,
     actionLabel: { submit: '提交', approve: '通过', reject: '驳回' }[row.action] || row.action,
     reason: row.reason,
+    esignTaskId: row.esign_task_id ?? null,
     images: (parseJson(row.images) || []).map((img) => ({
       url: img.watermarkUrl || img.url,
       originalUrl: img.watermarkUrl ? img.url : null,
@@ -859,17 +816,34 @@ function toFlowView(row) {
  * 两处若分叉，会出现「按钮可点但接口 403」这种最难解释的现象 ——
  * 因此判据都来自 STEP_ROLE 与 assertPrimaryForeman 的同样条件。
  */
-function buildMyActions(acceptance, viewer) {
+function buildMyActions(acceptance, viewer, esign) {
   const actions = []
   if (acceptance.status === STATUS.PASSED) return actions
 
   const expectedRole = STEP_ROLE[acceptance.status]
-  const canActAtStep =
-    expectedRole &&
-    viewer.role === expectedRole &&
-    (expectedRole !== 'owner' || isPrimaryOwner(viewer))
-  if (canActAtStep) {
-    actions.push('approve', 'reject')
+  const esignActive = esign && ['creating', 'pending', 'archiving'].includes(esign.status)
+
+  if (expectedRole && viewer.role === expectedRole) {
+    if (expectedRole === 'owner') {
+      // 主业主：电子签开启/必填时只给「去签署」；旧流程仅在开发/测试且
+      // signature_mode=legacy 时保留「通过并签名」。
+      if (esign && esign.canSign) actions.push('esign')
+      // 签署前仍允许驳回；一旦有进行中/已完成任务就不能驳回
+      if (isPrimaryOwner(viewer) && !esignActive && (!esign || esign.status !== 'signed')) {
+        actions.push('reject')
+      }
+      const legacyAllowed =
+        isPrimaryOwner(viewer) &&
+        !esignConfig.isRequired() &&
+        acceptance.signature_mode === 'legacy' &&
+        (!esign || ['none', 'legacy'].includes(esign.status))
+      if (legacyAllowed && !esignActive) actions.push('approve', 'reject')
+      if (!esignActive && esign && ['none', 'legacy'].includes(esign.status) && !legacyAllowed) {
+        // 电子签必填但未配置：不给 approve/reject，前端展示 esign.reason
+      }
+    } else {
+      actions.push('approve', 'reject')
+    }
   }
 
   if (viewer.role === 'foreman' && viewer.is_primary === 1) {
@@ -881,7 +855,7 @@ function buildMyActions(acceptance, viewer) {
     actions.push('saveDraft')
   }
 
-  return actions
+  return [...new Set(actions)]
 }
 
 /**
@@ -911,7 +885,8 @@ async function listAcceptances(userId, projectId) {
     resubmitCount: row.resubmit_count,
     finishedAt: row.finished_at,
     rejectCount: Number(row.reject_count),
-    hasSignature: Boolean(row.signature_url),
+    hasSignature: Boolean(row.signature_url) || row.esign_status === 'signed',
+    esignStatus: row.esign_status || null,
     reportPdfStatus: row.report_pdf_status,
     ownerType: viewer.owner_type ?? null,
     isPrimaryOwner: isPrimaryOwner(viewer),
@@ -984,7 +959,8 @@ async function inbox(userId) {
       waitingHours: waitingHours(row.step_entered_at, row.status),
       finishedAt: row.finished_at,
       rejectCount: Number(row.reject_count),
-      hasSignature: Boolean(row.signature_url),
+      hasSignature: Boolean(row.signature_url) || row.esign_status === 'signed',
+      esignStatus: row.esign_status || null,
       reportPdfStatus: row.report_pdf_status,
       stageProgress: row.stage_progress,
       stageGateStatus: row.stage_gate_status,

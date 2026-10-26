@@ -15,6 +15,7 @@ const { requireMini } = require('../../middlewares/miniAuth')
 const { tenantWriteGuard } = require('../../middlewares/tenantGuard')
 const { uploadAny } = require('../../middlewares/upload')
 const controller = require('../../controllers/acceptance.controller')
+const esignController = require('../../controllers/esign.controller')
 
 const projectRouter = express.Router()
 projectRouter.use(requireMini)
@@ -27,6 +28,9 @@ const acceptanceRouter = express.Router()
 // 报告下载放在鉴权之前：AC-A20 要求「带签名的临时 URL」可被**转发**，
 // 因此它不能要求登录态。签名校验在 controller 里做
 acceptanceRouter.get('/:id/report.pdf', asyncHandler(controller.downloadPdf))
+
+// 证据报告下载放在鉴权之前：链接本身带短时 HMAC，由详情接口按需签发
+acceptanceRouter.get('/:id/esign/evidence', asyncHandler(esignController.downloadEvidence))
 
 acceptanceRouter.use(requireMini)
 // 跨项目收件箱：验收 tab 的默认视图。必须在 `/:id` 之前定义，
@@ -42,5 +46,10 @@ acceptanceRouter.post('/:id/approve', uploadAny, asyncHandler(controller.approve
 acceptanceRouter.post('/:id/reject', uploadAny, asyncHandler(controller.reject))
 acceptanceRouter.post('/:id/resubmit', asyncHandler(controller.resubmit))
 acceptanceRouter.post('/:id/report/retry', asyncHandler(controller.retryPdf))
+acceptanceRouter.post('/:id/esign', asyncHandler(esignController.create))
+acceptanceRouter.get('/:id/esign', asyncHandler(esignController.status))
+acceptanceRouter.post('/:id/esign/sync', asyncHandler(esignController.sync))
+acceptanceRouter.post('/:id/esign/cancel', asyncHandler(esignController.cancel))
+acceptanceRouter.get('/:id/esign/document', asyncHandler(esignController.downloadDocument))
 
 module.exports = { projectRouter, acceptanceRouter }

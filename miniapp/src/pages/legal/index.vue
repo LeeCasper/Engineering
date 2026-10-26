@@ -23,7 +23,12 @@ import { onLoad } from '@dcloudio/uni-app'
 import { getContent } from '../../api/auth'
 import { getCurrentProject } from '../../store/projectContext'
 
-const TITLES = { agreement: '用户协议', privacy: '隐私政策', about: '关于我们' }
+const TITLES = {
+  agreement: '用户协议',
+  privacy: '隐私政策',
+  about: '关于我们',
+  esign_agreement: '电子签名知情同意书',
+}
 
 const loading = ref(true)
 const error = ref('')

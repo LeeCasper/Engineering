@@ -61,6 +61,15 @@ async function runOnce({ now = datetime.now() } = {}) {
     const role = STEP_ROLE[acceptance.status]
     if (!role) continue
 
+    // 业主正在发起/完成电子签名时不算“超时未处理”；
+    // 否则会出现“正在签署却收到超时催办”的荒诞提醒。
+    if (
+      acceptance.status === 'pending_owner' &&
+      ['creating', 'pending', 'archiving'].includes(acceptance.esign_status)
+    ) {
+      continue
+    }
+
     const targets = await findStepHandlers(acceptance.project_id, role)
     if (targets.length === 0) continue
 

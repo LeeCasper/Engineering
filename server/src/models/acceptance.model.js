@@ -41,8 +41,8 @@ async function findOpenByStageForUpdate(tx, stageId) {
 async function create(data, tx) {
   const result = await tx.query(
     `INSERT INTO acceptance
-       (project_id, project_stage_id, project_item_id, type, status, submitter_id, current_step, description)
-     VALUES (?, ?, ?, ?, 'draft', ?, 'self_check', ?)`,
+       (project_id, project_stage_id, project_item_id, type, status, submitter_id, current_step, description, signature_mode)
+     VALUES (?, ?, ?, ?, 'draft', ?, 'self_check', ?, ?)`,
     [
       data.projectId,
       data.projectStageId ?? null,
@@ -50,6 +50,7 @@ async function create(data, tx) {
       data.type,
       data.submitterId,
       data.description ?? null,
+      data.signatureMode === 'provider' ? 'provider' : 'legacy',
     ]
   )
   return result.insertId
@@ -62,7 +63,10 @@ async function findById(id, tx = db) {
     // 而 AC-A18 要求报告 PDF 必须包含现场照片
     `SELECT id, project_id, project_stage_id, project_item_id, type, status, submitter_id,
             submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
-            signature_url, report_pdf_url, report_pdf_status, report_pdf_error, description, photos,
+            signature_url, signature_mode, esign_status, esign_task_id, esign_completed_at,
+            report_pdf_url, report_pdf_key, report_pdf_private, report_pdf_sha256,
+            report_pdf_source, report_pdf_status, report_pdf_error,
+            post_pass_status, post_pass_error, post_pass_done_at, description, photos,
             created_at, updated_at
        FROM acceptance WHERE id = ? AND deleted_at IS NULL`,
     [id]
@@ -73,7 +77,10 @@ async function findById(id, tx = db) {
 async function lockById(tx, id) {
   const rows = await tx.query(
     `SELECT id, project_id, project_stage_id, project_item_id, type, status, submitter_id,
-            submitted_at, current_step, step_entered_at, resubmit_count, finished_at
+            submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
+            signature_url, signature_mode, esign_status, esign_task_id, esign_completed_at,
+            report_pdf_url, report_pdf_key, report_pdf_private, report_pdf_sha256,
+            report_pdf_source, report_pdf_status, report_pdf_error
        FROM acceptance WHERE id = ? AND deleted_at IS NULL FOR UPDATE`,
     [id]
   )
@@ -99,28 +106,81 @@ async function transition(id, { status, currentStep, stepEnteredAt, isFirstSubmi
   await tx.query(`UPDATE acceptance SET ${sets.join(', ')} WHERE id = ?`, params)
 }
 
-/** 验收通过：终态 + 签名 + 完成时间 */
-async function markPassed(id, { signatureUrl, finishedAt }, tx) {
-  await tx.query(
+/** 验收通过：终态 + 签名 + 完成时间。条件更新防止并发回调把已驳回的单子改成 passed。 */
+async function markPassed(id, { signatureUrl, finishedAt, esignTaskId, esignStatus, esignCompletedAt }, tx) {
+  const result = await tx.query(
     `UPDATE acceptance
         SET status = 'passed', current_step = NULL, step_entered_at = NULL,
-            signature_url = ?, finished_at = ?
+            signature_url = ?, finished_at = ?,
+            esign_task_id = COALESCE(?, esign_task_id),
+            esign_status = COALESCE(?, esign_status),
+            esign_completed_at = COALESCE(?, esign_completed_at),
+            post_pass_status = 'pending'
+      WHERE id = ? AND status = 'pending_owner'`,
+    [
+      signatureUrl ?? null,
+      finishedAt,
+      esignTaskId ?? null,
+      esignStatus ?? null,
+      esignCompletedAt ?? null,
+      id,
+    ]
+  )
+  return result.affectedRows
+}
+
+/** 更新 PDF 生成/归档状态（AC-A19：失败要有可重试入口，但不能阻断状态流转） */
+async function updatePdfState(id, { status, url, error, key, private: isPrivate, sha256, source }, tx = db) {
+  await tx.query(
+    `UPDATE acceptance
+        SET report_pdf_status = ?, report_pdf_url = ?, report_pdf_key = ?,
+            report_pdf_private = ?, report_pdf_sha256 = ?, report_pdf_source = ?,
+            report_pdf_error = ?
       WHERE id = ?`,
-    [signatureUrl ?? null, finishedAt, id]
+    [
+      status,
+      url ?? null,
+      key ?? null,
+      isPrivate ? 1 : 0,
+      sha256 ?? null,
+      source ?? 'generated',
+      error ?? null,
+      id,
+    ]
   )
 }
 
-/** 更新 PDF 生成状态（AC-A19：失败要有可重试入口，但不能阻断状态流转） */
-async function updatePdfState(id, { status, url, error }) {
-  await db.query('UPDATE acceptance SET report_pdf_status = ?, report_pdf_url = ?, report_pdf_error = ? WHERE id = ?', [
-    status,
-    url ?? null,
-    error ?? null,
-    id,
-  ])
+async function updateEsignState(id, { status, taskId, completedAt }, tx = db) {
+  const sets = ['esign_status = ?']
+  const params = [status]
+  if (taskId !== undefined) {
+    sets.push('esign_task_id = ?')
+    params.push(taskId)
+  }
+  if (completedAt !== undefined) {
+    sets.push('esign_completed_at = ?')
+    params.push(completedAt)
+  }
+  params.push(id)
+  await tx.query(`UPDATE acceptance SET ${sets.join(', ')} WHERE id = ? AND status <> 'passed'`, params)
 }
 
-/** 更新验收说明（草稿阶段可改） */
+async function updatePostPassState(id, { status, error, doneAt }, tx = db) {
+  const sets = ['post_pass_status = ?']
+  const params = [status]
+  if (error !== undefined) {
+    sets.push('post_pass_error = ?')
+    params.push(error)
+  }
+  if (doneAt !== undefined) {
+    sets.push('post_pass_done_at = ?')
+    params.push(doneAt)
+  }
+  params.push(id)
+  await tx.query(`UPDATE acceptance SET ${sets.join(', ')} WHERE id = ?`, params)
+}
+
+
 async function updateDescription(id, description, tx = db) {
   await tx.query('UPDATE acceptance SET description = ? WHERE id = ?', [description, id])
 }
@@ -176,22 +236,49 @@ async function saveItemResults(acceptanceId, results, tx) {
  * 数据库层管不了这件事（MySQL 没有表级只读约束），只能靠这里不提供入口。
  */
 async function appendFlow(
-  { acceptanceId, round, step, operatorId, action, reason, images },
+  { acceptanceId, round, step, operatorId, action, reason, images, esignTaskId },
   tx = db
 ) {
   const result = await tx.query(
-    `INSERT INTO acceptance_flow (acceptance_id, round, step, operator_id, action, reason, images)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [acceptanceId, round, step, operatorId, action, reason ?? null, images ? JSON.stringify(images) : null]
+    `INSERT INTO acceptance_flow
+       (acceptance_id, round, step, operator_id, action, reason, images, esign_task_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      acceptanceId,
+      round,
+      step,
+      operatorId,
+      action,
+      reason ?? null,
+      images ? JSON.stringify(images) : null,
+      esignTaskId ?? null,
+    ]
   )
   return result.insertId
 }
 
-/** 某验收单的完整流转记录（AC-A09：按时间正序，可读成一条故事线） */
+/**
+ * 通过后联动失败的验收单（付款解锁/通知补偿）。
+ * 只取 passed 且 pending/failed 的；done 的不再扫。
+ */
+async function listPostPassPending(limit = 100) {
+  return db.query(
+    `SELECT id, project_id, project_stage_id, signature_mode, report_pdf_status
+       FROM acceptance
+      WHERE status = 'passed' AND deleted_at IS NULL
+        AND post_pass_status IN ('pending', 'failed')
+      ORDER BY id ASC LIMIT ?`,
+    [limit]
+  )
+}
+
+/**
+ * 某验收单的完整流转记录（AC-A09：按时间正序，可读成一条故事线）
+ */
 async function listFlow(acceptanceId) {
   return db.query(
-    `SELECT f.id, f.round, f.step, f.operator_id, f.action, f.reason, f.images, f.operated_at,
-            u.nickname
+    `SELECT f.id, f.round, f.step, f.operator_id, f.action, f.reason, f.images, f.esign_task_id,
+            f.operated_at, u.nickname
        FROM acceptance_flow f
        LEFT JOIN user u ON u.id = f.operator_id
       WHERE f.acceptance_id = ?
@@ -235,7 +322,7 @@ async function listByProject(projectId) {
   return db.query(
     `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
             a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at, a.resubmit_count,
-            a.finished_at, a.signature_url, a.report_pdf_status, a.created_at,
+            a.finished_at, a.signature_url, a.signature_mode, a.esign_status, a.report_pdf_status, a.created_at,
             s.name AS stage_name, i.name AS item_name,
             u.nickname AS submitter_nickname,
             (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count
@@ -263,7 +350,8 @@ async function listInboxForUser(userId) {
   return db.query(
     `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
             a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at,
-            a.resubmit_count, a.finished_at, a.signature_url, a.report_pdf_status, a.created_at,
+            a.resubmit_count, a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
+            a.report_pdf_status, a.created_at,
             p.tenant_id, t.name AS tenant_name,
             p.name AS project_name, p.address AS project_address, p.status AS project_status,
             s.name AS stage_name, s.seq AS stage_seq, s.progress AS stage_progress,
@@ -348,7 +436,7 @@ async function listTimeoutCandidates() {
     // 收件人无法判断到底是哪个阶段卡住了（CLAUDE.md 第 55 条：少 SELECT 一列
     // 的症状就是「安静地少做一件事」）
     `SELECT a.id, a.project_id, a.project_stage_id, p.tenant_id, a.status, a.current_step,
-            a.step_entered_at, a.submitter_id, a.resubmit_count
+            a.step_entered_at, a.submitter_id, a.resubmit_count, a.esign_status
        FROM acceptance a
        JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL
        JOIN tenant t ON t.id = p.tenant_id AND t.deleted_at IS NULL
@@ -371,6 +459,8 @@ module.exports = {
   transition,
   markPassed,
   updatePdfState,
+  updateEsignState,
+  updatePostPassState,
   updateDescription,
   createItems,
   listItems,
@@ -383,4 +473,5 @@ module.exports = {
   listInboxForUser,
   listInitiablesForUser,
   listTimeoutCandidates,
+  listPostPassPending,
 }

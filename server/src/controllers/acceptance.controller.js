@@ -13,6 +13,7 @@ const { validate } = require('../utils/validate')
 const { normalizeFiles } = require('../middlewares/upload')
 const acceptanceService = require('../services/acceptance.service')
 const acceptancePdfService = require('../services/acceptancePdf.service')
+const esignService = require('../services/esign.service')
 const signedUrl = require('../utils/signedUrl')
 const storage = require('../storage')
 const AppError = require('../utils/AppError')
@@ -123,8 +124,12 @@ async function resubmit(req, res) {
 /** POST /acceptances/:id/report/retry —— PDF 生成失败后重试（AC-A19） */
 async function retryPdf(req, res) {
   const id = Number(req.params.id)
-  await acceptanceService.getDetail(req.auth.id, id) // 复用可见性校验
-  await acceptancePdfService.retry(id)
+  const detail = await acceptanceService.getDetail(req.auth.id, id) // 复用可见性校验
+  if (detail.esign && detail.esign.status === 'signed') {
+    await esignService.retryArchive(id)
+  } else {
+    await acceptancePdfService.retry(id)
+  }
   res.ok(await acceptanceService.getDetail(req.auth.id, id))
 }
 
@@ -143,12 +148,17 @@ async function downloadPdf(req, res) {
   // 这里直接读库而不用 service.getDetail —— 后者要求访问者身份，
   // 而签名 URL 的设计前提就是「拿到链接的人不在系统里」
   const row = await acceptanceModel.findById(id)
-  if (!row || row.report_pdf_status !== 'success' || !row.report_pdf_url) {
+  if (
+    !row ||
+    row.report_pdf_status !== 'success' ||
+    (!row.report_pdf_url && !row.report_pdf_key)
+  ) {
     throw AppError.notFound('验收报告尚未生成')
   }
 
-  const buffer = await storage.read(row.report_pdf_url)
+  const buffer = row.report_pdf_private ? await storage.readPrivate(row.report_pdf_key) : await storage.read(row.report_pdf_url)
   res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Cache-Control', 'no-store')
   // inline 而不是 attachment：多数场景是在手机里直接看，而不是下载到本地
   res.setHeader('Content-Disposition', `inline; filename="acceptance-${id}.pdf"`)
   res.send(buffer)

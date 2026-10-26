@@ -176,6 +176,48 @@ const config = {
     fontName: str('PDF_FONT_NAME', 'NotoSansCJKsc-Regular'),
   },
 
+  esign: {
+    /**
+     * 第三方可靠电子签名（验收单）。
+     *
+     * ── 这一组配置是「法律效力」的开关，不是普通功能开关 ──
+     * 生产环境必须显式启用并配置服务商凭据，否则服务拒绝启动；
+     * 生产禁止 mock provider，也禁止 `ESIGN_LEGACY_SIGNING=true`。
+     * 开发/测试默认关闭，继续走 legacy 手写签名图片，保证既有测试可跑。
+     */
+    enabled: bool('ESIGN_ENABLED', false),
+    /** 服务商故障时的暂停开关：只停新建任务，回调/查单/归档继续 */
+    signingPaused: bool('ESIGN_SIGNING_PAUSED', false),
+    legacySigning: isProd ? false : bool('ESIGN_LEGACY_SIGNING', true),
+    provider: str('ESIGN_PROVIDER', isTest ? 'mock' : ''),
+    appId: str('ESIGN_APP_ID', ''),
+    appSecret: str('ESIGN_APP_SECRET', ''),
+    /** 服务商侧发起人/操作员 id（腾讯电子签的 UserId） */
+    operatorId: str('ESIGN_OPERATOR_ID', ''),
+    /** 服务商企业/组织 id（腾讯电子签的 OrganizationId） */
+    organizationId: str('ESIGN_ORGANIZATION_ID', ''),
+    region: str('ESIGN_REGION', ''),
+    apiBase: str('ESIGN_API_BASE', ''),
+    callbackUrl: str('ESIGN_CALLBACK_URL', ''),
+    callbackSecret: str('ESIGN_CALLBACK_SECRET', ''),
+    callbackPreviousSecret: str('ESIGN_CALLBACK_SECRET_PREVIOUS', ''),
+    /** 逗号分隔的 IP 白名单；为空表示不做 IP 限制，只依赖验签 */
+    callbackIps: str('ESIGN_CALLBACK_IPS', '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean),
+    /**
+     * 私有存储目录。**必须不在 UPLOAD_DIR 内**，否则会被 express.static
+     * 当普通上传文件暴露。启动自检会拒绝这种配置。
+     */
+    privateDir: path.resolve(__dirname, '..', str('ESIGN_PRIVATE_DIR', './private-esign')),
+    signTtlSeconds: int('ESIGN_SIGN_TTL_SECONDS', 7 * 24 * 60 * 60),
+    refreshMinIntervalSeconds: int('ESIGN_REFRESH_MIN_INTERVAL_SECONDS', 10),
+    createTimeoutMs: int('ESIGN_CREATE_TIMEOUT_MS', 10000),
+    maxDocumentMb: int('ESIGN_MAX_DOCUMENT_MB', 20),
+    consentVersion: str('ESIGN_CONSENT_VERSION', '2026-10-v1'),
+  },
+
   signedUrl: {
     /**
      * 带签临时链接的密钥（§8.2 / AC-A20）。

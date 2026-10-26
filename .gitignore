@@ -11,6 +11,10 @@ node_modules/
 server/uploads/
 !server/uploads/.gitkeep
 
+# 电子签私有证据（已签 PDF、证据报告；绝不入库/入镜像）
+server/private-esign/
+server/private-esign-test/
+
 # 构建产物
 dist/
 build/

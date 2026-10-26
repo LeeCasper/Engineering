@@ -22,6 +22,7 @@ const CODE_MESSAGE = {
   // 混用会让前端把限流误报成权限问题，用户按提示去申请权限，永远解决不了。
   429: '请求过于频繁，请稍后再试',
   500: '服务端错误',
+  503: '服务暂不可用',
 }
 
 class AppError extends Error {
@@ -50,6 +51,7 @@ for (const [code, defaultMessage] of Object.entries(CODE_MESSAGE)) {
     409: 'conflict',
     429: 'tooManyRequests',
     500: 'internal',
+    503: 'serviceUnavailable',
   }[code]
 
   AppError[key] = (message, options) => new AppError(Number(code), message || defaultMessage, options)

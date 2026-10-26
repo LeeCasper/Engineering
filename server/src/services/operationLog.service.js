@@ -71,6 +71,12 @@ const ACTIONS = {
   DOOR_CODE_UPDATE: 'door_code.update',
   DOOR_CODE_REVOKE: 'door_code.revoke',
   DOOR_CODE_READ: 'door_code.read',
+  // 可靠电子签名：创建任务、完成、失败、回调被拒、下载都要能回答“谁在什么时候做了什么”
+  ACCEPTANCE_ESIGN_CREATE: 'acceptance.esign_create',
+  ACCEPTANCE_ESIGN_SIGNED: 'acceptance.esign_signed',
+  ACCEPTANCE_ESIGN_FAILED: 'acceptance.esign_failed',
+  ACCEPTANCE_ESIGN_CALLBACK_REJECTED: 'acceptance.esign_callback_rejected',
+  ACCEPTANCE_ESIGN_DOWNLOAD: 'acceptance.esign_download',
   // M13（平台运营）：租户的开通、配置变更与启停是**不可逆或影响全租户**的动作，
   // 必须留痕。这三条日志的 tenant_id 为 NULL —— 它们是平台级事件，
   // 不属于被操作的那个租户的审计范围（CLAUDE.md 第 76 条）
@@ -194,6 +200,7 @@ const MODULE_LABELS = {
   project: '项目',
   project_member: '项目成员',
   stage_template: '阶段模板',
+  acceptance: '验收',
   ledger: '记账',
   reconciliation: '对账',
   payment_node: '付款节点',

@@ -216,9 +216,24 @@
           </view>
 
           <view v-if="reportStatus === 'success'" class="report-state">
-            <text class="report-title">验收报告已生成</text>
-            <text class="report-text">包含验收项、现场照片、审核意见与主业主签名。</text>
-            <button class="report-btn" @tap="openReport">打开验收报告</button>
+            <text class="report-title">{{ isEsignSigned ? '验收确认书已签署' : '验收报告已生成' }}</text>
+            <text class="report-text">
+              {{
+                isEsignSigned
+                  ? '已由电子签服务商完成实名核验、数字签名与可信时间戳，可下载已签 PDF 与证据报告。'
+                  : '包含验收项、现场照片、审核意见与主业主签名。'
+              }}
+            </text>
+            <button class="report-btn" @tap="openReport">
+              {{ isEsignSigned ? '打开已签确认书' : '打开验收报告' }}
+            </button>
+            <button
+              v-if="isEsignSigned && detail.esign && detail.esign.evidencePath"
+              class="report-btn report-btn--outline"
+              @tap="openEvidence"
+            >
+              查看证据报告
+            </button>
           </view>
           <view v-else-if="reportStatus === 'failed'" class="report-state">
             <text class="report-title report-title--danger">报告生成失败</text>
@@ -233,7 +248,13 @@
           </view>
           <view v-else class="report-state">
             <text class="report-title">验收通过后生成报告</text>
-            <text class="report-text">主业主确认并签名后，系统会自动生成 PDF 验收报告。</text>
+            <text class="report-text">
+              {{
+                detail.esign && detail.esign.required
+                  ? '主业主完成可靠电子签名后，系统会归档已签确认书与证据报告。'
+                  : '主业主确认并签名后，系统会自动生成 PDF 验收报告。'
+              }}
+            </text>
           </view>
         </view>
       </view>
@@ -246,6 +267,20 @@
         <button v-if="canReject" class="action-secondary" :disabled="submitting" @tap="openReject">
           驳回
         </button>
+        <button v-if="canEsign" class="action-primary" :disabled="esignBusy" @tap="openConsent">
+          {{ esignBusy ? '发起中…' : '去签署' }}
+        </button>
+        <button v-if="esignActive" class="action-secondary" :disabled="esignBusy" @tap="refreshEsign">
+          刷新签署状态
+        </button>
+        <button
+          v-if="canCancelEsign"
+          class="action-secondary"
+          :disabled="esignBusy"
+          @tap="cancelEsignConfirm"
+        >
+          取消签署
+        </button>
         <button v-if="canApprove" class="action-primary" :disabled="submitting" @tap="onApprove">
           {{ approveLabel }}
         </button>
@@ -254,6 +289,31 @@
         </button>
       </view>
     </template>
+
+    <!-- 电子签名知情同意 -->
+    <view v-if="consentOpen" class="consent-mask" @tap="closeConsent">
+      <view class="consent-card" @tap.stop>
+        <text class="consent-title">电子签名知情同意</text>
+        <text class="consent-text">
+          本次验收将使用第三方电子签服务商完成实名认证、人脸核验与数字签名。签署完成后，验收确认书将带有服务商数字证书与可信时间戳。
+        </text>
+        <text class="consent-link" @tap="openConsentDoc">查看《电子签名知情同意书》</text>
+        <view class="consent-check" @tap="consentAccepted = !consentAccepted">
+          <view class="consent-box" :class="{ 'consent-box--on': consentAccepted }">
+            <text v-if="consentAccepted" class="consent-tick">✓</text>
+          </view>
+          <text class="consent-check-text">
+            我已阅读并同意《电子签名知情同意书》《隐私政策》，同意使用电子签名完成本次验收
+          </text>
+        </view>
+        <view class="consent-actions">
+          <button class="consent-cancel" @tap="closeConsent">取消</button>
+          <button class="consent-submit" :disabled="!consentAccepted || esignBusy" @tap="startEsign">
+            {{ esignBusy ? '发起中…' : '同意并去签署' }}
+          </button>
+        </view>
+      </view>
+    </view>
 
     <!-- 主业主签名 -->
     <view v-if="signatureOpen" class="signature-mask">
@@ -335,12 +395,15 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import {
   approveAcceptance,
   approveAcceptanceWithSignature,
+  cancelEsignTask,
+  createEsignTask,
   fetchAcceptanceDetail,
   rejectAcceptance,
   resubmitAcceptance,
   retryAcceptanceReport,
   saveAcceptanceDraft,
   submitSelfCheck,
+  syncEsignTask,
 } from '../../api/acceptance'
 import { resolveMediaUrl } from '../../api/request'
 import { getToken } from '../../store/session'
@@ -387,6 +450,10 @@ const rejectReason = ref('')
 const rejectPhoto = ref('')
 const rejecting = ref(false)
 
+const consentOpen = ref(false)
+const consentAccepted = ref(false)
+const esignBusy = ref(false)
+
 const myActions = computed(() => (detail.value && detail.value.myActions) || [])
 const canApprove = computed(() => myActions.value.includes('approve'))
 const canReject = computed(() => myActions.value.includes('reject'))
@@ -396,13 +463,44 @@ const canEditItems = computed(() => canSubmit.value || canResubmit.value)
 const canSaveDraft = computed(
   () => canEditItems.value && myActions.value.includes('saveDraft')
 )
+const esign = computed(() => (detail.value && detail.value.esign) || null)
+const canEsign = computed(() => myActions.value.includes('esign'))
+const esignActive = computed(
+  () => Boolean(esign.value && ['creating', 'pending', 'archiving'].includes(esign.value.status))
+)
+const canCancelEsign = computed(
+  () => Boolean(esign.value && ['creating', 'pending'].includes(esign.value.status))
+)
+const esignStatusText = computed(() => {
+  if (!esign.value) return ''
+  return (
+    {
+      creating: '正在发起签署…',
+      pending: '等待完成电子签名',
+      archiving: '签署成功，正在验证归档…',
+      signed: '电子签名已完成',
+      failed: '电子签名失败，可重新发起',
+      expired: '签署已过期，可重新发起',
+      cancelled: '已取消签署',
+      legacy: '存量手写签名',
+      none: '',
+    }[esign.value.status] || ''
+  )
+})
+const isEsignSigned = computed(() => Boolean(esign.value && esign.value.status === 'signed'))
 const isArchived = computed(
   () => Boolean(detail.value && detail.value.projectStatus === 'archived')
 )
 const hasActions = computed(
   () =>
     !isArchived.value &&
-    (canApprove.value || canReject.value || canSubmit.value || canResubmit.value || canSaveDraft.value)
+    (canApprove.value ||
+      canReject.value ||
+      canSubmit.value ||
+      canResubmit.value ||
+      canSaveDraft.value ||
+      canEsign.value ||
+      esignActive.value)
 )
 
 const approveLabel = computed(() => {
@@ -419,6 +517,7 @@ const displayTitle = computed(() => {
 
 const overviewStatusLabel = computed(() => {
   if (!detail.value) return ''
+  if (detail.value.status === 'pending_owner' && esignStatusText.value) return esignStatusText.value
   const labels = {
     draft: '草稿',
     pending_supervisor: '待监理审核',
@@ -496,8 +595,19 @@ onLoad((options) => {
   load()
 })
 
-onShow(() => {
-  if (detail.value && !loading.value && getToken()) load()
+onShow(async () => {
+  if (!detail.value || loading.value || !getToken()) return
+  const active =
+    detail.value.esign &&
+    ['creating', 'pending', 'archiving'].includes(detail.value.esign.status)
+  if (active) {
+    try {
+      await syncEsignTask(id.value)
+    } catch {
+      // 查单失败不阻断页面刷新；回调/定时任务仍是权威
+    }
+  }
+  await load()
 })
 
 async function load() {
@@ -808,6 +918,95 @@ async function saveDraft() {
 
 // ── 通过 / 驳回 ──
 
+function openConsent() {
+  consentAccepted.value = false
+  consentOpen.value = true
+}
+
+function closeConsent() {
+  if (esignBusy.value) return
+  consentOpen.value = false
+}
+
+function openConsentDoc() {
+  consentOpen.value = false
+  uni.navigateTo({ url: '/pages/legal/index?key=esign_agreement' })
+}
+
+async function startEsign() {
+  if (!consentAccepted.value || esignBusy.value) return
+  esignBusy.value = true
+  try {
+    const data = await createEsignTask(id.value, {
+      consentAccepted: true,
+      consentVersion: esign.value ? esign.value.consentVersion : undefined,
+    })
+    consentOpen.value = false
+    detail.value.esign = data
+
+    if (data.status === 'signed') {
+      uni.showToast({ title: '电子签名已完成', icon: 'success' })
+      await load()
+      return
+    }
+    if (!data.signUrl) {
+      uni.showToast({ title: '签署链接生成中，请稍后刷新', icon: 'none' })
+      return
+    }
+    if (data.signMode === 'miniprogram' && data.appId) {
+      uni.navigateToMiniProgram({
+        appId: data.appId,
+        path: data.path || '',
+        fail: () => {
+          uni.showToast({ title: '打开电子签小程序失败，请稍后重试', icon: 'none' })
+        },
+      })
+      return
+    }
+    uni.navigateTo({
+      url: `/pages/esign/sign?url=${encodeURIComponent(data.signUrl)}&id=${id.value}`,
+    })
+  } catch (err) {
+    uni.showToast({ title: err.message || '发起签署失败', icon: 'none' })
+  } finally {
+    esignBusy.value = false
+  }
+}
+
+async function refreshEsign() {
+  if (esignBusy.value) return
+  esignBusy.value = true
+  try {
+    await syncEsignTask(id.value)
+    await load()
+    uni.showToast({ title: '已刷新签署状态', icon: 'none' })
+  } catch (err) {
+    uni.showToast({ title: err.message || '刷新失败', icon: 'none' })
+  } finally {
+    esignBusy.value = false
+  }
+}
+
+function cancelEsignConfirm() {
+  uni.showModal({
+    title: '取消签署',
+    content: '取消后本次签署任务失效，可重新发起。确定取消吗？',
+    success: async (res) => {
+      if (!res.confirm) return
+      esignBusy.value = true
+      try {
+        await cancelEsignTask(id.value)
+        await load()
+        uni.showToast({ title: '已取消签署', icon: 'none' })
+      } catch (err) {
+        uni.showToast({ title: err.message || '取消失败', icon: 'none' })
+      } finally {
+        esignBusy.value = false
+      }
+    },
+  })
+}
+
 function onApprove() {
   if (!detail.value) return
   if (detail.value.currentStep === 'owner') {
@@ -1036,6 +1235,46 @@ function openReport() {
     fail: () => {
       uni.hideLoading()
       uni.showToast({ title: '报告下载失败', icon: 'none' })
+    },
+  })
+  // #endif
+}
+
+function openEvidence() {
+  if (!detail.value || !detail.value.esign || !detail.value.esign.evidencePath) {
+    uni.showToast({ title: '证据报告尚未生成', icon: 'none' })
+    return
+  }
+  const path = detail.value.esign.evidencePath
+  const url = resolveMediaUrl(path)
+  const isJson = path.split('?')[0].endsWith('.json')
+
+  // #ifdef H5
+  window.open(url, '_blank')
+  // #endif
+  // #ifndef H5
+  uni.showLoading({ title: '下载中…' })
+  uni.downloadFile({
+    url,
+    success: (res) => {
+      uni.hideLoading()
+      if (isJson) {
+        uni.showModal({
+          title: '证据报告已下载',
+          content: res.tempFilePath,
+          showCancel: false,
+        })
+        return
+      }
+      uni.openDocument({
+        filePath: res.tempFilePath,
+        fileType: 'pdf',
+        showMenu: true,
+      })
+    },
+    fail: () => {
+      uni.hideLoading()
+      uni.showToast({ title: '证据报告下载失败', icon: 'none' })
     },
   })
   // #endif
@@ -2189,5 +2428,112 @@ function closeActiveSheet() {
   color: #eb5c20;
   font-size: dp(14);
   font-weight: 600;
+}
+
+/* ── 电子签名同意书 ── */
+.consent-mask {
+  position: fixed;
+  z-index: 1002;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(20, 14, 10, 0.46);
+}
+
+.consent-card {
+  width: 100%;
+  padding: dp(24) dp(22) calc(#{dp(20)} + env(safe-area-inset-bottom));
+  border-radius: dp(18) dp(18) 0 0;
+  background: #fff;
+}
+
+.consent-title {
+  display: block;
+  color: #241c17;
+  font-size: dp(18);
+  font-weight: 700;
+}
+
+.consent-text {
+  display: block;
+  margin-top: dp(12);
+  color: #6d6259;
+  font-size: dp(13);
+  line-height: 1.7;
+}
+
+.consent-link {
+  display: block;
+  margin-top: dp(10);
+  color: #eb5c20;
+  font-size: dp(13);
+}
+
+.consent-check {
+  display: flex;
+  align-items: flex-start;
+  margin-top: dp(16);
+}
+
+.consent-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(18);
+  height: dp(18);
+  margin-top: dp(1);
+  border: 1px solid #c9bdb3;
+  border-radius: dp(4);
+  flex-shrink: 0;
+}
+
+.consent-box--on {
+  border-color: #eb5c20;
+  background: #eb5c20;
+}
+
+.consent-tick {
+  color: #fff;
+  font-size: dp(12);
+  line-height: 1;
+}
+
+.consent-check-text {
+  margin-left: dp(8);
+  color: #4c4138;
+  font-size: dp(12);
+  line-height: 1.6;
+}
+
+.consent-actions {
+  display: flex;
+  gap: dp(10);
+  margin-top: dp(20);
+}
+
+.consent-cancel,
+.consent-submit {
+  flex: 1;
+  height: dp(44);
+  border-radius: dp(10);
+  font-size: dp(14);
+  font-weight: 600;
+}
+
+.consent-cancel {
+  background: #f5f0eb;
+  color: #6d6259;
+}
+
+.consent-submit {
+  background: #eb5c20;
+  color: #fff;
+}
+
+.consent-submit[disabled] {
+  opacity: 0.45;
 }
 </style>

@@ -25,7 +25,7 @@ async function findActiveRole(projectId, userId) {
   // is_primary 一并返回：验收发起、阶段结算单提交的权限判定要用它（Q11），
   // 让调用方不必再查一次
   return db.queryOne(
-    `SELECT id, role, is_primary, owner_type
+    `SELECT id, user_id, role, is_primary, owner_type
        FROM project_member pm
       WHERE pm.project_id = ? AND pm.user_id = ? AND ${ACTIVE}`,
     [projectId, userId]

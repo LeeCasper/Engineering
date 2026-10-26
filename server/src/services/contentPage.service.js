@@ -22,6 +22,7 @@ const PAGES = {
   about: { label: '关于我们', required: false },
   agreement: { label: '用户协议', required: true },
   privacy: { label: '隐私政策', required: true },
+  esign_agreement: { label: '电子签名知情同意书', required: true },
 }
 
 function assertKnownKey(pageKey) {
