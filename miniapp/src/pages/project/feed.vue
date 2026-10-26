@@ -907,6 +907,7 @@ function closeActiveSheet() {
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .filter-chip--active {
@@ -914,6 +915,8 @@ function closeActiveSheet() {
   color: #fff;
   font-weight: 600;
   box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.2);
+  transform-origin: center;
+  animation: gc-tab-pop 420ms cubic-bezier(0.2, 1.35, 0.35, 1) both;
 }
 
 .filter-chip--icon {

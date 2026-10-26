@@ -1061,6 +1061,7 @@ function closeActiveSheet() {
   color: #5A4638;
   font-size: dp(12);
   font-weight: 500;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .tab:last-child {
@@ -1071,6 +1072,8 @@ function closeActiveSheet() {
   background: #eb5c20;
   color: #fff;
   box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.22);
+  transform-origin: center;
+  animation: gc-tab-pop 420ms cubic-bezier(0.2, 1.35, 0.35, 1) both;
 }
 
 .tab-label {

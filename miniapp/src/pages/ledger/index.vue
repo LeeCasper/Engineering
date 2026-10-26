@@ -154,11 +154,12 @@
 
       <!-- 概览 / 流水 / 对账 -->
       <view class="segment">
+        <view class="segment-thumb" :style="thumbStyle" />
         <view
           v-for="tab in TABS"
           :key="tab.key"
           class="segment-item"
-          :class="{ 'segment-item--active': activeTab === tab.key }"
+          :class="{ 'segment-item--active': visualTabKey === tab.key }"
           @tap="switchTab(tab.key)"
         >
           {{ tab.label }}
@@ -893,7 +894,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import {
   myProjects,
@@ -963,6 +964,61 @@ const reconciliations = ref([])
 
 const activeTab = ref('overview')
 const flowFilter = ref('')
+
+// 分段胶囊：用弹簧模型移动，带一点惯性过冲再回弹。
+// 位置单位是「一个选项宽度」，所以 translateX(100%) 正好到下一项。
+const thumbPos = ref(0)
+const thumbStyle = computed(() => ({
+  transform: `translateX(${thumbPos.value * 100}%)`,
+}))
+// 文字颜色跟随胶囊中心，而不是点击瞬间切换：
+// 否则快速滑动时新标签会先变成白字、胶囊还没到，出现短暂“白字白底”。
+const visualTabKey = computed(() => {
+  const index = Math.max(0, Math.min(TABS.length - 1, Math.round(thumbPos.value)))
+  return TABS[index].key
+})
+let thumbTimer = null
+let thumbVelocity = 0
+let thumbPosition = 0
+
+const SPRING_STIFFNESS = 260
+const SPRING_DAMPING = 22
+const SPRING_DT = 1 / 60
+
+function animateThumbTo(target) {
+  if (thumbTimer) {
+    clearTimeout(thumbTimer)
+    thumbTimer = null
+  }
+
+  const step = () => {
+    const force = -SPRING_STIFFNESS * (thumbPosition - target) - SPRING_DAMPING * thumbVelocity
+    thumbVelocity += force * SPRING_DT
+    thumbPosition += thumbVelocity * SPRING_DT
+    thumbPos.value = thumbPosition
+
+    if (Math.abs(thumbPosition - target) < 0.001 && Math.abs(thumbVelocity) < 0.01) {
+      thumbPosition = target
+      thumbVelocity = 0
+      thumbPos.value = target
+      thumbTimer = null
+      return
+    }
+    thumbTimer = setTimeout(step, 16)
+  }
+
+  step()
+}
+
+watch(activeTab, (key) => {
+  const target = TABS.findIndex((tab) => tab.key === key)
+  if (target >= 0) animateThumbTo(target)
+})
+
+onUnmounted(() => {
+  if (thumbTimer) clearTimeout(thumbTimer)
+  thumbTimer = null
+})
 const entries = ref([])
 const entriesTotal = ref(0)
 const entriesPage = ref(1)
@@ -2363,7 +2419,9 @@ onPullDownRefresh(async () => {
 
 /* ── 分段切换 ── */
 .segment {
+  position: relative;
   display: flex;
+  overflow: hidden;
   margin: dp(2) 0 dp(12);
   padding: dp(4);
   border: 1px solid #e8e1da;
@@ -2372,7 +2430,23 @@ onPullDownRefresh(async () => {
   box-shadow: 0 dp(1) dp(3) rgba(0, 0, 0, 0.03);
 }
 
+/* 胶囊背景。位置由 JS 弹簧模型驱动，translateX(100%) 对应一个选项宽度 */
+.segment-thumb {
+  position: absolute;
+  z-index: 0;
+  top: dp(4);
+  bottom: dp(4);
+  left: dp(4);
+  width: calc((100% - 16rpx) / 3);
+  border-radius: dp(999);
+  background: #eb5c20;
+  box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.25);
+  will-change: transform;
+}
+
 .segment-item {
+  position: relative;
+  z-index: 1;
   flex: 1;
   padding: dp(7) 0;
   border-radius: dp(999);
@@ -2380,13 +2454,12 @@ onPullDownRefresh(async () => {
   font-size: dp(12);
   font-weight: 500;
   text-align: center;
+  transition: color 160ms ease;
 }
 
 .segment-item--active {
-  background: #eb5c20;
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.25);
 }
 
 /* ── 卡片与 section ── */

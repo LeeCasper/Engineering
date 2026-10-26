@@ -14,19 +14,17 @@
       </text>
     </view>
 
-    <scroll-view class="filter-scroll" scroll-x :show-scrollbar="false">
-      <view class="filter-row">
-        <view
-          v-for="filter in FILTERS"
-          :key="filter.key"
-          class="filter-chip"
-          :class="{ 'filter-chip--active': activeType === filter.key }"
-          @tap="changeFilter(filter.key)"
-        >
-          {{ filter.label }}
-        </view>
+    <view class="filter-row">
+      <view
+        v-for="filter in FILTERS"
+        :key="filter.key"
+        class="filter-chip"
+        :class="{ 'filter-chip--active': activeType === filter.key }"
+        @tap="changeFilter(filter.key)"
+      >
+        {{ filter.label }}
       </view>
-    </scroll-view>
+    </view>
 
     <view v-if="loading && !messages.length" class="gc-loading-page">
       <gc-skeleton :rows="4" />
@@ -409,25 +407,26 @@ function goBack() {
   opacity: 0.35;
 }
 
-.filter-scroll {
-  padding: 0 dp(14) dp(4);
-  white-space: nowrap;
-}
-
 .filter-row {
-  display: inline-flex;
-  gap: dp(7);
-  padding: dp(4) dp(1) dp(8);
+  display: flex;
+  gap: dp(6);
+  padding: dp(4) dp(14) dp(8);
 }
 
 .filter-chip {
-  padding: dp(6) dp(13);
+  flex: 1;
+  min-width: 0;
+  padding: dp(6) dp(2);
   border: 1px solid #e8e1da;
   border-radius: dp(999);
   background: #fff;
   color: #6d6259;
   font-size: dp(12);
   line-height: 1.2;
+  white-space: nowrap;
+  text-align: center;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .filter-chip--active {
@@ -435,6 +434,9 @@ function goBack() {
   background: #eb5c20;
   color: #fff;
   font-weight: 600;
+  box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.22);
+  transform-origin: center;
+  animation: gc-tab-pop 420ms cubic-bezier(0.2, 1.35, 0.35, 1) both;
 }
 
 .list {

@@ -134,20 +134,55 @@ button {
 }
 
 
-/* 底部弹窗入场：从底部抬起，轻微淡入。下滑手势的 transform 在动画结束后接管。 */
+/* ── 底部弹窗入场 ─────────────────────────────────────────
+ * 缓入缓出抬起 → 触底后轻微下坠 → 反向回弹 → 落定。
+ * 只动 transform / opacity，不触发布局；结束帧不保留 fill，
+ * 否则会长期盖住 useSwipeClose 写入的 inline transform，下滑手势就失效了。
+ * 回弹的最大反向位移只有 0.35%（约 2px），不会在底部露出背景缝。
+ */
 @keyframes sheet-rise {
-  from {
+  0% {
+    opacity: 0;
     transform: translateY(100%);
-    opacity: 0.65;
   }
-  to {
-    transform: translateY(0);
+  60% {
     opacity: 1;
+    transform: translateY(0);
+  }
+  74% {
+    opacity: 1;
+    transform: translateY(1.6%);
+  }
+  86% {
+    opacity: 1;
+    transform: translateY(-0.35%);
+  }
+  94% {
+    opacity: 1;
+    transform: translateY(0.12%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 .sheet {
-  animation: sheet-rise 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  animation: sheet-rise 480ms cubic-bezier(0.45, 0, 0.25, 1);
+}
+
+/* 蒙层同步淡入，避免面板已经在动、背景却瞬间变黑 */
+@keyframes sheet-mask-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sheet-mask {
+  animation: sheet-mask-in 220ms ease-out;
 }
 
 /* 首次加载的骨架屏容器：页面自己控制上下留白 */
@@ -167,6 +202,24 @@ button {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* 独立分类 tab 的选中态：不是连在一起的胶囊，不能用平移，
+ * 用「跳入 + 轻微过冲」：从下方缩放入场，到 55% 略放大，再落回原尺寸。
+ */
+@keyframes gc-tab-pop {
+  0% {
+    opacity: 0.35;
+    transform: translateY(dp(6)) scale(0.82);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(dp(-1)) scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -204,6 +257,18 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .gc-stagger > view {
+    animation: none;
+  }
+
+  .tab--active,
+  .filter-chip--active {
+    animation: none;
+  }
+
+  .sheet,
+  .sheet-mask,
+  .admin-sheet,
+  .admin-sheet-mask {
     animation: none;
   }
 }
