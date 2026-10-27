@@ -177,7 +177,8 @@ function buildWatermarkSvg({ lines, fontSize, padding }) {
  * @param {Buffer} inputBuffer 原图
  * @param {object} params
  * @param {string[]} params.lines 水印内容，按行从上到下。
- *   进度汇报传 [时间, 项目地址, 工序名]；现场签到传 [时间, 项目地址, 坐标]
+ *   进度汇报传 [时间, 项目地址, 工序名]；
+ *   现场签到传 [时间, 实时地址, 项目地址, 坐标]
  * @returns {Promise<Buffer>} 带水印的图片（格式与原图一致）
  * @throws {Error} 字体不可用或图片无法解析
  */

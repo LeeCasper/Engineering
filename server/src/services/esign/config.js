@@ -3,9 +3,9 @@
 /**
  * 电子签配置自检。
  *
- * 这不是普通的“功能开关”：生产环境如果没有可靠电子签名配置，业主验收
- * 不应该继续可用旧的签名图片。因此生产环境缺配置时**拒绝启动**，
- * 而不是降级成 legacy。开发/测试保留 legacy，保证既有测试可跑。
+ * 可靠电子签名是**可选能力**，默认关闭；关闭时走手写签名（仅项目内部确认，
+ * 不具备法律效力）。开启后必须配置服务商，生产禁止 mock，且不再接受手写兜底。
+ * 三种环境都必须保留至少一种签名方式，否则业主无法完成验收。
  */
 
 const path = require('node:path')
@@ -23,12 +23,12 @@ function providerName() {
 
 /** 当前环境是否要求业主必须使用可靠电子签名 */
 function isRequired() {
-  return config.isProd || config.esign.enabled
+  return Boolean(config.esign.enabled)
 }
 
-/** 是否允许旧的手写签名图片（仅非生产） */
+/** 是否允许手写签名（仅在可靠电子签关闭时；不具备法律效力） */
 function legacyAllowed() {
-  return !config.isProd && config.esign.legacySigning
+  return !isRequired() && Boolean(config.esign.legacySigning)
 }
 
 function assertSafeConfig() {
@@ -39,14 +39,10 @@ function assertSafeConfig() {
   }
 
   if (!config.esign.enabled) {
-    if (config.isProd) {
-      throw new Error('生产环境必须启用 ESIGN_ENABLED；禁止回退到手写签名图片')
+    if (!config.esign.legacySigning) {
+      throw new Error('未启用可靠电子签时必须允许手写签名（ESIGN_LEGACY_SIGNING=true），否则验收无法完成')
     }
     return true
-  }
-
-  if (config.isProd && config.esign.legacySigning) {
-    throw new Error('生产环境禁止 ESIGN_LEGACY_SIGNING=true')
   }
 
   if (!provider) {

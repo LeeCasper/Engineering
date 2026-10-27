@@ -12,6 +12,20 @@ export default {
 <style lang="scss">
 @import './styles/admin.scss';
 
+/* #ifdef H5 */
+/* uni.showModal 默认 z-index 999，而管理端底部面板是 1300。
+   从成员操作 / 模板编辑等面板里触发的确认框会被面板盖住，导致按钮点不到；
+   统一抬高模态层。小程序原生模态在 webview 外，不受影响。 */
+.uni-mask {
+  z-index: 2000 !important;
+}
+
+uni-modal,
+.uni-modal {
+  z-index: 2001 !important;
+}
+/* #endif */
+
 page {
   min-height: 100%;
   background: $color-canvas;

@@ -22,6 +22,8 @@ router.use('/platform', require('./platform.routes'))
 router.use('/platform-grants', require('./platformGrant.routes'))
 router.use('/admin-users', require('./adminUser.routes'))
 router.use('/projects', require('./project.routes'))
+// 成员 tab 的跨项目只读目录。写操作仍挂在 /projects/:id/members
+router.use('/members', require('./member.routes'))
 router.use('/stage-templates', require('./template.routes'))
 router.use('/exports', require('./export.routes'))
 router.use('/notifications', require('./notification.routes'))

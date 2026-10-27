@@ -178,17 +178,18 @@ const config = {
 
   esign: {
     /**
-     * 第三方可靠电子签名（验收单）。
+     * 第三方可靠电子签名（验收单）——**可选能力，默认关闭**。
      *
-     * ── 这一组配置是「法律效力」的开关，不是普通功能开关 ──
-     * 生产环境必须显式启用并配置服务商凭据，否则服务拒绝启动；
-     * 生产禁止 mock provider，也禁止 `ESIGN_LEGACY_SIGNING=true`。
-     * 开发/测试默认关闭，继续走 legacy 手写签名图片，保证既有测试可跑。
+     * 关闭时走 legacy 手写签名：它只是项目内部的验收确认记录，
+     * **不具备《电子签名法》意义上的可靠电子签名效力**。
+     * 开启后才要求服务商配置，并在生产环境禁止 mock provider；
+     * 开启状态下不接受手写签名兜底，避免同一类验收单出现两种效力。
+     * 后续需要法律效力时，配置服务商并设置 ESIGN_ENABLED=true 即可。
      */
     enabled: bool('ESIGN_ENABLED', false),
     /** 服务商故障时的暂停开关：只停新建任务，回调/查单/归档继续 */
     signingPaused: bool('ESIGN_SIGNING_PAUSED', false),
-    legacySigning: isProd ? false : bool('ESIGN_LEGACY_SIGNING', true),
+    legacySigning: bool('ESIGN_LEGACY_SIGNING', true),
     provider: str('ESIGN_PROVIDER', isTest ? 'mock' : ''),
     appId: str('ESIGN_APP_ID', ''),
     appSecret: str('ESIGN_APP_SECRET', ''),

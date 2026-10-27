@@ -8,7 +8,12 @@
  * 不应混进这里。
  */
 
-const { decodeAmapPolyline, parseAmapLocation } = require('../../src/services/map.service')
+const {
+  decodeAmapPolyline,
+  parseAmapLocation,
+  parseAmapRegeo,
+  parseTencentRegeo,
+} = require('../../src/services/map.service')
 
 describe('parseAmapLocation', () => {
   it('把 "lng,lat" 解析成 GCJ-02 字符串坐标，保留 7 位小数', () => {
@@ -23,6 +28,49 @@ describe('parseAmapLocation', () => {
     expect(parseAmapLocation('abc,def')).toBeNull()
     expect(parseAmapLocation('181,31')).toBeNull()
     expect(parseAmapLocation('121,91')).toBeNull()
+  })
+})
+
+describe('parseAmapRegeo / parseTencentRegeo', () => {
+  it('从高德逆地理编码响应提取文字地址', () => {
+    expect(
+      parseAmapRegeo({
+        status: '1',
+        regeocode: { formatted_address: '上海市浦东新区世纪大道 100 号' },
+      })
+    ).toBe('上海市浦东新区世纪大道 100 号')
+  })
+
+  it('高德没有 formatted_address 时用行政区字段拼接', () => {
+    expect(
+      parseAmapRegeo({
+        status: '1',
+        regeocode: {
+          addressComponent: {
+            province: '上海市',
+            city: [],
+            district: '浦东新区',
+            township: '陆家嘴街道',
+            streetNumber: { street: '世纪大道', number: '100号' },
+          },
+        },
+      })
+    ).toBe('上海市浦东新区陆家嘴街道世纪大道100号')
+  })
+
+  it('高德失败返回 null，不伪造地址', () => {
+    expect(parseAmapRegeo({ status: '0' })).toBeNull()
+    expect(parseAmapRegeo(null)).toBeNull()
+  })
+
+  it('从腾讯逆地理编码响应提取文字地址', () => {
+    expect(
+      parseTencentRegeo({
+        status: 0,
+        result: { address: '上海市浦东新区世纪大道 100 号' },
+      })
+    ).toBe('上海市浦东新区世纪大道 100 号')
+    expect(parseTencentRegeo({ status: 1 })).toBeNull()
   })
 })
 

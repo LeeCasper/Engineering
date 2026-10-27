@@ -37,9 +37,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 文件 | 内容 |
 | --- | --- |
-| `需求文档.md` | 产品需求（v2.13），**一切实现的最终依据** |
+| `需求文档.md` | 产品需求（v2.14），**一切实现的最终依据** |
 | `CLAUDE.md` | 本文件：架构约定、常用命令、93 条约束编号索引 |
 | `docs/constraints/` | 93 条约束的完整说明，按主题拆分；编号与源码注释一一对应 |
+| `docs/esign-legal.md` | 可靠电子签服务商资质与法律效力核验清单（仅在启用可靠电子签时适用） |
+| `server/.env.example` | 环境变量模板；新增配置必须同步这里与 `server/config/index.js` |
 | `README.md` | 环境准备、数据库初始化、快速开始、交付进度 |
 | `admin/README.md` | 双登录入口、角色菜单、已实现页面与验证方式 |
 | `miniapp/README.md` | Stitch 设计稿来源、页面行为、原生 tabBar、资源生成 |
@@ -67,13 +69,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | V2.9 | **平台运营数据看板 + 租户地区字段**（§5.7.6 / AC-T23~T25） | ✅ 已完成：中国地图省级着色、省 → 市行政区划下钻、未分配地区统计、地区租户列表；开通/调整租户录入省 + 市 |
 | V2.10 | **平台小程序品牌**（§5.7.6 / B-7.12 / AC-T26） | ✅ 已完成：平台设置小程序名称与 Logo、Logo 上传、公开 `GET /branding`；小程序登录页 / 首页 / 角色页 / 管理端登录页读取 |
 | V2.12 | **主业主与临时业主**（§2.2 / §5.2 / AC-AD72~74） | ✅ 已完成：`project_member.owner_type`（迁移 025）、主业主唯一索引与存量回填；验收签名、付款确认、对账确认/异议仅主业主；临时业主可查看与门锁密码管理；主业主注销时自动提升临时业主 |
-| V2.13 | **可靠电子签名（验收单）**（§4.3 / AC-A16 / AC-A27~A33） | ✅ 已完成（代码 + mock 测试；生产需接入服务商并完成沙箱验证）：`esign_task`/`esign_identity`/`esign_event`（迁移 026）；服务商适配器、回调收件箱、验签/哈希比对、实名主体绑定、私有存储、生产 fail-closed；存量验收单标记 legacy |
+| V2.13 | **可靠电子签名（验收单，可选能力）**（§4.3 / AC-A16 / AC-A27~A33） | ✅ 代码与 mock 测试已完成；**当前产品默认关闭，验收走手写签名（仅项目内部确认，不具备法律效力）**。需要法律效力时配置服务商并设置 `ESIGN_ENABLED=true`：`esign_task`/`esign_identity`/`esign_event`（迁移 026）、回调收件箱、验签/哈希比对、实名主体绑定、私有存储；开启后生产禁止 mock、禁止手写兜底 |
 | — | 租户侧项目数据看板（AC-AD36~43） | 明确不在本轮（V1.2 的项目/工长/财务统计，与平台运营看板是两套口径） |
 | — | 管理后台页面（`admin/`） | ✅ 基座 / 平台与租户双登录 / 项目 / 平台租户 / **平台数据看板** / 平台基础配置 / 基础内容页 / 平台日志中心 / 阶段模板 / 账号 / 配置 / 操作与登录日志 / 内容页 / 反馈 / 排障授权 / 平台只读排障 / 我的导出 |
-| — | C 端小程序（`miniapp/`） | 🚧 已开始：首页（我的项目）、项目详情页、工程动态页、记账页、验收页、验收详情页、登录页、角色说明页、我的页 1:1 还原；我的项目 / 项目详情 / 工程动态 / 记账总览、流水与对账 / 消息中心 / 订阅状态 / 意见反馈 / 注销账号 / 租户管理员移动管理端 / **考察计划与路线规划** / **现场签到与考察记录时间轴** / **进度汇报提交** / **门锁密码（业主管理、工长监理查看）** / 搜索筛选 / 邀请确认 / 无项目引导 / 跨项目验收收件箱 / 业主签名已接通 |
+| — | C 端小程序（`miniapp/`） | 🚧 已开始：首页（我的项目）、项目详情页、工程动态页、记账页、验收页、验收详情页、登录页、角色说明页、我的页 1:1 还原；我的项目 / 项目详情 / 工程动态 / 记账总览、流水与对账 / 消息中心 / 订阅状态 / 意见反馈 / 注销账号 / 租户管理员移动管理端 / **考察计划与路线规划** / **现场签到与考察记录时间轴** / **进度汇报提交** / **门锁密码（业主管理、工长监理查看）** / 搜索筛选 / 邀请确认 / 无项目引导 / 跨项目验收收件箱 / 业主签名 / 移动管理端（工作台、项目、项目详情、跨项目成员目录、阶段模板、我的管理设置）已接通 |
 
-**后端 M1~M13、V1.2-A 路线规划、V1.2-B 现场签到、V2.9 看板、V2.10 小程序品牌、V2.12 主业主与 V2.13 可靠电子签名已完成**：
-165 条路由、44 张业务表、964 条自动化测试（44 个测试文件）、123~124 项端到端冒烟断言
+**后端 M1~M13、V1.2-A 路线规划、V1.2-B 现场签到、V2.9 看板、V2.10 小程序品牌、V2.12 主业主与 V2.13 可靠电子签名（可选，默认关闭）已完成**：
+167 条路由、44 张业务表、984 条自动化测试（46 个测试文件）、123~124 项端到端冒烟断言
 （平台账号首登改密那条只在首次运行时出现）。
 
 管理后台页面已交付；C 端小程序的进度汇报提交页也已接通，本轮 C 端页面清单完成。
@@ -119,7 +121,7 @@ pnpm geo:generate           # 重新生成全国/省级地图与地区树（需�
 
 # 小程序（miniapp/）
 npm run dev:h5              # 浏览器预览（需后端 WX_MOCK=true，固定 dev code 登录）
-npm run dev:mp-weixin       # 用微信开发者工具导入 dist/dev/mp-weixin
+npm run dev:mp-weixin       # 用微信开发者工具导入 dist/dev/mp-weixin；新增页面/路由后必须重启 watcher
 npm run build:mp-weixin     # 默认接口回落到 127.0.0.1:3000，仅本地调试用
 npm run build:h5
 # 生产包必须显式指定 HTTPS API，否则真机会报 url not in domain list
@@ -209,6 +211,18 @@ server/
 `app.js` 与 `server.js` 分离是刻意的：集成测试直接 `require('src/app')` 用 supertest 打它，
 不起真实端口 —— 没有端口冲突、没有启动竞态、测试结束不残留进程。
 
+### 按任务定位
+
+| 要做的事 | 先看哪里 |
+| --- | --- |
+| 新增 / 修改接口 | `src/routes` → `controllers` → `services` → `models`；先对照 `需求文档.md`、相关 constraint |
+| 权限 / 租户隔离 | `services/dataScope.service.js`、`projectAccess.service.js`、`middlewares/adminAuth.js` / `miniAuth.js` |
+| 验收 / 电子签 / PDF | `services/acceptance*.service.js`、`esign.service.js`；C 端 `pages/acceptance/detail.vue` |
+| 记账 / 付款 / 对账 | `services/ledger.service.js`、`paymentNode.service.js`、`reconciliation.service.js` |
+| Web 管理后台 | `admin/src/views/**` + `admin/src/router/routes/index.ts`；`router/elegant/` 与 `typings/elegant-router.d.ts` 是生成文件 |
+| 小程序页面 | `miniapp/src/pages/**` + `pages.json`；图标 / 插画改 `scripts/gen-assets.js`，不要手改生成 PNG |
+| 数据库结构 | `server/db/migrations/*.sql` 是唯一权威；已执行的迁移不改，新增迁移文件 |
+
 ### 小程序（`miniapp/`）
 
 uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API_BASE` 连接。
@@ -218,8 +232,10 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **品牌与配色**：小程序可见品牌按品牌方 logo 统一为「柏总管」，
   完整 logo 来源是 `miniapp/design-refs/brand-logo.png`（橙底白字），
   由 `scripts/gen-assets.js` 生成 `src/static/images/logo.png`。
-  主色 `#EB5C20`、按压色 `#C44710`、浅底 `#FDEBE4`、页面底色 `#FAF7F4`；
-  橙色 hero 上用 `home-logo.png` 的反色小标记，浅底页面才用完整 wordmark。
+  主色 `#EB5C20`、按压色 `#C44710`、浅底 `#FDEBE4`、页面底色 `#FAF7F4`。
+  **所有小程序内品牌 Logo 都读 `store/branding.js` 的 `branding.logoUrl`**
+  （平台设置里上传的 Logo），未配置时统一退回 `logo.png`；首页橙色 hero 也用
+  同一个 Logo，不再使用 `home-logo.png` 的反色小标记。
   绿色 / 红色 / 琥珀色仍是业务语义色，不要把成功、危险、警告也刷成品牌橙。
 - **「我的」按当前项目 + 账号固定角色渲染**：资料卡用 `GET /auth/profile?projectId`
   的角色（`accountRole` 是账号级固定角色）；有当前项目时，业主显示 `contacts`、
@@ -294,7 +310,11 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   只有工长 / 监理能签到；业主可看时间轴但不能签到。定位失败时**不允许提交**，
   必须给出去设置的引导（AC-N28）。
   照片先逐张 `POST /projects/:id/visits/media` 暂存，提交时用 `mediaIds` 一次性消费；
-  水印在**提交时**用最终坐标生成（时间 + 项目地址 + 坐标），暂存阶段只存原图。
+  水印在**提交时**用最终坐标生成（时间 + 签到位置文字 + 项目地址 + 坐标）；
+  位置文字由服务端逆地理编码（高德优先、腾讯兜底；只配 `TENCENT_MAP_KEY`
+  也可以生成文字地址），未配置地图 Key 时写「实时地址未解析」并保留坐标，
+  不编造地址。前端提交前会强制重新定位一次，定位失败不允许提交；
+  不要复用页面打开时的旧坐标。
   同项目同人当日只有一条记录（`uk_visit_daily`）；异常签到允许提交但必须填说明，
   并给管理员发站内消息。签到记录只追加，model 不导出 update / delete。
   从考察计划进入时带 `routePlanId` + `seqInPlan`，提交后回填 `route_plan_point.visited_at`，
@@ -334,25 +354,40 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **小程序管理端是独立的租户后台身份，不是第四种项目角色**：租户 `owner` /
   项目管理员 `admin` 用后台账号密码 + 图形验证码登录，拿到的是 audience=admin 的
   普通管理员 JWT；C 端微信 token 只用于证明 openid，绝不直接访问 `/admin/*`。
-  管理端页面在 `pages/admin/**`，全部是非 tab 页；保留 4 个原生 tab。项目列表顶部
-  「管理」入口只对有管理员 token 或有效微信绑定的用户显示；首次登录在小程序登录页
-  的「管理员登录」进入。管理员 token 存在 `gc_admin_*`，与 C 端 `gc_token` 分离：
+  管理端页面在 `pages/admin/**`，全部是非 tab 页；C 端保留 4 个原生 tab。管理端顶层
+  页（工作台 / 项目 / 成员 / 我的）使用 `AdminTabBar` 内页导航，不注册进原生 tabBar，
+  顶层页之间用 `redirectTo`，详情/表单页不显示底部导航。项目列表顶部
+  「管理」入口只对有管理员 token 或有效微信绑定的用户显示，有 token 时进入工作台；
+  首次登录在小程序登录页的「管理员登录」进入。管理员 token 存在 `gc_admin_*`，与 C 端 `gc_token` 分离：
   任一端 401 都不能清另一端。微信免密绑定表是 `admin_wechat_binding`（迁移 018），
   以 openid 为权威键，`admin_token_version` 失配即失效；改密、重置、禁用、C 端注销
   必须撤销绑定。平台账号不能登录小程序管理端，也不能绑定。管理员复用后台
-  `/admin/*` 接口与数据权限，网页与小程序天然同步；首期只做项目/成员/付款节点/
-  阶段工序，账号、模板、配置、内容、反馈、日志、导出仍在网页后台。
+  `/admin/*` 接口与数据权限，网页与小程序天然同步；小程序管理端覆盖项目/成员/
+  付款节点/阶段工序，以及阶段模板的概览、切换、新建与基础编辑（阶段名、工期、
+  工序名、未被引用时删除）。账号管理、权重/验收项清单等高级模板编辑、配置、内容、反馈、日志、
+  导出仍在网页后台。模板编辑只改模板本身，**不会回写已创建项目的阶段树**。
 - **进度汇报的多附件走暂存接口**：微信端 `uni.uploadFile` 一次只能带一个文件，而
   `POST /projects/:id/reports` 要求一次原子提交。先逐文件调
   `POST /projects/:id/reports/media`（服务端打水印）拿到 `mediaId`，再用 `mediaIds`
   提交；两种附件方式互斥。暂存行 24 小时未提交由 `reportMediaCleanup` 清理，
   清理任务必须**先认领 `status='expired'` 再删文件**，否则会把用户刚提交的图片删掉。
   不要在前端手工拼 multipart，也不要恢复「一次 multipart 带齐」的假设。
-- **C 端没有建档权限**：项目新建只对租户管理员开放，入口在
-  `pages/admin/projects/index` 的管理端 FAB。C 端项目列表**不展示**「新建项目」按钮，
-  也不要把用户引导到一个不存在的 C 端建档接口。
-- **底部导航用原生 tabBar**：`pages.json` 配置项目 / 验收 / 记账 / 我的四项，**不要**每个 tab 页自己画一个底部栏，也不要用 `reLaunch` 切 tab —— 那会重建页面并白屏。四项现在都是真实页面；「我的」是个人工作台（资料、多项目时的切换入口、业主联系人 / 工长统计、消息、订阅、反馈、注销），消息未读数用 `uni.setTabBarBadge({ index: 3 })` 挂在「我的」tab 上。
+- **C 端没有建档权限**：项目新建只对租户管理员开放，入口在管理端工作台的
+  「新建项目」快捷入口和项目管理列表头部的「+ 新建项目」。C 端项目列表**不展示**
+  「新建项目」按钮，也不要把用户引导到一个不存在的 C 端建档接口。
+- **C 端底部导航用原生 tabBar**：`pages.json` 配置项目 / 验收 / 记账 / 我的四项，**不要**每个 tab 页自己画一个底部栏，也不要用 `reLaunch` 切 tab —— 那会重建页面并白屏。四项现在都是真实页面；「我的」是个人工作台（资料、多项目时的切换入口、业主联系人 / 工长统计、消息、订阅、反馈、注销），消息未读数用 `uni.setTabBarBadge({ index: 3 })` 挂在「我的」tab 上。
+- **管理端底部导航是内页 `AdminTabBar`**：只用于管理端顶层页（工作台 / 项目 /
+  成员 / 我的），不注册进 `pages.json` 的 `tabBar`，也不要在 C 端页面渲染它。
+  顶层页之间用 `redirectTo`；详情、表单、成员、付款节点、阶段工序等嵌套页用
+  `navigateTo` 且不显示底部导航。成员 tab 是 `pages/admin/members/index` 的跨项目
+  成员目录，读 `GET /admin/members`（复用 `dataScope`，手机号脱敏）；邀请 / 改指 /
+  移除仍走具体项目的 `/admin/projects/:id/members`，不要为写操作另开跨项目接口。
+  项目详情 `pages/admin/project/detail` 按 Stitch `64c024eb…` 还原，单项目成员页
+  `pages/admin/project/members` 复用成员卡片与筛选样式；两页都不显示底部导航。
 - **H5 下的 tabBar 在页面内**：底部浮层（筛选、阶段、签名等）的 z-index 必须高于 H5 的 `uni-tabbar`（当前用 1000）；小程序原生 tabBar 在 webview 外，不受影响。
+- **H5 的 `uni.showModal` 要盖住管理端面板**：它默认 `z-index: 999`，而管理端底部面板是 1300，
+  从成员操作 / 模板编辑面板里弹出的确认框会被盖住、按钮点不到。`App.vue` 已在 H5 下把
+  `.uni-mask` / `uni-modal` 统一抬到 2000/2001，不要在单个页面里再调低模态层。
 - **不要画假的 iOS 状态栏与微信胶囊**：设计稿里的「9:41 / 电池」和右上角胶囊
   是手机壳示意；真机已有系统状态栏与原生胶囊。页面用
   `padding-top: var(--status-bar-height)`（H5 回退 12px）对齐。
@@ -360,6 +395,12 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   `scripts/gen-assets.js` 用 sharp 把背景、天际线、图标转成 3x PNG。
   角色卡实景图保留原 JPG，左侧羽化用白色渐变覆盖层实现 ——
   带 alpha 的大 PNG 会把主包顶过微信 2MB 限制（这是实际的踩坑点）。
+  **唯一例外**是登录页「微信登录 / 管理员登录」两个按设计提供的 SVG 图标：
+  以 base64 data URI 放进 `<image>`，并绑定 `@error` 回退到 PNG；不要把这种写法
+  扩大到其他图标，也不要把大尺寸 SVG 塞进主包。
+  在 `dev:mp-weixin` 运行时执行 `gen-assets.js`，watcher 可能把正在写入的 PNG
+  复制成 0 字节，表现为原生 tabBar 图标全部破图；生成后要重启 watcher
+  （或删掉 `dist/dev/mp-weixin` 下的 0 字节文件）再编译。
 - **底部弹窗统一下滑关闭**：`src/composables/useSwipeClose.js` 负责把手 /
   标题区的下拉手势，阈值约 90px（向下速度 > 0.6px/ms 也算），不足阈值用
   `cubic-bezier(.22,1,.36,1)` 平滑回弹；入场有全局 `sheet-rise` 动画，
@@ -381,6 +422,14 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   `:nth-child` 以 20~340ms 的延迟依次淡入上浮（`gc-reveal-up`）。
   只加在纯内容容器（`.content`、`.card-list`、`.project-list`）上，
   **不要加到包含固定弹窗 / 遮罩的容器**，否则面板会被重复动画。
+- **液态玻璃材质**：`src/uni.scss` 的 `glass-surface` / `glass-sheet`
+  （半透明渐变 + `backdrop-filter` + 内侧高光）用于 C 端与管理端的卡片、吸顶导航、
+  搜索 / 筛选胶囊与底部面板。**底部导航保持原样**：C 端是微信原生 tabBar，
+  管理端 `AdminTabBar` 仍是白底通栏，不要给它加模糊或改成浮动坞。
+  表单、长文本、地图与签名画布保持不透明底，避免滚动时影响阅读。
+  不支持 `backdrop-filter` 的内核会退化为半透明白，不能把关键文字放在
+  仅靠模糊才能区分的背景上。改动 `uni.scss` 后必须重启 `npm run dev:mp-weixin`，
+  增量编译不会重新注入全局 mixin，会报 `Undefined mixin`。
 - **加载态统一用 `gc-loading` / `gc-skeleton`**（easycom，目录
   `src/components/gc-loading/gc-loading.vue`、`gc-skeleton/gc-skeleton.vue`）：
   列表首屏用骨架屏（`gc-skeleton`，带 shimmer），详情页 / 面板内 / 加载更多用
@@ -459,8 +508,8 @@ Vue 3 + Vite + TypeScript + Element Plus + UnoCSS，基座是 **Soybean Admin El
 - **金额展示不走浮点**：接口返回 DECIMAL 字符串，前端只做千分位格式化；
   页面上的合计仅用于展示时按整数分累加，真正的金额运算全部在后端 `money.js`。
 - **页面目录 / 生成文件**：`src/views/**` 会被 elegant-router 插件扫描，自动生成
-  `src/router/elegant/imports.ts`、`src/router/elegant/transform.ts` 与
-  `src/typings/elegant-router.d.ts`。**不要手改这三处生成文件**；显式路由
+  `src/router/elegant/{imports,routes,transform}.ts` 与
+  `src/typings/elegant-router.d.ts`。**不要手改这些生成文件**；显式路由
   `src/router/routes/index.ts` 的 `path` 必须与生成路径一致（第 89 条）。
   新增页面除了建 `.vue`，还要在 `routes/index.ts` 里声明路由与角色；
   删除页面后让插件重新生成，不要留下指向已删文件的 import。
@@ -679,6 +728,11 @@ controller / service 里**不允许**出现 `res.status(4xx).json(...)` —— �
 - **验收通过 ≠ 解锁下一阶段**：验收通过只解锁本阶段付款节点；下一阶段要等阶段结算
   无异议（`settled`）。详情页的五步流程和提示必须把「验收通过」与「阶段结算」分开，
   否则用户签完字会以为已经能进下一阶段。
+- **验收签名默认是手写签名，不是可靠电子签**：`ESIGN_ENABLED=false`（默认）时
+  走 canvas 手写签名，只作为项目内部验收确认记录，**不具备法律效力**；生产环境
+  同样允许，但必须保持 `ESIGN_LEGACY_SIGNING=true`。设置 `ESIGN_ENABLED=true`
+  并配置服务商后才改用可靠电子签，此时不再接受手写兜底。不要恢复
+  「生产必须启用电子签、否则拒绝启动」的旧门禁。
 - **验收详情依赖的扩展字段**：`getDetail` 额外返回 `projectAddress`、`hasSupervisor`、
   `round`、`stageProgress`、`stageGateStatus`、`waitingHours`。无监理项目把「监理审核」
   显示为「已跳过」，不要画成一个真实环节。
@@ -708,7 +762,7 @@ controller / service 里**不允许**出现 `res.status(4xx).json(...)` —— �
 
 完整说明：[docs/constraints/13-esign.md](docs/constraints/13-esign.md)
 
-- [93. 可靠电子签名：回调不是事实、验签+哈希+实名+行锁缺一不可；生产禁止手写图兜底](docs/constraints/13-esign.md#c93)
+- [93. 可靠电子签名（可选）：回调不是事实、验签+哈希+实名+行锁缺一不可；关闭时走手写签名](docs/constraints/13-esign.md#c93)
 
 ## 尚未确定 / 需注意
 

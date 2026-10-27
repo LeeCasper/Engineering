@@ -739,7 +739,11 @@ function closeActiveSheet() {
   padding-right: dp(14);
   padding-bottom: dp(8);
   padding-left: dp(8);
-  background: #faf7f4;
+  background: rgba(250, 247, 244, 0.86);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.04);
 }
 
 .nav-back {
@@ -801,10 +805,7 @@ function closeActiveSheet() {
   display: flex;
   align-items: center;
   padding: dp(14);
-  border: 1px solid rgba(229, 231, 235, 0.7);
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(10) rgba(0, 0, 0, 0.025);
+  @include glass-surface(dp(16), 20px);
 }
 
 .summary-cover {
@@ -900,13 +901,21 @@ function closeActiveSheet() {
   align-items: center;
   justify-content: center;
   padding: dp(6) dp(10);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: dp(999);
-  background: rgba(255, 247, 242, 0.75);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 247, 242, 0.66) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #5a514a;
   font-size: dp(11);
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -940,10 +949,7 @@ function closeActiveSheet() {
 
 .feed-card {
   padding: dp(16);
-  border: 1px solid rgba(229, 231, 235, 0.7);
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(10) rgba(0, 0, 0, 0.025);
+  @include glass-surface(dp(16), 20px);
 }
 
 .feed-head {
@@ -1097,9 +1103,12 @@ function closeActiveSheet() {
   align-items: flex-start;
   margin-top: dp(10);
   padding: dp(12);
-  border: 1px solid rgba(249, 219, 203, 0.8);
-  border-radius: dp(12);
-  background: #fff7f2;
+  @include glass-surface(dp(12), 14px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 248, 243, 0.94) 0%,
+    rgba(255, 237, 228, 0.74) 100%
+  );
 }
 
 .inspection-icon-wrap {
@@ -1293,9 +1302,7 @@ function closeActiveSheet() {
   justify-content: center;
   margin-top: dp(14);
   padding: dp(44) dp(24);
-  border: 1px solid rgba(229, 231, 235, 0.7);
-  border-radius: dp(16);
-  background: #fff;
+  @include glass-surface(dp(16), 18px);
 }
 
 .empty-icon {
@@ -1334,9 +1341,13 @@ function closeActiveSheet() {
   left: 0;
   z-index: 40;
   padding: dp(10) dp(16) calc(#{dp(10)} + env(safe-area-inset-bottom));
-  border-top: 1px solid #f3efea;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 dp(-4) dp(16) rgba(0, 0, 0, 0.05);
+  border-top: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow:
+    0 -#{dp(6)} dp(24) rgba(29, 33, 41, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .contact-btn {
@@ -1450,7 +1461,7 @@ function closeActiveSheet() {
   max-height: 75vh;
   padding: dp(16) dp(16) calc(#{dp(16)} + env(safe-area-inset-bottom));
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  @include glass-sheet;
 }
 
 .sheet-head {

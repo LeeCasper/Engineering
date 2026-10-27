@@ -376,7 +376,13 @@ async function listProjects(operator, query) {
   const list = rows.map((row) => {
     const stageRows = stagesByProject.get(row.id) || []
     const projectMembers = membersByProject.get(row.id) || []
-    const foreman = projectMembers.find((m) => m.role === 'foreman' && m.status === 'active')
+    const foreman =
+      projectMembers.find((m) => m.role === 'foreman' && m.status === 'active' && Number(m.is_primary) === 1) ||
+      projectMembers.find((m) => m.role === 'foreman' && m.status === 'active')
+    const owner =
+      projectMembers.find(
+        (m) => m.role === 'owner' && m.status === 'active' && m.owner_type === OWNER_TYPE.PRIMARY
+      ) || projectMembers.find((m) => m.role === 'owner' && m.status === 'active')
 
     return {
       id: row.id,
@@ -393,6 +399,8 @@ async function listProjects(operator, query) {
       progress: progress.projectProgress(stageRows.map((s) => ({ progress: s.progress, weight: s.weight }))),
       currentStageName: (pickCurrentStage(stageRows) || {}).name || null,
       foreman: foreman ? { userId: foreman.user_id, nickname: foreman.nickname } : null,
+      foremanName: memberDisplayName(foreman, '待分配'),
+      ownerName: memberDisplayName(owner, '待分配'),
       isOverdue: isOverdue(row),
       archivedAt: row.archived_at,
       createdAt: row.created_at,
@@ -400,6 +408,18 @@ async function listProjects(operator, query) {
   })
 
   return { list, total, page: query.paging.page, pageSize: query.paging.pageSize }
+}
+
+/**
+ * 管理端概览统计（工作台 / 项目状态筛选计数）。
+ *
+ * 数学口径全部在 model 层用同一条 dataScope 过滤完成；这里只负责把
+ * 参考日期固定成服务端的「今天」，避免数据库与 Node 时区不同导致
+ * 工作台数字与列表卡片上的 isOverdue 对不上。
+ */
+async function getProjectStats(operator) {
+  const scope = dataScope.buildFilter(operator)
+  return projectModel.getStats(scope, { today: datetime.formatDate() })
 }
 
 /** 项目详情（B-2.4）：概览 + 阶段工序树 + 成员 + 付款节点 + 概况 */
@@ -1009,6 +1029,7 @@ module.exports = {
   confirmInvitation,
   rejectInvitation,
   listProjects,
+  getProjectStats,
   getProjectDetail,
   createProject,
   updateProject,

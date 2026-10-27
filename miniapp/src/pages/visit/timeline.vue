@@ -211,7 +211,11 @@ function preview(visit, index) {
   align-items: center;
   gap: dp(10);
   padding: 0 dp(16) dp(10);
-  background: $color-canvas;
+  background: rgba(250, 247, 244, 0.86);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.04);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -300,11 +304,9 @@ function preview(visit, index) {
 }
 
 .visit-card {
-  background: $color-surface;
-  border-radius: dp(16);
+  @include glass-surface(dp(16), 20px);
   padding: dp(14);
   margin-bottom: dp(12);
-  box-shadow: 0 dp(4) dp(16) rgba(36, 28, 23, 0.04);
 }
 
 .visit-head {

@@ -26,12 +26,12 @@
     </view>
 
     <template v-else-if="detail">
-      <view class="content">
+      <view class="content gc-stagger">
         <!-- 项目概览 -->
         <view class="overview-card">
           <view class="overview-top">
             <view class="overview-left">
-              <image class="project-logo" src="/static/images/logo.png" mode="aspectFit" />
+              <image class="project-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
               <view class="overview-text">
                 <text class="project-name">{{ detail.projectName }}</text>
                 <view class="address-row">
@@ -221,7 +221,7 @@
               {{
                 isEsignSigned
                   ? '已由电子签服务商完成实名核验、数字签名与可信时间戳，可下载已签 PDF 与证据报告。'
-                  : '包含验收项、现场照片、审核意见与主业主签名。'
+                  : '包含验收项、现场照片、审核意见与主业主手写签名。'
               }}
             </text>
             <button class="report-btn" @tap="openReport">
@@ -324,7 +324,7 @@
             <image class="signature-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
           </view>
         </view>
-        <text class="signature-desc">请在下方手写签名，签名将作为验收凭证与验收单一起归档。</text>
+        <text class="signature-desc">请在下方手写签名。该签名仅作为项目内部验收确认记录，不具备法律效力。</text>
         <view class="signature-pad" :style="{ height: `${canvasHeight}px` }">
           <canvas
             id="signatureCanvas"
@@ -407,6 +407,7 @@ import {
 } from '../../api/acceptance'
 import { resolveMediaUrl } from '../../api/request'
 import { getToken } from '../../store/session'
+import { branding, loadBranding } from '../../store/branding'
 import { getCurrentProject, setCurrentProject } from '../../store/projectContext'
 import { useSwipeClose } from '../../composables/useSwipeClose'
 
@@ -444,6 +445,7 @@ let canvasCtx = null
 let canvasRect = null
 let drawing = false
 let signatureMoved = false
+let lastSignPoint = null
 
 const rejectOpen = ref(false)
 const rejectReason = ref('')
@@ -580,6 +582,7 @@ const steps = computed(() => computeSteps())
 const noticeText = computed(() => computeNotice())
 
 onLoad((options) => {
+  loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
   id.value = Number((options && options.id) || 0)
@@ -1088,6 +1091,7 @@ function closeSignature() {
   signatureOpen.value = false
   canvasCtx = null
   canvasRect = null
+  lastSignPoint = null
 }
 
 function initCanvas() {
@@ -1095,7 +1099,7 @@ function initCanvas() {
   canvasCtx.setFillStyle('#FFFFFF')
   canvasCtx.fillRect(0, 0, canvasWidth.value, canvasHeight.value)
   canvasCtx.setStrokeStyle('#241C17')
-  canvasCtx.setLineWidth(3)
+  canvasCtx.setLineWidth(4)
   canvasCtx.setLineCap('round')
   canvasCtx.setLineJoin('round')
   canvasCtx.draw()
@@ -1131,20 +1135,35 @@ function onSignStart(event) {
   const point = pointOf(event)
   drawing = true
   signatureMoved = false
-  canvasCtx.beginPath()
-  canvasCtx.moveTo(point.x, point.y)
+  lastSignPoint = point
   canvasCtx.setStrokeStyle('#241C17')
-  canvasCtx.setLineWidth(3)
+  canvasCtx.setLineWidth(4)
   canvasCtx.setLineCap('round')
   canvasCtx.setLineJoin('round')
+  // 落笔先画一个圆点，否则只点一下不会留下痕迹
+  canvasCtx.beginPath()
+  canvasCtx.moveTo(point.x, point.y)
+  canvasCtx.lineTo(point.x + 0.1, point.y + 0.1)
+  canvasCtx.stroke()
+  canvasCtx.draw(true)
 }
 
 function onSignMove(event) {
   if (!drawing || !canvasCtx) return
   const point = pointOf(event)
+  const from = lastSignPoint || point
+
+  // 每次只画「上一点 → 当前点」这一小段，并重新 moveTo。
+  // 不能依赖一条持续累积的 path：draw(true) 在不同端上可能重置 path，
+  // 结果是每个触点各画一个点，签名就变成截图里的断续虚线。
+  if (Math.abs(point.x - from.x) < 0.3 && Math.abs(point.y - from.y) < 0.3) return
+  canvasCtx.beginPath()
+  canvasCtx.moveTo(from.x, from.y)
   canvasCtx.lineTo(point.x, point.y)
   canvasCtx.stroke()
   canvasCtx.draw(true)
+
+  lastSignPoint = point
   signatureMoved = true
   signatureTouched.value = true
 }
@@ -1152,6 +1171,7 @@ function onSignMove(event) {
 function onSignEnd() {
   if (!drawing) return
   drawing = false
+  lastSignPoint = null
   if (canvasCtx) canvasCtx.draw(true)
   if (!signatureMoved) signatureTouched.value = false
 }
@@ -1163,6 +1183,7 @@ function clearSignature() {
   canvasCtx.draw()
   signatureTouched.value = false
   signatureMoved = false
+  lastSignPoint = null
 }
 
 function confirmSignature() {
@@ -1395,10 +1416,7 @@ function closeActiveSheet() {
 
 .overview-card {
   padding: dp(16);
-  border: 1px solid rgba(0, 0, 0, 0.02);
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(12) rgba(0, 0, 0, 0.03);
+  @include glass-surface(dp(16), 20px);
 }
 
 .overview-top {
@@ -1671,9 +1689,12 @@ function closeActiveSheet() {
   display: flex;
   align-items: flex-start;
   padding: dp(12);
-  border: 1px solid rgba(243, 190, 163, 0.4);
-  border-radius: dp(12);
-  background: #fff4ed;
+  @include glass-surface(dp(12), 16px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 244, 237, 0.9) 0%,
+    rgba(255, 236, 226, 0.7) 100%
+  );
 }
 
 .notice-icon {
@@ -1738,10 +1759,7 @@ function closeActiveSheet() {
 .panel {
   margin-top: dp(10);
   padding: dp(16);
-  border: 1px solid rgba(0, 0, 0, 0.02);
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(12) rgba(0, 0, 0, 0.03);
+  @include glass-surface(dp(16), 20px);
 }
 
 .panel-head {
@@ -2064,9 +2082,13 @@ function closeActiveSheet() {
   z-index: 50;
   display: flex;
   padding: dp(10) dp(16) calc(#{dp(10)} + env(safe-area-inset-bottom));
-  border-top: 1px solid #f3efea;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.04);
+  border-top: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow:
+    0 -#{dp(6)} dp(24) rgba(29, 33, 41, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .action-secondary,
@@ -2109,17 +2131,25 @@ function closeActiveSheet() {
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 200;
+  z-index: 1200;
   display: flex;
   align-items: flex-end;
   background: rgba(29, 33, 41, 0.5);
+  animation: sheet-mask-in 220ms ease-out;
 }
 
 .signature-sheet {
   width: 100%;
   padding: dp(16) dp(16) calc(#{dp(16)} + env(safe-area-inset-bottom));
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  @include glass-sheet;
+  /* 比普通面板更透一点，让底部弹层也有液态玻璃感 */
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.82) 100%
+  );
+  animation: sheet-rise 480ms cubic-bezier(0.45, 0, 0.25, 1);
 }
 
 .signature-head {
@@ -2161,9 +2191,16 @@ function closeActiveSheet() {
   align-items: center;
   justify-content: center;
   margin-top: dp(14);
-  border: 1px solid #e8e1da;
-  border-radius: dp(10);
-  background: #fcfaf8;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: dp(12);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 248, 243, 0.72) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 dp(2) dp(8) rgba(94, 45, 22, 0.04);
   overflow: hidden;
 }
 
@@ -2184,37 +2221,68 @@ function closeActiveSheet() {
   margin-top: dp(16);
 }
 
-.signature-clear {
+.signature-clear,
+.signature-cancel,
+.signature-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   height: dp(42);
-  padding: 0 dp(18);
-  border: 1px solid #e8e1da;
+  margin: 0;
   border-radius: dp(8);
-  background: #fff;
+  font-family: inherit;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.signature-clear {
+  padding: 0 dp(18);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.7) 100%
+  );
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+  backdrop-filter: blur(10px) saturate(160%);
   color: #51463e;
   font-size: dp(13);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 dp(1) dp(4) rgba(94, 45, 22, 0.04);
 }
 
 .signature-cancel {
   flex: 1;
-  height: dp(42);
   margin-left: dp(10);
-  border: 1px solid #e8e1da;
-  border-radius: dp(8);
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.7) 100%
+  );
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+  backdrop-filter: blur(10px) saturate(160%);
   color: #51463e;
   font-size: dp(14);
   font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 dp(1) dp(4) rgba(94, 45, 22, 0.04);
 }
 
 .signature-confirm {
   flex: 1.4;
-  height: dp(42);
   margin-left: dp(10);
-  border-radius: dp(8);
+  border: none;
   background: #eb5c20;
   color: #fff;
   font-size: dp(14);
   font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 dp(3) dp(10) rgba(235, 92, 32, 0.16);
 }
 
 .signature-confirm[disabled] {
@@ -2238,7 +2306,7 @@ function closeActiveSheet() {
   width: 100%;
   padding: dp(8) dp(16) calc(#{dp(16)} + env(safe-area-inset-bottom));
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  @include glass-sheet;
 }
 
 .sheet-handle {
@@ -2441,13 +2509,20 @@ function closeActiveSheet() {
   display: flex;
   align-items: flex-end;
   background: rgba(20, 14, 10, 0.46);
+  animation: sheet-mask-in 220ms ease-out;
 }
 
 .consent-card {
   width: 100%;
   padding: dp(24) dp(22) calc(#{dp(20)} + env(safe-area-inset-bottom));
   border-radius: dp(18) dp(18) 0 0;
-  background: #fff;
+  @include glass-sheet;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.82) 100%
+  );
+  animation: sheet-rise 480ms cubic-bezier(0.45, 0, 0.25, 1);
 }
 
 .consent-title {

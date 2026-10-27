@@ -137,8 +137,7 @@ async function describe(acceptance, viewer) {
 
   let reason = null
   if (primary && !(user && user.phone)) reason = 'phone_required'
-  else if (esignConfig.isRequired() && !config.esign.enabled) reason = 'not_configured'
-  else if (config.esign.signingPaused) reason = 'signing_paused'
+  else if (config.esign.enabled && config.esign.signingPaused) reason = 'signing_paused'
 
   return {
     enabled: config.esign.enabled,

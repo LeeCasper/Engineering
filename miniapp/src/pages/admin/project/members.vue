@@ -1,127 +1,179 @@
 <template>
-  <view class="admin-page">
-    <AdminNav title="成员管理" :fallback="`/pages/admin/project/detail?id=${projectId}`">
+  <view class="admin-page admin-page--cool">
+    <AdminRootHeader
+      title="成员管理"
+      :subtitle="compositionHint"
+      back
+      :fallback="fallback"
+      background="#F6F7F9"
+      glass
+    >
       <template #right>
-        <text v-if="canWrite" class="admin-nav-action" @tap="openInvite">邀请</text>
+        <view v-if="canWrite" class="invite-pill" @tap="openInvite">
+          <text class="invite-plus">+</text>
+          <text>邀请成员</text>
+        </view>
       </template>
-    </AdminNav>
+    </AdminRootHeader>
 
-    <view class="admin-content">
+    <view class="content">
+      <view class="scope-row" @tap="compositionSheetOpen = true">
+        <view class="scope-main">
+          <text class="scope-text">当前项目：{{ project ? project.name : '加载中…' }}</text>
+          <text v-if="project && project.status === 'archived'" class="scope-archived">已归档</text>
+        </view>
+        <image class="scope-caret" src="/static/images/icon-caret-down-gray.png" mode="aspectFit" />
+      </view>
+
+      <view v-if="project" class="search-box">
+        <image class="search-icon" src="/static/images/icon-search.png" mode="aspectFit" />
+        <input
+          v-model="keyword"
+          class="search-input"
+          confirm-type="search"
+          placeholder="搜索姓名 / 手机号 / 角色"
+          placeholder-class="search-placeholder"
+        />
+        <text v-if="keyword" class="search-clear" @tap="keyword = ''">清除</text>
+      </view>
+
+      <view v-if="project" class="filter-row">
+        <view
+          v-for="item in roleOptions"
+          :key="item.key || 'all'"
+          class="filter-chip"
+          :class="{ 'filter-chip--active': role === item.key }"
+          @tap="role = item.key"
+        >
+          <text>{{ item.label }}</text>
+          <text class="filter-count">{{ item.count }}</text>
+        </view>
+      </view>
+
+      <view v-if="project && canWrite && !composition.meetsRequirement" class="compose-warning">
+        {{ missingHint }}
+      </view>
+
       <AdminPageState
         :loading="loading && !project"
         :error="error"
-        :empty="false"
+        :empty="!loading && !error && !!project && !filteredMembers.length"
+        :empty-title="emptyTitle"
+        :empty-text="emptyText"
         @retry="load"
-      >
-        <template v-if="project">
-          <view class="admin-card">
-            <view class="admin-section-head">
-              <view>
-                <text class="admin-section-title">{{ project.name }}</text>
-                <text class="admin-section-sub">{{ compositionHint }}</text>
-              </view>
-              <text class="admin-badge" :class="composition.meetsRequirement ? 'admin-badge--green' : 'admin-badge--orange'">
-                {{ composition.meetsRequirement ? '已配齐' : '待配齐' }}
-              </text>
-            </view>
+      />
 
-            <view class="composition-row">
-              <view class="composition-item">
-                <text class="composition-value">{{ composition.foremanCount }}</text>
-                <text class="composition-label">工长</text>
-              </view>
-              <view class="composition-item">
-                <text class="composition-value">{{ composition.ownerCount }}</text>
-                <text class="composition-label">业主</text>
-              </view>
-              <view class="composition-item">
-                <text class="composition-value composition-value--text">
-                  {{ composition.primaryForemanName || '未指定' }}
-                </text>
-                <text class="composition-label">主工长</text>
-              </view>
-              <view class="composition-item">
-                <text class="composition-value composition-value--text">
-                  {{ composition.primaryOwnerName || '未指定' }}
-                </text>
-                <text class="composition-label">主业主</text>
-              </view>
-            </view>
-          </view>
+      <view v-if="filteredMembers.length" class="member-list gc-stagger">
+        <view
+          v-for="member in filteredMembers"
+          :key="member.id"
+          class="member-item"
+        >
+          <AdminMemberCard
+            :member="member"
+            :show-project="false"
+            @select="openMemberSheet"
+          />
+        </view>
+      </view>
 
-          <view v-if="!members.length" class="admin-card">
-            <text class="admin-empty-inline">还没有成员</text>
-          </view>
-
-          <view v-else class="admin-list">
-            <view v-for="member in members" :key="member.id" class="member-card">
-              <view class="member-top">
-                <view class="member-avatar">{{ (member.nickname || member.roleLabel || '成').slice(0, 1) }}</view>
-                <view class="member-main">
-                  <view class="member-name-row">
-                    <text class="member-name">{{ member.nickname || member.phoneMasked || '待确认用户' }}</text>
-                    <text class="admin-badge" :class="roleTone(member.role)">{{ member.roleLabel }}</text>
-                    <text v-if="member.isPrimaryForeman" class="admin-badge admin-badge--green">主工长</text>
-                    <text
-                      v-if="member.isPrimaryOwner"
-                      class="admin-badge admin-badge--accent"
-                    >
-                      {{ member.status === 'active' ? '主业主' : '确认后成为主业主' }}
-                    </text>
-                    <text
-                      v-else-if="member.ownerType === 'temporary' && member.status !== 'removed'"
-                      class="admin-badge admin-badge--gray"
-                    >
-                      临时业主
-                    </text>
-                    <text v-if="member.status !== 'active'" class="admin-badge admin-badge--gray">
-                      {{ member.statusLabel }}
-                    </text>
-                  </view>
-                  <text class="member-phone">{{ member.phoneMasked || '未绑定手机号' }}</text>
-                </view>
-              </view>
-
-              <view v-if="canWrite" class="member-actions">
-                <button
-                  v-if="member.role === 'foreman' && member.status === 'active' && !member.isPrimaryForeman"
-                  class="admin-btn admin-btn--ghost admin-btn--small"
-                  @tap="setPrimary(member)"
-                >
-                  设为主工长
-                </button>
-                <button
-                  v-if="
-                    !member.isPrimaryForeman &&
-                    member.status !== 'removed' &&
-                    !(member.isPrimaryOwner && member.status === 'active')
-                  "
-                  class="admin-btn admin-btn--danger admin-btn--small"
-                  @tap="removeMember(member)"
-                >
-                  移除
-                </button>
-                <text v-else-if="member.isPrimaryForeman" class="member-lock-hint">
-                  先改指主工长后可移除
-                </text>
-                <text
-                  v-else-if="member.isPrimaryOwner && member.status === 'active'"
-                  class="member-lock-hint"
-                >
-                  主业主不可移除
-                </text>
-              </view>
-            </view>
-          </view>
-
-          <view v-if="canWrite" class="admin-note member-note">
-            成员邀请按手机号发送；角色由账号固定，业主可参与多个项目。对方确认后才会成为 active 成员，pending 不计入人员配置。
-          </view>
-          <view v-else class="admin-note member-note">项目已归档，成员只读。</view>
-        </template>
-      </AdminPageState>
+      <view v-if="project" class="rules-card">
+        <text class="rules-title">成员邀请规则</text>
+        <text class="rules-text">手机号邀请 → 对方确认后生效；主工长每项目仅 1 人，主业主不可移除</text>
+        <text v-if="!canWrite" class="rules-text">项目已归档，成员关系只读。</text>
+      </view>
     </view>
 
+    <!-- 人员配置 -->
+    <view v-if="compositionSheetOpen" class="admin-sheet-mask" @tap="compositionSheetOpen = false">
+      <view class="admin-sheet" @tap.stop>
+        <view class="admin-sheet-handle" />
+        <view class="admin-sheet-head">
+          <view>
+            <text class="admin-sheet-title">人员配置</text>
+            <text class="admin-sheet-sub">进入施工前必须至少配置 1 名工长、1 名主工长、1 名业主与 1 名主业主</text>
+          </view>
+          <view class="admin-sheet-close" @tap="compositionSheetOpen = false">
+            <image class="admin-sheet-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
+          </view>
+        </view>
+
+        <view class="compose-grid">
+          <view class="compose-cell">
+            <text class="compose-value">{{ composition.foremanCount }}</text>
+            <text class="compose-label">工长</text>
+          </view>
+          <view class="compose-cell">
+            <text class="compose-value">{{ composition.ownerCount }}</text>
+            <text class="compose-label">业主</text>
+          </view>
+          <view class="compose-cell">
+            <text class="compose-value compose-value--text">
+              {{ composition.primaryForemanName || '未指定' }}
+            </text>
+            <text class="compose-label">主工长</text>
+          </view>
+          <view class="compose-cell">
+            <text class="compose-value compose-value--text">
+              {{ composition.primaryOwnerName || '未指定' }}
+            </text>
+            <text class="compose-label">主业主</text>
+          </view>
+        </view>
+
+        <text class="compose-note">
+          {{
+            composition.meetsRequirement
+              ? '人员已配齐，项目可以进入施工中。'
+              : missingHint
+          }}
+        </text>
+      </view>
+    </view>
+
+    <!-- 成员操作 -->
+    <view v-if="memberSheetOpen" class="admin-sheet-mask" @tap="closeMemberSheet">
+      <view class="admin-sheet" @tap.stop>
+        <view class="admin-sheet-handle" />
+        <view class="admin-sheet-head">
+          <view>
+            <text class="admin-sheet-title">成员操作</text>
+            <text class="admin-sheet-sub">{{ project ? project.name : '' }}</text>
+          </view>
+          <view class="admin-sheet-close" @tap="closeMemberSheet">
+            <image class="admin-sheet-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
+          </view>
+        </view>
+
+        <view v-if="selectedMember" class="member-sheet-card">
+          <view class="member-sheet-avatar">{{ selectedMemberInitial }}</view>
+          <view class="member-sheet-main">
+            <view class="member-sheet-name-row">
+              <text class="member-sheet-name">{{ selectedMemberName }}</text>
+              <text class="member-sheet-role">{{ selectedMemberRoleText }}</text>
+            </view>
+            <text class="member-sheet-phone">{{ selectedMember.phoneMasked || '未绑定手机号' }}</text>
+          </view>
+          <text class="member-sheet-status" :class="selectedMemberStatusTone">
+            {{ selectedMemberStatusText }}
+          </text>
+        </view>
+
+        <view class="action-list">
+          <view v-if="canSetPrimary" class="action-row" @tap="setPrimary">
+            <text>设为主工长</text>
+            <image class="action-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
+          </view>
+          <view v-if="canRemove" class="action-row action-row--danger" @tap="removeMember">
+            <text>移除成员</text>
+            <image class="action-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
+          </view>
+          <text v-if="memberLockHint" class="action-hint">{{ memberLockHint }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 邀请成员 -->
     <view v-if="inviteOpen" class="admin-sheet-mask" @tap="closeInvite">
       <view class="admin-sheet" @tap.stop>
         <view class="admin-sheet-handle" />
@@ -190,8 +242,9 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
-import AdminNav from '../../../components/admin/AdminNav.vue'
+import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
+import AdminRootHeader from '../../../components/admin/AdminRootHeader.vue'
+import AdminMemberCard from '../../../components/admin/AdminMemberCard.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
 import {
   fetchAdminProject,
@@ -200,7 +253,12 @@ import {
   setAdminPrimaryForeman,
   removeAdminMember,
 } from '../../../api/admin/project'
-import { requireAdminSession, showAdminError } from '../../../utils/admin'
+import {
+  memberRoleText,
+  memberStatusText,
+  requireAdminSession,
+  showAdminError,
+} from '../../../utils/admin'
 
 defineOptions({ name: 'AdminProjectMembersPage' })
 
@@ -208,6 +266,13 @@ const INVITE_ROLES = [
   { key: 'foreman', label: '工长' },
   { key: 'owner', label: '业主（首位为主业主）' },
   { key: 'supervisor', label: '监理' },
+]
+
+const ROLE_FILTERS = [
+  { key: '', label: '全部' },
+  { key: 'foreman', label: '工长' },
+  { key: 'supervisor', label: '监理' },
+  { key: 'owner', label: '业主' },
 ]
 
 const projectId = ref(null)
@@ -225,41 +290,160 @@ const composition = ref({
 })
 const loading = ref(false)
 const error = ref('')
+const keyword = ref('')
+const role = ref('')
+
+const compositionSheetOpen = ref(false)
+const memberSheetOpen = ref(false)
+const selectedMember = ref(null)
+
 const inviteOpen = ref(false)
 const inviteSubmitting = ref(false)
 const inviteError = ref('')
 const invite = reactive({ phone: '', role: 'foreman' })
 
 let loadedOnce = false
+let pendingInvite = false
+
+const fallback = computed(() =>
+  projectId.value ? `/pages/admin/project/detail?id=${projectId.value}` : '/pages/admin/projects/index'
+)
 
 const canWrite = computed(() => Boolean(project.value && project.value.status !== 'archived'))
+
 // 含 pending：一个还没确认的主业主邀请同样占着名额
 const hasPrimaryOwnerSlot = computed(() =>
   members.value.some(
     (member) => member.role === 'owner' && member.ownerType === 'primary' && member.status !== 'removed'
   )
 )
-const compositionHint = computed(() =>
-  composition.value.meetsRequirement
-    ? '至少 1 名工长、1 名主工长、1 名业主与 1 名主业主，可以进入施工'
-    : '进入施工前必须配齐工长、主工长、业主与主业主'
+
+const visibleMembers = computed(() => members.value.filter((member) => member.status !== 'removed'))
+
+const roleOptions = computed(() =>
+  ROLE_FILTERS.map((item) => ({
+    ...item,
+    count: item.key
+      ? visibleMembers.value.filter((member) => member.role === item.key).length
+      : visibleMembers.value.length,
+  }))
 )
+
+const filteredMembers = computed(() => {
+  const q = keyword.value.trim().toLowerCase()
+  return visibleMembers.value.filter((member) => {
+    if (role.value && member.role !== role.value) return false
+    if (!q) return true
+    const haystack = [
+      member.nickname,
+      member.phoneMasked,
+      memberRoleText(member),
+      member.roleLabel,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    return haystack.includes(q)
+  })
+})
+
+const emptyTitle = computed(() =>
+  keyword.value || role.value ? '没有找到成员' : '还没有成员'
+)
+
+const emptyText = computed(() =>
+  keyword.value || role.value
+    ? '换个关键词或角色筛选试试'
+    : '点击右上角「邀请成员」，对方确认后会出现在这里'
+)
+
+const missingParts = computed(() => {
+  const parts = []
+  if (Number(composition.value.foremanCount) < 1) parts.push('工长')
+  if (!composition.value.primaryForemanUserId) parts.push('主工长')
+  if (Number(composition.value.ownerCount) < 1) parts.push('业主')
+  if (!composition.value.primaryOwnerActive) parts.push('主业主')
+  return parts
+})
+
+const missingHint = computed(() =>
+  missingParts.value.length
+    ? `人员尚未配齐，暂时不能进入施工中。还需要：${missingParts.value.join('、')}。`
+    : ''
+)
+
+const compositionHint = computed(() => {
+  if (!project.value) return ''
+  if (composition.value.meetsRequirement) return '人员已配齐，可以进入施工'
+  return '待配齐，进入施工前需补齐工长、主工长、业主与主业主'
+})
+
+const selectedMemberName = computed(() => {
+  const member = selectedMember.value
+  if (!member) return ''
+  return member.nickname || member.phoneMasked || '待确认用户'
+})
+
+const selectedMemberInitial = computed(() => selectedMemberName.value.slice(0, 1) || '成')
+const selectedMemberRoleText = computed(() => memberRoleText(selectedMember.value))
+const selectedMemberStatusText = computed(() => memberStatusText(selectedMember.value))
+
+const selectedMemberStatusTone = computed(() => {
+  const status = selectedMember.value && selectedMember.value.status
+  if (status === 'active') return 'member-sheet-status--green'
+  if (status === 'pending') return 'member-sheet-status--orange'
+  return 'member-sheet-status--gray'
+})
+
+const canSetPrimary = computed(() => {
+  const member = selectedMember.value
+  return Boolean(
+    canWrite.value &&
+      member &&
+      member.role === 'foreman' &&
+      member.status === 'active' &&
+      !member.isPrimaryForeman
+  )
+})
+
+const canRemove = computed(() => {
+  const member = selectedMember.value
+  if (!canWrite.value || !member) return false
+  if (member.status === 'removed' || member.isPrimaryForeman) return false
+  if (member.isPrimaryOwner && member.status === 'active') return false
+  return true
+})
+
+const memberLockHint = computed(() => {
+  const member = selectedMember.value
+  if (!member) return ''
+  if (!canWrite.value) return '项目已归档，成员只读'
+  if (member.isPrimaryForeman) return '先改指主工长后可移除'
+  if (member.isPrimaryOwner && member.status === 'active') return '主业主不可移除'
+  if (!canSetPrimary.value && !canRemove.value) return '当前成员没有可执行的操作'
+  return ''
+})
 
 onLoad(async (options) => {
   const id = options && options.id ? Number(options.id) : null
   projectId.value = Number.isInteger(id) && id > 0 ? id : null
+  pendingInvite = Boolean(options && options.invite === '1')
   if (!projectId.value) {
     error.value = '缺少项目 id'
     return
   }
+
   try {
-    await requireAdminSession()
+    const profile = await requireAdminSession()
+    if (!profile) return
   } catch (err) {
     showAdminError(err, '管理员信息加载失败')
     return
   }
+
   await load()
   loadedOnce = true
+  if (pendingInvite && canWrite.value) openInvite()
 })
 
 onShow(() => {
@@ -268,7 +452,7 @@ onShow(() => {
 
 onPullDownRefresh(async () => {
   try {
-    await load(true)
+    if (projectId.value) await load(true)
   } finally {
     uni.stopPullDownRefresh()
   }
@@ -302,10 +486,14 @@ async function load(silent = false) {
   }
 }
 
-function roleTone(role) {
-  if (role === 'owner') return 'admin-badge--accent'
-  if (role === 'foreman') return 'admin-badge--green'
-  return 'admin-badge--gray'
+function openMemberSheet(member) {
+  selectedMember.value = member
+  memberSheetOpen.value = true
+}
+
+function closeMemberSheet() {
+  memberSheetOpen.value = false
+  selectedMember.value = null
 }
 
 function openInvite() {
@@ -363,153 +551,427 @@ async function submitInvite() {
   }
 }
 
-function setPrimary(member) {
-  uni.showModal({
-    title: '设为主工长',
-    content: `确定将「${member.nickname || member.phoneMasked}」设为主工长吗？主工长只能有 1 名。`,
-    success: async (res) => {
-      if (!res.confirm) return
-      try {
-        await setAdminPrimaryForeman(projectId.value, member.id)
-        uni.showToast({ title: '已设置', icon: 'success' })
-        await load(true)
-      } catch (err) {
-        showAdminError(err, '设置失败')
-      }
-    },
+async function setPrimary() {
+  const member = selectedMember.value
+  if (!member) return
+  const confirmed = await new Promise((resolve) => {
+    uni.showModal({
+      title: '设为主工长',
+      content: `确定将「${selectedMemberName.value}」设为主工长吗？主工长只能有 1 名。`,
+      success: (res) => resolve(Boolean(res.confirm)),
+      fail: () => resolve(false),
+    })
   })
+  if (!confirmed) return
+
+  try {
+    await setAdminPrimaryForeman(projectId.value, member.id)
+    uni.showToast({ title: '已设置', icon: 'success' })
+    closeMemberSheet()
+    await load(true)
+  } catch (err) {
+    showAdminError(err, '设置失败')
+  }
 }
 
-function removeMember(member) {
+async function removeMember() {
+  const member = selectedMember.value
+  if (!member) return
   if (member.isPrimaryOwner && member.status === 'active') {
     uni.showToast({ title: '主业主不可移除', icon: 'none' })
     return
   }
-  uni.showModal({
-    title: '移除成员',
-    content: `确定移除「${member.nickname || member.phoneMasked}」吗？主工长不能直接移除。`,
-    confirmText: '移除',
-    confirmColor: '#f53f3f',
-    success: async (res) => {
-      if (!res.confirm) return
-      try {
-        await removeAdminMember(projectId.value, member.id)
-        uni.showToast({ title: '已移除', icon: 'success' })
-        await load(true)
-      } catch (err) {
-        showAdminError(err, '移除失败')
-      }
-    },
+
+  const confirmed = await new Promise((resolve) => {
+    uni.showModal({
+      title: '移除成员',
+      content: `确定移除「${selectedMemberName.value}」吗？主工长不能直接移除。`,
+      confirmText: '移除',
+      confirmColor: '#f53f3f',
+      success: (res) => resolve(Boolean(res.confirm)),
+      fail: () => resolve(false),
+    })
   })
+  if (!confirmed) return
+
+  try {
+    await removeAdminMember(projectId.value, member.id)
+    uni.showToast({ title: '已移除', icon: 'success' })
+    closeMemberSheet()
+    await load(true)
+  } catch (err) {
+    showAdminError(err, '移除失败')
+  }
 }
 </script>
 
 <style scoped lang="scss">
-.admin-nav-action {
-  padding: dp(4) dp(2);
+.invite-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: dp(32);
+  padding: 0 dp(13);
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: dp(999);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 243, 236, 0.94) 0%,
+    rgba(255, 227, 214, 0.74) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #eb5c20;
   font-size: dp(13);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow:
+    0 dp(2) dp(8) rgba(235, 92, 32, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.invite-plus {
+  margin-right: dp(4);
+  font-size: dp(15);
   font-weight: 500;
+  line-height: 1;
 }
 
-.composition-row {
+.content {
+  padding: 0 dp(16) dp(20);
+}
+
+.scope-row {
   display: flex;
+  align-items: center;
   margin-top: dp(2);
+  padding: 0 dp(2);
 }
 
-.composition-item {
+.scope-main {
+  display: flex;
   flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: dp(6);
+}
+
+.scope-text {
+  overflow: hidden;
+  color: #86909c;
+  font-size: dp(13);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.scope-archived {
+  padding: dp(2) dp(6);
+  border-radius: dp(999);
+  background: #f2f3f5;
+  color: #86909c;
+  font-size: dp(9);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.scope-caret {
+  width: dp(14);
+  height: dp(14);
+  margin-left: dp(4);
+  flex-shrink: 0;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  height: dp(44);
+  margin-top: dp(10);
+  padding: 0 dp(12);
+  @include glass-surface(dp(12), 18px);
+  box-shadow:
+    0 dp(2) dp(8) rgba(29, 33, 41, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.search-icon {
+  width: dp(16);
+  height: dp(16);
+  margin-right: dp(7);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  color: #1d2129;
+  font-size: dp(14);
+}
+
+.search-placeholder {
+  color: #86909c;
+}
+
+.search-clear {
+  margin-left: dp(8);
+  color: #eb5c20;
+  font-size: dp(11);
+  flex-shrink: 0;
+}
+
+.filter-row {
+  display: flex;
+  gap: dp(10);
+  margin-top: dp(10);
+}
+
+.filter-chip {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  height: dp(36);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: dp(999);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.66) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
+  color: #4e5969;
+  font-size: dp(13);
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.filter-chip--active {
+  border-color: #eb5c20;
+  background: #eb5c20;
+  color: #fff;
+  box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.25);
+  transform-origin: center;
+  animation: gc-tab-pop 420ms cubic-bezier(0.2, 1.35, 0.35, 1) both;
+}
+
+.filter-count {
+  margin-left: dp(3);
+}
+
+.filter-chip--active .filter-count {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.compose-warning {
+  margin-top: dp(12);
+  padding: dp(11) dp(12);
+  border: 1px solid #ffe7d6;
+  border-radius: dp(12);
+  background: #fff7f2;
+  color: #c44710;
+  font-size: dp(11);
+  line-height: 1.6;
+}
+
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: dp(10);
+  margin-top: dp(14);
+}
+
+.rules-card {
+  margin-top: dp(14);
+  padding: dp(16);
+  @include glass-surface(dp(16), 18px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 247, 242, 0.9) 0%,
+    rgba(255, 235, 224, 0.7) 100%
+  );
+}
+
+.rules-title {
+  display: block;
+  color: #eb5c20;
+  font-size: dp(14);
+  font-weight: 700;
+}
+
+.rules-text {
+  display: block;
+  margin-top: dp(6);
+  color: #86909c;
+  font-size: dp(12);
+  line-height: 1.6;
+}
+
+.compose-grid {
+  display: flex;
+  margin-top: dp(14);
+  padding: dp(14) 0;
+  border-radius: dp(12);
+  background: #f7f8fa;
+}
+
+.compose-cell {
+  flex: 1;
+  min-width: 0;
   text-align: center;
 }
 
-.composition-value {
+.compose-value {
   display: block;
-  color: #241c17;
+  color: #1d2129;
   font-size: dp(18);
   font-weight: 700;
 }
 
-.composition-value--text {
+.compose-value--text {
   overflow: hidden;
+  padding: 0 dp(4);
   font-size: dp(12);
   line-height: 1.8;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.composition-label {
+.compose-label {
   display: block;
   margin-top: dp(3);
-  color: #8b8179;
+  color: #86909c;
   font-size: dp(10);
 }
 
-.member-card {
-  padding: dp(13);
-  border: 1px solid #f0eae4;
-  border-radius: dp(12);
-  background: #fff;
+.compose-note {
+  display: block;
+  margin-top: dp(12);
+  color: #86909c;
+  font-size: dp(11);
+  line-height: 1.7;
 }
 
-.member-top {
+.member-sheet-card {
   display: flex;
   align-items: center;
+  margin-top: dp(14);
+  padding: dp(14);
+  border-radius: dp(14);
+  background: #f7f8fa;
 }
 
-.member-avatar {
+.member-sheet-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: dp(36);
-  height: dp(36);
-  margin-right: dp(10);
+  width: dp(44);
+  height: dp(44);
+  margin-right: dp(12);
   border-radius: 50%;
-  background: #fdebe4;
-  color: #eb5c20;
-  font-size: dp(14);
+  background: #fce5d6;
+  color: #d85e22;
+  font-size: dp(17);
   font-weight: 700;
   flex-shrink: 0;
 }
 
-.member-main {
+.member-sheet-main {
   flex: 1;
   min-width: 0;
 }
 
-.member-name-row {
+.member-sheet-name-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: dp(5);
+  gap: dp(6);
 }
 
-.member-name {
-  color: #241c17;
-  font-size: dp(13);
+.member-sheet-name {
+  overflow: hidden;
+  color: #1d2129;
+  font-size: dp(15);
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.member-sheet-role {
+  padding: dp(2) dp(8);
+  border-radius: dp(999);
+  background: #fff0e6;
+  color: #eb5c20;
+  font-size: dp(10);
   font-weight: 600;
+  flex-shrink: 0;
 }
 
-.member-phone {
+.member-sheet-phone {
   display: block;
   margin-top: dp(4);
-  color: #8b8179;
-  font-size: dp(10);
+  color: #86909c;
+  font-size: dp(12);
 }
 
-.member-actions {
+.member-sheet-status {
+  margin-left: dp(8);
+  padding: dp(4) dp(10);
+  border-radius: dp(999);
+  font-size: dp(11);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.member-sheet-status--green {
+  background: #e8f8f0;
+  color: #149a5d;
+}
+
+.member-sheet-status--orange {
+  background: #fff1e8;
+  color: #eb5c20;
+}
+
+.member-sheet-status--gray {
+  background: #f2f3f5;
+  color: #86909c;
+}
+
+.action-list {
+  margin-top: dp(8);
+}
+
+.action-row {
   display: flex;
-  justify-content: flex-end;
-  gap: dp(8);
-  margin-top: dp(10);
+  align-items: center;
+  justify-content: space-between;
+  padding: dp(15) dp(2);
+  border-bottom: 1px solid #f2f3f5;
+  color: #1d2129;
+  font-size: dp(14);
 }
 
-.member-note {
-  margin-top: dp(4);
+.action-row:last-child {
+  border-bottom: none;
 }
 
-.member-lock-hint {
+.action-row--danger {
+  color: #f53f3f;
+}
+
+.action-chevron {
+  width: dp(13);
+  height: dp(13);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+.action-hint {
+  display: block;
+  padding: dp(14) dp(2) dp(4);
   color: #a79c92;
-  font-size: dp(10);
+  font-size: dp(11);
+  text-align: center;
 }
 
 .invite-field {

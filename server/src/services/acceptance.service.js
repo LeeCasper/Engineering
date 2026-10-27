@@ -444,15 +444,19 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
 
   const step = expectedRole === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER
 
-  // AC-A16：业主确认通过时必须完成电子签名。
-  // 启用可靠电子签名后，手写图片接口一律拒绝，避免出现“同一种验收单有两种效力”。
+  // 业主确认通过时必须完成一种签名：
+  // - 启用可靠电子签：只接受服务商签署，手写图片一律拒绝；
+  // - 未启用可靠电子签：接受手写签名（仅项目内部确认，不具备法律效力）。
   let signatureUrl = null
   if (step === STEP.OWNER) {
-    if (esignConfig.isRequired() || acceptance.signature_mode === 'provider') {
-      throw AppError.conflict('请使用电子签名完成验收')
+    if (esignConfig.isRequired()) {
+      throw AppError.conflict('请使用可靠电子签名完成验收')
+    }
+    if (!esignConfig.legacyAllowed()) {
+      throw AppError.serviceUnavailable('当前未开启验收签名能力')
     }
     await esignService.assertNoActiveTask(acceptanceId)
-    if (!signatureFile) throw AppError.badRequest('请先完成电子签名再确认验收')
+    if (!signatureFile) throw AppError.badRequest('请先完成业主签名再确认验收')
     const saved = await storage.save(signatureFile.buffer, { category: 'signatures', ext: signatureFile.ext })
     signatureUrl = saved.url
   }
@@ -825,8 +829,7 @@ function buildMyActions(acceptance, viewer, esign) {
 
   if (expectedRole && viewer.role === expectedRole) {
     if (expectedRole === 'owner') {
-      // 主业主：电子签开启/必填时只给「去签署」；旧流程仅在开发/测试且
-      // signature_mode=legacy 时保留「通过并签名」。
+      // 主业主：可靠电子签开启时只给「去签署」；关闭时给手写「通过并签名」。
       if (esign && esign.canSign) actions.push('esign')
       // 签署前仍允许驳回；一旦有进行中/已完成任务就不能驳回
       if (isPrimaryOwner(viewer) && !esignActive && (!esign || esign.status !== 'signed')) {
@@ -834,13 +837,9 @@ function buildMyActions(acceptance, viewer, esign) {
       }
       const legacyAllowed =
         isPrimaryOwner(viewer) &&
-        !esignConfig.isRequired() &&
-        acceptance.signature_mode === 'legacy' &&
+        esignConfig.legacyAllowed() &&
         (!esign || ['none', 'legacy'].includes(esign.status))
       if (legacyAllowed && !esignActive) actions.push('approve', 'reject')
-      if (!esignActive && esign && ['none', 'legacy'].includes(esign.status) && !legacyAllowed) {
-        // 电子签必填但未配置：不给 approve/reject，前端展示 esign.reason
-      }
     } else {
       actions.push('approve', 'reject')
     }

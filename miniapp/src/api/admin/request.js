@@ -1,6 +1,10 @@
 import { API_BASE } from '../../config'
 import { getAdminToken, clearAdminSession, setAdminRedirect } from '../../store/adminSession'
 
+// 不能从 utils/admin 引 ADMIN_HOME：utils/admin 为了 401 跳转已经引用了本模块，
+// 反向引用会形成循环 require（CLAUDE.md 第 63 条）。
+const ADMIN_HOME = '/pages/admin/workbench/index'
+
 /**
  * 管理员请求通道。
  *
@@ -15,7 +19,7 @@ let redirecting = false
 function currentAdminPath() {
   const pages = getCurrentPages()
   const page = pages && pages.length ? pages[pages.length - 1] : null
-  if (!page || !page.route) return '/pages/admin/projects/index'
+  if (!page || !page.route) return ADMIN_HOME
 
   let path = `/${page.route}`
   const options = page.options || {}
@@ -30,7 +34,7 @@ function currentAdminPath() {
 
 function safeAdminRedirect(path) {
   if (typeof path === 'string' && path.startsWith('/pages/admin/')) return path
-  return '/pages/admin/projects/index'
+  return ADMIN_HOME
 }
 
 export function redirectToAdminLogin(reason = '') {

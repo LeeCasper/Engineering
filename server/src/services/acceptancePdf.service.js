@@ -446,11 +446,18 @@ function render({ acceptance, items, flow, project, stage, photoUrls, signatureU
 
       // ── 业主签名 ──
       doc.moveDown(0.8)
-      sectionTitle(doc, '业主电子签名')
+      sectionTitle(doc, '业主手写签名')
       if (signatureUrl) {
         renderImages(doc, [signatureUrl], '签名图片加载失败', { maxHeight: 140 })
+        doc
+          .fontSize(8)
+          .fillColor('#999999')
+          .text('本签名为项目内部验收确认记录，不具备《电子签名法》意义上的可靠电子签名效力。', {
+            width: CONTENT_WIDTH,
+          })
+        doc.fillColor('#000000')
       } else {
-        doc.fontSize(10).text('本次验收未采集电子签名。')
+        doc.fontSize(10).text('本次验收未采集业主手写签名。')
       }
 
       // ── 页脚页码 ──

@@ -15,6 +15,7 @@ const db = require('../../src/db/pool')
 const cache = require('../../src/cache')
 const config = require('../../config')
 const sysConfigService = require('../../src/services/sysConfig.service')
+const mapService = require('../../src/services/map.service')
 const visitService = require('../../src/services/visit.service')
 const visitMediaCleanup = require('../../src/jobs/visitMediaCleanup')
 const visitRecordModel = require('../../src/models/visitRecord.model')
@@ -224,6 +225,7 @@ describe('现场签到 · 正常签到与水印（AC-N17 / AC-N18）', () => {
   it('记录时间、坐标、偏差，并生成服务端水印照片', async () => {
     const { projectId, foreman } = await setup()
     const spy = vi.spyOn(watermark, 'apply')
+    vi.spyOn(mapService, 'reverseGeocode').mockResolvedValue('上海市浦东新区世纪大道 88 号附近')
 
     const mediaId = await stage(projectId, foreman.token)
     const res = await submitReq(projectId, foreman.token, {
@@ -246,13 +248,15 @@ describe('现场签到 · 正常签到与水印（AC-N17 / AC-N18）', () => {
     expect(data.media).toHaveLength(1)
     expect(data.media[0].url).not.toBe(data.media[0].originalUrl)
 
-    // 服务端确实调用了水印组件，且三行内容符合 §4.6.2
+    // 服务端确实调用了水印组件，且四行内容符合 §4.6.2
     expect(spy).toHaveBeenCalledTimes(1)
     const lines = spy.mock.calls[0][1].lines
+    expect(lines).toHaveLength(4)
     expect(lines[0]).toBe(data.checkinAt)
-    expect(lines[1]).toContain('世纪大道')
-    expect(lines[2]).toContain('31.230')
-    expect(lines[2]).toContain('121.473')
+    expect(lines[1]).toContain('签到位置：上海市浦东新区世纪大道 88 号附近')
+    expect(lines[2]).toContain('项目地址：上海市浦东新区世纪大道 100 号')
+    expect(lines[3]).toContain('31.230')
+    expect(lines[3]).toContain('121.473')
 
     // 原图与水印图都真实落盘
     const originalKey = storage.extractKey(data.media[0].originalUrl)

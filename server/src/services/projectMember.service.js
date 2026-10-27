@@ -16,6 +16,7 @@
 const AppError = require('../utils/AppError')
 const logger = require('../utils/logger')
 const projectAccess = require('./projectAccess.service')
+const dataScope = require('./dataScope.service')
 const db = require('../db/pool')
 const projectMemberModel = require('../models/projectMember.model')
 const miniAuthService = require('./miniAuth.service')
@@ -490,6 +491,41 @@ async function listMembers(operator, projectId) {
   }
 }
 
+/**
+ * 管理端「成员」tab：跨项目成员目录（B-2.7 的只读聚合视图）。
+ *
+ * 成员的新增 / 移除仍然挂在具体项目下（POST/DELETE /projects/:id/members），
+ * 这里只解决「我要找一个成员，但不知道他在哪个项目」的问题。
+ * 数据权限与项目列表完全一致：只聚合调用者可见的项目。
+ */
+async function listMemberDirectory(operator, { keyword, role, projectId, paging }) {
+  const scope = dataScope.buildFilter(operator)
+  const filters = {
+    keyword: keyword ? String(keyword).trim() || undefined : undefined,
+    role,
+    projectId,
+  }
+
+  const [result, roleCounts] = await Promise.all([
+    projectMemberModel.listAcrossProjects(scope, { filters, paging }),
+    projectMemberModel.countDirectoryByRole(scope, {
+      keyword: filters.keyword,
+      projectId: filters.projectId,
+    }),
+  ])
+
+  return {
+    list: result.rows.map((row) => ({
+      ...toMemberView(row),
+      projectId: row.project_id,
+      projectName: row.project_name,
+      projectStatus: row.project_status,
+    })),
+    total: result.total,
+    roleCounts,
+  }
+}
+
 module.exports = {
   VALID_ROLES,
   ROLE_LABELS,
@@ -498,6 +534,7 @@ module.exports = {
   setPrimaryForeman,
   removeMember,
   listMembers,
+  listMemberDirectory,
   toMemberView,
   findOrCreateUserByPhone,
 }

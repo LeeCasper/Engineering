@@ -66,12 +66,13 @@ function isAbnormalDistance(distanceM, thresholdM) {
  * 地址为空时给一句可读的兜底，避免水印第二行直接消失 ——
  * 一张只有时间和坐标的照片，在纠纷时很难说明是在哪个工地拍的。
  */
-function buildWatermarkLines({ checkinAt, address, latitude, longitude }) {
+function buildWatermarkLines({ checkinAt, address, locationAddress, latitude, longitude }) {
   const time = datetime.format(checkinAt) || datetime.format()
-  const place = String(address || '').trim() || '项目地址未填写'
+  const projectPlace = String(address || '').trim() || '项目地址未填写'
+  const realPlace = String(locationAddress || '').trim() || '实时地址未解析'
   const lat = Number(latitude).toFixed(6)
   const lng = Number(longitude).toFixed(6)
-  return [time, place, `坐标 ${lat}, ${lng}`]
+  return [time, `签到位置：${realPlace}`, `项目地址：${projectPlace}`, `坐标 ${lat}, ${lng}`]
 }
 
 /**

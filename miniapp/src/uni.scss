@@ -50,3 +50,45 @@ $radius-xxl: 20px;
 @function dp($px) {
   @return round($px * 1.923) * 1rpx;
 }
+
+/**
+ * 液态玻璃（Liquid Glass）材质。
+ *
+ * 半透明白 + 背景模糊 + 内侧高光 + 发丝描边。只用于管理端顶层卡片、
+ * 底部导航与底部面板这类「浮在内容之上」的表面；表单、长文本列表仍用
+ * 不透明底，避免滚动时文字与背景互相干扰。
+ *
+ * 不支持 backdrop-filter 的旧内核会退化成半透明白，文字对比度仍然成立。
+ */
+@mixin glass-surface($radius: dp(20), $blur: 22px) {
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-top-color: rgba(255, 255, 255, 0.96);
+  border-left-color: rgba(255, 255, 255, 0.84);
+  border-radius: $radius;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.5) 46%,
+    rgba(255, 255, 255, 0.72) 100%
+  );
+  -webkit-backdrop-filter: blur($blur) saturate(185%);
+  backdrop-filter: blur($blur) saturate(185%);
+  box-shadow:
+    0 dp(8) dp(26) rgba(29, 33, 41, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.26);
+}
+
+/* 底部面板的玻璃：底色更实，保证表单和长文本在遮罩上仍然清晰。 */
+@mixin glass-sheet {
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(255, 255, 255, 0.9) 100%
+  );
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 -#{dp(10)} dp(40) rgba(29, 33, 41, 0.16);
+}
+

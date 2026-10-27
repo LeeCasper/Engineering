@@ -70,28 +70,45 @@
         </view>
       </view>
 
-      <!-- 微信登录 -->
+      <!-- 微信登录 / 管理员登录：同一行水平分布 -->
       <view class="third-party">
         <view class="divider">
           <view class="divider-line" />
           <text class="divider-label">其他登录方式</text>
         </view>
-        <button class="wechat-btn" :disabled="loading" @tap="onWechatLogin">
-          <image class="wechat-icon" src="/static/images/wechat.png" mode="aspectFit" />
-          <text class="wechat-text">微信登录</text>
-        </button>
-      </view>
-
-      <!-- 租户管理员入口：与业主/工长/监理的微信登录分开 -->
-      <view class="admin-login-entry" @tap="goAdminLogin">
-        <view class="admin-login-icon">
-          <image class="admin-login-icon-img" src="/static/images/icon-gear-white.png" mode="aspectFit" />
+        <view class="login-actions">
+          <button class="wechat-btn" :disabled="loading" @tap="onWechatLogin">
+            <image
+              class="wechat-icon"
+              :src="wechatIcon"
+              mode="aspectFit"
+              @error="onWechatIconError"
+            />
+            <text class="wechat-text">微信登录</text>
+          </button>
+          <view class="admin-login-btn" @tap="goAdminLogin">
+            <view
+              class="admin-login-icon"
+              :class="{ 'admin-login-icon--fallback': adminIconFailed }"
+            >
+              <image
+                v-if="!adminIconFailed"
+                class="admin-login-svg"
+                :src="adminIcon"
+                mode="aspectFit"
+                @error="onAdminIconError"
+              />
+              <image
+                v-else
+                class="admin-login-icon-img"
+                src="/static/images/icon-gear-white.png"
+                mode="aspectFit"
+              />
+            </view>
+            <text class="admin-login-text">管理员登录</text>
+          </view>
         </view>
-        <view class="admin-login-main">
-          <text class="admin-login-title">管理员登录</text>
-          <text class="admin-login-sub">租户管理员使用后台账号进入管理端</text>
-        </view>
-        <text class="admin-login-arrow">›</text>
+        <text class="admin-login-hint">租户管理员使用后台账号进入管理端</text>
       </view>
     </view>
 
@@ -99,11 +116,8 @@
     <view class="footer">
       <view class="features">
         <view v-for="item in features" :key="item.title" class="feature">
-          <view class="feature-outer" :style="{ backgroundColor: item.outer }">
-            <view class="feature-inner" :style="{ backgroundColor: item.inner }">
-              <text v-if="item.symbol" class="feature-symbol">{{ item.symbol }}</text>
-              <image v-else class="feature-icon" :src="item.icon" mode="aspectFit" />
-            </view>
+          <view class="feature-icon-wrap">
+            <image class="feature-icon" :src="item.icon" mode="aspectFit" />
           </view>
           <text class="feature-title">{{ item.title }}</text>
           <text class="feature-sub">{{ item.sub }}</text>
@@ -136,34 +150,46 @@ const agreed = ref(true)
 const loading = ref(false)
 const safeTop = ref(0)
 
+const WECHAT_ICON_SVG =
+  'data:image/svg+xml;base64,PHN2ZyB0PSIxNzkyOTk1Mzk3ODUzIiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjU4NjkiIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cGF0aCBkPSJNNjgzLjA1OCAzNjQuNjk1YzExIDAgMjIgMS4wMTYgMzIuOTQzIDEuOTc2QzY4Ni41NjQgMjMwLjA2NCA1MzguODk2IDEyOCAzNzAuNjgxIDEyOGMtMTg4LjEwNCAwLjY2LTM0Mi4yMzcgMTI3Ljc5My0zNDIuMjM3IDI4OS4yMjYgMCA5My4wNjggNTEuMzc5IDE2OS44MjcgMTM2LjcyNSAyMjkuMjU2TDEzMC43MiA3NDguNDNsMTE5Ljc5Ni01OS4zNjhjNDIuOTE4IDguMzk1IDc3LjM3IDE2Ljc5IDExOS43NDIgMTYuNzkgMTEgMCAyMS40Ni0wLjQ4IDMxLjkxNC0xLjQ0MmEyNTkuMTY4IDI1OS4xNjggMCAwIDEtMTAuNDU1LTcxLjM1OGMwLjQ4NS0xNDguMDAyIDEyOC43NDQtMjY4LjI5NyAyOTEuNDAzLTI2OC4yOTdsLTAuMDYtMC4wNnogbS0xODQuMTEzLTkxLjk5MmMyNS45OSAwIDQyLjkxMyAxNi43OSA0Mi45MTMgNDIuNTc1IDAgMjUuMTg4LTE2LjkyMyA0Mi41NzktNDIuOTEzIDQyLjU3OS0yNS40NSAwLTUxLjM4LTE2Ljg1LTUxLjM4LTQyLjU4IDAtMjUuNzg0IDI1LjkzLTQyLjU3NCA1MS4zOC00Mi41NzR6IG0tMjM5LjU0NCA4NS4xNTRjLTI1LjM4NCAwLTUxLjM3NC0xNi44NS01MS4zNzQtNDIuNTggMC0yNS43ODQgMjUuOTktNDIuNTc0IDUxLjM3NC00Mi41NzQgMjUuNDUgMCA0Mi45MTggMTYuNzkgNDIuOTE4IDQyLjU3NSAwIDI1LjE4OC0xNi45MjQgNDIuNTc5LTQyLjkxOCA0Mi41Nzl6IG03MzYuMTU1IDI3MS42NTVjMC0xMzUuNjQ3LTEzNi43MjUtMjQ2LjUyNy0yOTAuOTgzLTI0Ni41MjctMTYyLjY1NSAwLTI5MC45MTggMTEwLjg4LTI5MC45MTggMjQ2LjUyNyAwIDEzNi4xMjggMTI4LjI2MyAyNDYuNTg3IDI5MC45MTggMjQ2LjU4NyAzMy45NzIgMCA2OC40MjMtOC4zOTUgMTAyLjgxOC0xNi44NWw5My44MDkgNTAuOTczLTI1LjkzLTg0LjY3N2M2OC45MDctNTEuOTMgMTIwLjI4Ni0xMTkuODE1IDEyMC4yODYtMTk2LjAzM3ogbS0zODUuMjc1LTQyLjU4Yy0xNi45MjMgMC0zNC40NTItMTYuNzktMzQuNDUyLTM0LjE3OSAwLTE2Ljc5IDE3LjUyOS0zNC4xOCAzNC40NTItMzQuMTggMjUuOTkgMCA0Mi45MTggMTYuODUgNDIuOTE4IDM0LjE4IDAgMTcuMzktMTYuOTI4IDM0LjE4LTQyLjkxOCAzNC4xOHogbTE4OC4xNjUgMGMtMTYuOTg0IDAtMzMuOTcyLTE2Ljc5LTMzLjk3Mi0zNC4xNzkgMC0xNi43OSAxNi45MjctMzQuMTggMzMuOTcyLTM0LjE4IDI1LjkzIDAgNDIuOTEzIDE2Ljg1IDQyLjkxMyAzNC4xOCAwIDE3LjM5LTE2Ljk4MyAzNC4xOC00Mi45MTMgMzQuMTh6IiBmaWxsPSIjMDlCQjA3IiBwLWlkPSI1ODcwIj48L3BhdGg+PC9zdmc+'
+const ADMIN_ICON_SVG =
+  'data:image/svg+xml;base64,PHN2ZyB0PSIxNzkyOTk1MjYyOTYxIiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjM2NDYiIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cGF0aCBkPSJNNDM1Ljk1MDkzMyA2MzcuNzQ3MmEzNC4xMzMzMzMgMzQuMTMzMzMzIDAgMCAxIDMyLjM5MjUzNC0yMy4zNDcyaDg3LjMxMzA2NmEzNC4xMzMzMzMgMzQuMTMzMzMzIDAgMCAxIDMyLjM5MjUzNCAyMy4zNDcybDIwLjY4NDggNjIuMDg4NTMzYTM0LjEzMzMzMyAzNC4xMzMzMzMgMCAwIDEtNS4wNTE3MzQgMzEuMjY2MTM0TDUzOS4zMDY2NjcgODE2LjkxMzA2N2EzNC4xMzMzMzMgMzQuMTMzMzMzIDAgMCAxLTU0LjYxMzMzNCAwbC02NC4zNzU0NjYtODUuODExMmEzNC4xMzMzMzMgMzQuMTMzMzMzIDAgMCAxLTUuMDUxNzM0LTMxLjI2NjEzNGwyMC42ODQ4LTYyLjEyMjY2NnoiIGZpbGw9IiNGRkFBNDQiIHAtaWQ9IjM2NDciPjwvcGF0aD48cGF0aCBkPSJNNzE2LjggMjczLjA2NjY2N0EyMDQuOCAyMDQuOCAwIDAgMCAzMDcuMiAyNzMuMDY2NjY3djY4LjI2NjY2NmEyMDQuOCAyMDQuOCAwIDAgMCA0MDkuNiAwVjI3My4wNjY2Njd6TTIzOC45MzMzMzMgNjE0LjRhMjA0LjggMjA0LjggMCAwIDAtMjA0LjggMjA0Ljh2NjguMjY2NjY3YTY4LjI2NjY2NyA2OC4yNjY2NjcgMCAwIDAgNjguMjY2NjY3IDY4LjI2NjY2Nmg4MTkuMmE2OC4yNjY2NjcgNjguMjY2NjY3IDAgMCAwIDY4LjI2NjY2Ny02OC4yNjY2NjZ2LTY4LjI2NjY2N2EyMDQuOCAyMDQuOCAwIDAgMC0yMDQuOC0yMDQuOGgtMTcuNDA4YTM0LjEzMzMzMyAzNC4xMzMzMzMgMCAwIDAtMjYuOTY1MzM0IDEzLjE3NTQ2N2wtMTc0Ljc5NjggMjI0LjczMzg2NmE2OC4yNjY2NjcgNjguMjY2NjY3IDAgMCAxLTEwNy43OTMwNjYgMGwtMTc0Ljc2MjY2Ny0yMjQuNzMzODY2QTM0LjEzMzMzMyAzNC4xMzMzMzMgMCAwIDAgMjU2LjM0MTMzMyA2MTQuNEgyMzguOTMzMzMzeiIgZmlsbD0iI0ZGNzc0NCIgcC1pZD0iMzY0OCI+PC9wYXRoPjwvc3ZnPg=='
+
+const wechatIcon = ref(WECHAT_ICON_SVG)
+const adminIcon = ref(ADMIN_ICON_SVG)
+const adminIconFailed = ref(false)
+
+function onWechatIconError() {
+  // 极少数旧版 WebView 不认 SVG data URI，退回原来的 PNG
+  if (wechatIcon.value !== '/static/images/wechat.png') {
+    wechatIcon.value = '/static/images/wechat.png'
+  }
+}
+
+function onAdminIconError() {
+  adminIconFailed.value = true
+}
+
 const features = [
   {
     title: '进度透明',
     sub: '实时汇报 · 图文留痕',
-    outer: '#FBE3D8',
-    inner: '#EB5C20',
-    icon: '/static/images/icon-shield-check-white.png',
+    icon: '/static/images/icon-login-progress.png',
   },
   {
     title: '验收可溯',
     sub: '多级审核 · 电子签名',
-    outer: '#FFF2E6',
-    inner: '#FA8C16',
-    icon: '/static/images/icon-shield-check-white.png',
+    icon: '/static/images/icon-login-acceptance.png',
   },
   {
     title: '账目清晰',
     sub: '双向账目 · 阶段结算',
-    outer: '#E8F8F0',
-    inner: '#00B42A',
-    symbol: '¥',
+    icon: '/static/images/icon-login-ledger.png',
   },
   {
     title: '管理高效',
     sub: '统一建档 · 数据看板',
-    outer: '#F6E8DF',
-    inner: '#B45309',
-    icon: '/static/images/icon-gear-white.png',
+    icon: '/static/images/icon-login-management.png',
   },
 ]
 
@@ -368,10 +394,10 @@ function openLegal(key) {
   /* 手绘标语下移后这里相应收一点，登录卡整体位置保持不变 */
   margin-top: dp(30);
   padding: dp(20);
-  background: $color-surface;
-  border: 1px solid $color-surface;
-  border-radius: dp(16);
-  box-shadow: 0 dp(8) dp(30) rgba(235, 92, 32, 0.08);
+  @include glass-surface(dp(16), 24px);
+  box-shadow:
+    0 dp(8) dp(30) rgba(235, 92, 32, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
 }
 
 .field {
@@ -520,93 +546,99 @@ function openLegal(key) {
   color: #94887d;
 }
 
+.login-actions {
+  display: flex;
+  align-items: stretch;
+  gap: dp(12);
+  margin-top: dp(14);
+}
+
 .wechat-btn {
-  display: inline-flex;
+  display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   justify-content: center;
   height: dp(44);
-  margin-top: dp(14);
-  padding: 0 dp(32);
-  background: $color-surface;
-  border: 1px solid #e9e1d9;
-  border-radius: dp(999);
-  box-shadow: 0 dp(2) dp(8) rgba(94, 45, 22, 0.05);
+  margin-top: 0;
+  padding: 0 dp(10);
+  @include glass-surface(dp(999), 14px);
 }
 
 .wechat-btn:active {
-  background: #fbf9f7;
+  background: rgba(255, 255, 255, 0.68);
 }
 
 .wechat-icon {
   width: dp(20);
   height: dp(20);
   margin-right: dp(8);
+  flex-shrink: 0;
 }
 
 .wechat-text {
   font-size: dp(14);
   font-weight: 500;
   color: #33281f;
+  white-space: nowrap;
 }
 
-/* ── 管理员登录入口 ── */
-.admin-login-entry {
+/* ── 管理员登录：与微信登录同排 ── */
+.admin-login-btn {
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
-  margin-top: dp(18);
-  padding: dp(12) dp(14);
-  border: 1px solid #e9e1d9;
-  border-radius: dp(14);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 dp(2) dp(8) rgba(94, 45, 22, 0.04);
+  justify-content: center;
+  height: dp(44);
+  padding: 0 dp(10);
+  @include glass-surface(dp(999), 14px);
 }
 
-.admin-login-entry:active {
-  background: #fbf9f7;
+.admin-login-btn:active {
+  background: rgba(255, 255, 255, 0.68);
 }
 
 .admin-login-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: dp(32);
-  height: dp(32);
-  margin-right: dp(10);
-  border-radius: dp(10);
-  background: linear-gradient(135deg, #f07a3a, #eb5c20);
+  width: dp(26);
+  height: dp(26);
+  margin-right: dp(7);
   flex-shrink: 0;
+}
+
+/* SVG 失败时才显示原来的橙色底 + 白色齿轮 */
+.admin-login-icon--fallback {
+  border-radius: dp(8);
+  background: linear-gradient(135deg, #f07a3a, #eb5c20);
+}
+
+.admin-login-svg {
+  width: dp(22);
+  height: dp(22);
 }
 
 .admin-login-icon-img {
-  width: dp(16);
-  height: dp(16);
+  width: dp(14);
+  height: dp(14);
 }
 
-.admin-login-main {
-  flex: 1;
-  min-width: 0;
+.admin-login-text {
+  font-size: dp(14);
+  font-weight: 500;
+  color: #33281f;
+  white-space: nowrap;
 }
 
-.admin-login-title {
+.admin-login-hint {
   display: block;
-  color: #241c17;
-  font-size: dp(13);
-  font-weight: 600;
-}
-
-.admin-login-sub {
-  display: block;
-  margin-top: dp(2);
+  margin-top: dp(10);
   color: #8b8179;
-  font-size: dp(10);
-}
-
-.admin-login-arrow {
-  margin-left: dp(8);
-  color: #8b8179;
-  font-size: dp(20);
-  line-height: 1;
-  flex-shrink: 0;
+  font-size: dp(11);
+  line-height: 1.4;
+  text-align: center;
 }
 
 /* ── 底部特色 ── */
@@ -630,34 +662,17 @@ function openLegal(key) {
   text-align: center;
 }
 
-.feature-outer {
+.feature-icon-wrap {
   width: dp(44);
   height: dp(44);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 dp(2) dp(6) rgba(94, 45, 22, 0.06);
-}
-
-.feature-inner {
-  width: dp(32);
-  height: dp(32);
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .feature-icon {
-  width: dp(16);
-  height: dp(16);
-}
-
-.feature-symbol {
-  color: #fff;
-  font-size: dp(14);
-  font-weight: 700;
+  width: dp(30);
+  height: dp(30);
 }
 
 .feature-title {

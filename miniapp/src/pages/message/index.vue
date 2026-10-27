@@ -370,7 +370,11 @@ function goBack() {
   padding-right: dp(14);
   padding-bottom: dp(8);
   padding-left: dp(6);
-  background: #faf7f4;
+  background: rgba(250, 247, 244, 0.86);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.04);
 }
 
 .nav-back {
@@ -417,14 +421,21 @@ function goBack() {
   flex: 1;
   min-width: 0;
   padding: dp(6) dp(2);
-  border: 1px solid #e8e1da;
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: dp(999);
-  background: #fff;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.66) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #6d6259;
   font-size: dp(12);
   line-height: 1.2;
   white-space: nowrap;
   text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease,
     box-shadow 160ms ease;
 }
@@ -450,15 +461,16 @@ function goBack() {
   display: flex;
   align-items: flex-start;
   padding: dp(13);
-  border: 1px solid #f0eae4;
-  border-radius: dp(14);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(10) rgba(0, 0, 0, 0.02);
+  @include glass-surface(dp(14), 18px);
 }
 
 .message-card--unread {
-  border-color: #f7d9c8;
-  background: #fffdfb;
+  border-color: rgba(247, 217, 200, 0.9);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 253, 251, 0.94) 0%,
+    rgba(255, 246, 240, 0.76) 100%
+  );
 }
 
 .type-icon {

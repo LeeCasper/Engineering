@@ -199,6 +199,9 @@ const projectId = ref(0)
 const routePlanId = ref(0)
 const seqInPlan = ref(0)
 
+// 提交前强制重新定位时，若页面加载的定位还在进行，复用它而不是重复发起
+let locatePromise = null
+
 const roleText = computed(() => {
   const labels = { foreman: '工长', supervisor: '监理', owner: '业主' }
   return labels[meta.value?.myRole] || '项目成员'
@@ -310,29 +313,37 @@ function goBack() {
 }
 
 function locate() {
-  if (locating.value) return
-  locating.value = true
+  if (locatePromise) return locatePromise
 
-  uni.getLocation({
-    type: 'gcj02',
-    isHighAccuracy: true,
-    highAccuracyExpireTime: 5000,
-    success(res) {
-      const latitude = Number(res.latitude)
-      const longitude = Number(res.longitude)
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-        uni.showToast({ title: '定位失败，请重试', icon: 'none' })
-        return
-      }
-      location.value = { latitude, longitude }
-    },
-    fail(err) {
-      showLocationHelp(err)
-    },
-    complete() {
-      locating.value = false
-    },
+  locating.value = true
+  locatePromise = new Promise((resolve) => {
+    uni.getLocation({
+      type: 'gcj02',
+      isHighAccuracy: true,
+      highAccuracyExpireTime: 5000,
+      success(res) {
+        const latitude = Number(res.latitude)
+        const longitude = Number(res.longitude)
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          uni.showToast({ title: '定位失败，请重试', icon: 'none' })
+          resolve(null)
+          return
+        }
+        location.value = { latitude, longitude }
+        resolve(location.value)
+      },
+      fail(err) {
+        showLocationHelp(err)
+        resolve(null)
+      },
+      complete() {
+        locating.value = false
+        locatePromise = null
+      },
+    })
   })
+
+  return locatePromise
 }
 
 function showLocationHelp(err) {
@@ -432,10 +443,16 @@ async function submit() {
   try {
     await uploadPhotos()
 
+    // 提交前重新定位：水印里的「签到位置」必须是按下提交这一刻附近的坐标，
+    // 不能复用页面刚打开时可能已经过期的定位。定位失败则不允许提交。
+    uploadText.value = '获取当前位置…'
+    const freshLocation = await locate()
+    if (!freshLocation) return
+
     uploadText.value = '提交签到…'
     await submitVisit(projectId.value, {
-      latitude: location.value.latitude,
-      longitude: location.value.longitude,
+      latitude: freshLocation.latitude,
+      longitude: freshLocation.longitude,
       mediaIds: photos.value.map((photo) => photo.mediaId),
       remark: remark.value.trim() || undefined,
       abnormalReason: showReason.value ? reason.value.trim() : undefined,
@@ -495,7 +512,11 @@ async function submit() {
   align-items: center;
   gap: dp(10);
   padding: 0 dp(16) dp(10);
-  background: $color-canvas;
+  background: rgba(250, 247, 244, 0.86);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.04);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -588,11 +609,9 @@ async function submit() {
 }
 
 .card {
-  background: $color-surface;
-  border-radius: dp(16);
+  @include glass-surface(dp(16), 20px);
   padding: dp(16);
   margin-bottom: dp(12);
-  box-shadow: 0 dp(4) dp(16) rgba(36, 28, 23, 0.04);
 }
 
 .project-card {
@@ -944,8 +963,13 @@ async function submit() {
   bottom: 0;
   z-index: 30;
   padding: dp(10) dp(16) calc(dp(10) + env(safe-area-inset-bottom));
-  background: rgba(250, 247, 244, 0.96);
-  border-top: 1px solid $color-hairline;
+  background: rgba(250, 247, 244, 0.88);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 -#{dp(6)} dp(24) rgba(36, 28, 23, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .submit-btn {

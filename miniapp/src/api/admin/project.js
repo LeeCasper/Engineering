@@ -14,10 +14,81 @@ function queryString(params = {}) {
     .join('&')
 }
 
-/** 项目列表（分页） */
-export function fetchAdminProjects({ page = 1, pageSize = 20, name, status } = {}) {
-  const query = queryString({ page, pageSize, name, status })
+/** 项目列表（分页）。统计计数单独走 fetchAdminProjectStats，不依赖当前筛选 */
+export function fetchAdminProjects({
+  page = 1,
+  pageSize = 20,
+  name,
+  status,
+  sortField,
+  sortDirection,
+} = {}) {
+  const query = queryString({ page, pageSize, name, status, sortField, sortDirection })
   return adminRequest({ url: `/projects?${query}` })
+}
+
+/** 工作台 / 状态筛选计数。全局口径，不受列表搜索与状态筛选影响 */
+export function fetchAdminProjectStats() {
+  return adminRequest({ url: '/projects/stats' })
+}
+
+// ── 管理员站内消息（工作台待办）────────────────────────────
+//
+// 放在已有的 admin/project.js 里，而不是再新建一个模块：
+// 微信开发者工具对「运行期间新增的 JS 模块」经常不更新模块映射，
+// 会报 `module 'api/admin/notification.js' is not defined` 并白屏。
+// 复用已存在的模块可以避免这个开发期缓存问题。
+
+export function fetchAdminNotifications({ page = 1, pageSize = 50, onlyUnread = false } = {}) {
+  const query = queryString({
+    page,
+    pageSize,
+    onlyUnread: onlyUnread ? 'true' : undefined,
+  })
+  return adminRequest({ url: `/notifications?${query}` })
+}
+
+/** 传 ids 只标记这些；不传表示全部已读 */
+export function markAdminNotificationsRead(ids) {
+  return adminRequest({
+    url: '/notifications/read',
+    method: 'POST',
+    data: ids && ids.length ? { ids } : {},
+  })
+}
+
+// ── 跨项目成员目录（管理端「成员」tab）────────────────────
+//
+// 只读聚合：成员的新增 / 移除仍走具体项目的 /projects/:id/members。
+export function fetchAdminMemberDirectory({ page = 1, pageSize = 20, keyword, role, projectId } = {}) {
+  const query = queryString({ page, pageSize, keyword, role, projectId })
+  return adminRequest({ url: `/members?${query}` })
+}
+
+// ── 阶段模板（管理端「我的 → 阶段模板」）──────────────────
+//
+// 模板是租户级资源，后端已按 operator.tenantId 隔离，不需要项目 id。
+// 同样放在已有的 admin/project.js 里，避免新增模块触发微信开发者工具的
+// 模块映射缓存问题（见上面管理员消息接口的说明）。
+export function fetchAdminTemplates({ page = 1, pageSize = 20, keyword } = {}) {
+  const query = queryString({ page, pageSize, keyword })
+  return adminRequest({ url: `/stage-templates?${query}` })
+}
+
+export function fetchAdminTemplate(id) {
+  return adminRequest({ url: `/stage-templates/${id}` })
+}
+
+export function createAdminTemplate(data) {
+  return adminRequest({ url: '/stage-templates', method: 'POST', data })
+}
+
+export function updateAdminTemplate(id, data) {
+  return adminRequest({ url: `/stage-templates/${id}`, method: 'PUT', data })
+}
+
+export function deleteAdminTemplate(id) {
+  return adminRequest({ url: `/stage-templates/${id}`, method: 'DELETE' })
 }
 
 export function createAdminProject(data) {

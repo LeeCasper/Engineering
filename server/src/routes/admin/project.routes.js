@@ -22,6 +22,8 @@ const router = express.Router()
 router.use(requireAdmin, requireTenant)
 
 router.get('/', asyncHandler(controller.list))
+// 固定路径段必须排在 /:id 之前，否则会被当成项目 id
+router.get('/stats', asyncHandler(controller.stats))
 router.post('/', asyncHandler(controller.create))
 
 // ── 固定路径段必须排在 /:id 之前 ──

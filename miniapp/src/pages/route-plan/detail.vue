@@ -819,10 +819,7 @@ function goBack() {
 .card {
   margin-top: dp(12);
   padding: dp(14);
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(3) dp(12) rgba(0, 0, 0, 0.025);
+  @include glass-surface(dp(16), 20px);
 }
 
 .origin-card {

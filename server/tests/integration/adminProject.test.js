@@ -130,12 +130,21 @@ describe('AC-AD11 项目列表筛选与分页', () => {
       "INSERT INTO project_member (project_id, user_id, role, status, confirmed_at) VALUES (?, ?, 'foreman', 'active', NOW())",
       [projectId, foremanUserId]
     )
+    const ownerUserId = await createWechatUser('openid-o2')
+    await db.query('UPDATE user SET nickname = ?, phone = ? WHERE id = ?', [
+      '张先生',
+      '13800138000',
+      ownerUserId,
+    ])
+    await addActiveMember(projectId, ownerUserId, 'owner')
 
     const list = await request.authed('get', '/admin/projects', token)
     const item = list.body.data.list[0]
 
     expect(item.contractAmount).toBe('200000.00')
     expect(item.foreman.nickname).toBe('王工长')
+    expect(item.foremanName).toBe('王工长')
+    expect(item.ownerName).toBe('张先生')
     expect(item.progress).toBe('0.00')
     expect(item.startDate).toBe('2026-01-01')
   })

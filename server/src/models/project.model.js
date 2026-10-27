@@ -241,13 +241,83 @@ async function listForemenOfProjects(projectIds) {
   if (projectIds.length === 0) return []
   const placeholders = projectIds.map(() => '?').join(', ')
   return db.query(
-    `SELECT pm.project_id, pm.role, pm.status, u.id AS user_id, u.nickname, u.phone
+    `SELECT pm.project_id, pm.role, pm.status, pm.is_primary, pm.owner_type,
+            u.id AS user_id, u.nickname, u.phone
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id AND u.deleted_at IS NULL
       WHERE pm.project_id IN (${placeholders}) AND pm.deleted_at IS NULL
-      ORDER BY FIELD(pm.role, 'foreman', 'supervisor', 'owner')`,
+      ORDER BY pm.project_id, FIELD(pm.role, 'foreman', 'supervisor', 'owner'),
+               pm.is_primary DESC, FIELD(pm.owner_type, 'primary', 'temporary'), pm.id`,
     projectIds
   )
+}
+
+/**
+ * 管理端项目概览统计。
+ *
+ * 所有查询都必须复用 dataScope 产出的 clause —— 统计口径与列表、详情同源，
+ * 项目管理员才不会在概览里看到未授权项目的数字（AC-AD52）。
+ *
+ * 统计是全局口径，不受列表的搜索/状态筛选影响。
+ */
+async function getStats(scope, { today }) {
+  dataScope.assertValid(scope)
+
+  const [projectRow, acceptanceRow, invitationRow] = await Promise.all([
+    db.queryOne(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(p.status = 'pending') AS pending,
+         SUM(p.status = 'building') AS building,
+         SUM(p.status = 'finished') AS finished,
+         SUM(p.status = 'archived') AS archived,
+         SUM(
+           CASE
+             WHEN p.status <> 'archived'
+              AND p.plan_end_date IS NOT NULL
+              AND COALESCE(p.actual_end_date, ?) > p.plan_end_date
+             THEN 1 ELSE 0
+           END
+         ) AS overdue
+         FROM project p
+        WHERE p.deleted_at IS NULL AND ${scope.clause}`,
+      [today, ...scope.params]
+    ),
+    db.queryOne(
+      `SELECT COUNT(*) AS count
+         FROM acceptance a
+         JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL
+        WHERE a.deleted_at IS NULL
+          AND a.status IN ('pending_supervisor', 'pending_owner')
+          AND p.status <> 'archived'
+          AND ${scope.clause}`,
+      [...scope.params]
+    ),
+    db.queryOne(
+      `SELECT COUNT(*) AS count
+         FROM project_member pm
+         JOIN project p ON p.id = pm.project_id AND p.deleted_at IS NULL
+        WHERE pm.deleted_at IS NULL
+          AND pm.status = 'pending'
+          AND p.status <> 'archived'
+          AND ${scope.clause}`,
+      [...scope.params]
+    ),
+  ])
+
+  const row = projectRow || {}
+  return {
+    total: Number(row.total) || 0,
+    statusCounts: {
+      pending: Number(row.pending) || 0,
+      building: Number(row.building) || 0,
+      finished: Number(row.finished) || 0,
+      archived: Number(row.archived) || 0,
+    },
+    overdue: Number(row.overdue) || 0,
+    pendingAcceptance: Number(acceptanceRow && acceptanceRow.count) || 0,
+    pendingInvitations: Number(invitationRow && invitationRow.count) || 0,
+  }
 }
 
 /**
@@ -309,4 +379,5 @@ module.exports = {
   listForemenOfProjects,
   listStagesOfProjects,
   listByUser,
+  getStats,
 }

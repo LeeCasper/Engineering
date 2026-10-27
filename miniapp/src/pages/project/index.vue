@@ -353,8 +353,8 @@
 
           <view class="finance-grid">
             <view class="finance-tile finance-tile--accent">
-              <view class="finance-icon finance-icon--accent">
-                <image class="finance-icon-img" src="/static/images/icon-contract-white.png" mode="aspectFit" />
+              <view class="finance-icon">
+                <image class="finance-icon-img" src="/static/images/icon-finance-contract.png" mode="aspectFit" />
               </view>
               <view class="finance-text">
                 <text class="finance-label">合同总额</text>
@@ -362,8 +362,8 @@
               </view>
             </view>
             <view class="finance-tile finance-tile--green">
-              <view class="finance-icon finance-icon--green">
-                <image class="finance-icon-img" src="/static/images/icon-received-white.png" mode="aspectFit" />
+              <view class="finance-icon">
+                <image class="finance-icon-img" src="/static/images/icon-finance-income.png" mode="aspectFit" />
               </view>
               <view class="finance-text">
                 <text class="finance-label">已收款</text>
@@ -371,8 +371,8 @@
               </view>
             </view>
             <view class="finance-tile finance-tile--amber">
-              <view class="finance-icon finance-icon--amber">
-                <image class="finance-icon-img" src="/static/images/icon-expense-white.png" mode="aspectFit" />
+              <view class="finance-icon">
+                <image class="finance-icon-img" src="/static/images/icon-finance-expense.png" mode="aspectFit" />
               </view>
               <view class="finance-text">
                 <text class="finance-label">已支出</text>
@@ -380,8 +380,8 @@
               </view>
             </view>
             <view class="finance-tile finance-tile--sand">
-              <view class="finance-icon finance-icon--sand">
-                <image class="finance-icon-img" src="/static/images/icon-balance-white.png" mode="aspectFit" />
+              <view class="finance-icon">
+                <image class="finance-icon-img" src="/static/images/icon-finance-balance.png" mode="aspectFit" />
               </view>
               <view class="finance-text">
                 <text class="finance-label">当前余额</text>
@@ -411,7 +411,7 @@
         >
           <view class="door-card-left">
             <view class="door-icon-wrap">
-              <image class="door-icon" src="/static/images/icon-lock-gray.png" mode="aspectFit" />
+              <image class="door-icon" src="/static/images/icon-door-shield.png" mode="aspectFit" />
             </view>
             <view class="door-card-text">
               <text class="section-title">门锁密码</text>
@@ -432,7 +432,7 @@
             <view v-for="contact in contacts" :key="`${contact.role}-${contact.phone}`" class="contact-row">
               <view class="contact-left">
                 <view class="contact-icon">
-                  <image class="contact-icon-img" src="/static/images/icon-phone-accent.png" mode="aspectFit" />
+                  <image class="contact-icon-img" src="/static/images/icon-contact-phone.png" mode="aspectFit" />
                 </view>
                 <view class="contact-text">
                   <text class="contact-label">
@@ -452,7 +452,7 @@
           <view class="contact-row contact-row--address">
             <view class="contact-left">
               <view class="contact-icon">
-                <image class="contact-icon-img" src="/static/images/icon-location-accent.png" mode="aspectFit" />
+                <image class="contact-icon-img" src="/static/images/icon-contact-address.png" mode="aspectFit" />
               </view>
               <view class="contact-text">
                 <text class="contact-label">项目地址</text>
@@ -1297,7 +1297,11 @@ function closeActiveSheet() {
   padding-right: dp(14);
   padding-bottom: dp(8);
   padding-left: dp(8);
-  background: #faf7f4;
+  background: rgba(250, 247, 244, 0.86);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.04);
 }
 
 .nav-left {
@@ -1352,10 +1356,7 @@ function closeActiveSheet() {
 .card {
   margin-bottom: dp(14);
   padding: dp(14);
-  border: 1px solid rgba(229, 231, 235, 0.8);
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(8) rgba(0, 0, 0, 0.04);
+  @include glass-surface(dp(16), 20px);
 }
 
 /* ── 项目概览 ── */
@@ -1494,11 +1495,21 @@ function closeActiveSheet() {
   align-items: center;
   margin-left: dp(6);
   padding: dp(2) dp(8);
+  border: 1px solid rgba(255, 255, 255, 0.74);
   border-radius: dp(999);
-  background: #fdebe4;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 248, 243, 0.9) 0%,
+    rgba(255, 235, 224, 0.64) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #eb5c20;
   font-size: dp(11);
   font-weight: 500;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 dp(1) dp(4) rgba(235, 92, 32, 0.05);
   flex-shrink: 0;
 }
 
@@ -1516,8 +1527,15 @@ function closeActiveSheet() {
 }
 
 .nav-pill--checkin {
-  background: #e8ffea;
+  background: linear-gradient(
+    135deg,
+    rgba(240, 255, 244, 0.9) 0%,
+    rgba(224, 250, 232, 0.64) 100%
+  );
   color: #087a1e;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 dp(1) dp(4) rgba(8, 122, 30, 0.05);
 }
 
 .nav-pill-icon--plain {
@@ -1632,9 +1650,12 @@ function closeActiveSheet() {
 
 .task-card {
   padding: dp(12);
-  border: 1px solid rgba(253, 230, 200, 0.8);
-  border-radius: dp(12);
-  background: #fffdf9;
+  @include glass-surface(dp(12), 14px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 253, 249, 0.94) 0%,
+    rgba(255, 245, 232, 0.74) 100%
+  );
 }
 
 .task-top {
@@ -2310,32 +2331,27 @@ function closeActiveSheet() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: dp(30);
-  height: dp(30);
+  width: dp(32);
+  height: dp(32);
   margin-right: dp(8);
-  border-radius: dp(8);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: dp(10);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.72) 100%
+  );
+  -webkit-backdrop-filter: blur(8px) saturate(160%);
+  backdrop-filter: blur(8px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 dp(1) dp(4) rgba(94, 45, 22, 0.05);
   flex-shrink: 0;
 }
 
-.finance-icon--accent {
-  background: #eb5c20;
-}
-
-.finance-icon--green {
-  background: #52c41a;
-}
-
-.finance-icon--amber {
-  background: #fa8c16;
-}
-
-.finance-icon--sand {
-  background: #b45309;
-}
-
 .finance-icon-img {
-  width: dp(16);
-  height: dp(16);
+  width: dp(24);
+  height: dp(24);
 }
 
 .finance-text {
@@ -2435,15 +2451,24 @@ function closeActiveSheet() {
   width: dp(42);
   height: dp(42);
   margin-right: dp(11);
-  background: #fdeee6;
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: dp(13);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.72) 100%
+  );
+  -webkit-backdrop-filter: blur(8px) saturate(160%);
+  backdrop-filter: blur(8px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 dp(1) dp(4) rgba(94, 45, 22, 0.05);
   flex-shrink: 0;
 }
 
 .door-icon {
-  width: dp(21);
-  height: dp(21);
-  opacity: 0.8;
+  width: dp(26);
+  height: dp(26);
 }
 
 .door-card-text {
@@ -2520,17 +2545,15 @@ function closeActiveSheet() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: dp(24);
-  height: dp(24);
+  width: dp(30);
+  height: dp(30);
   margin-right: dp(8);
-  border-radius: dp(999);
-  background: #fdebe4;
   flex-shrink: 0;
 }
 
 .contact-icon-img {
-  width: dp(13);
-  height: dp(13);
+  width: dp(28);
+  height: dp(28);
 }
 
 .contact-text {
@@ -2571,11 +2594,21 @@ function closeActiveSheet() {
   display: flex;
   align-items: center;
   padding: dp(3) dp(8);
+  border: 1px solid rgba(255, 255, 255, 0.74);
   border-radius: dp(999);
-  background: #fdebe4;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 248, 243, 0.9) 0%,
+    rgba(255, 235, 224, 0.64) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #eb5c20;
   font-size: dp(10);
   font-weight: 500;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 dp(1) dp(4) rgba(235, 92, 32, 0.05);
   flex-shrink: 0;
 }
 
@@ -2652,7 +2685,7 @@ function closeActiveSheet() {
   overflow-y: auto;
   padding: dp(16) dp(16) calc(#{dp(16)} + env(safe-area-inset-bottom));
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  @include glass-sheet;
 }
 
 .sheet--comments {

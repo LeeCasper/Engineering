@@ -196,9 +196,7 @@ function goBack() {
 
 .form-card {
   padding: dp(14);
-  border: 1px solid #f0eae4;
-  border-radius: dp(14);
-  background: #fff;
+  @include glass-surface(dp(14), 20px);
 }
 
 .field + .field {

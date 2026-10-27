@@ -27,6 +27,7 @@ const logger = require('../utils/logger')
 const { haversineMeters } = require('../utils/routeOptimizer')
 const visitUtil = require('../utils/visit')
 const sysConfigService = require('./sysConfig.service')
+const mapService = require('./map.service')
 const adminNotification = require('./adminNotification.service')
 const projectMemberModel = require('../models/projectMember.model')
 const projectModel = require('../models/project.model')
@@ -377,6 +378,15 @@ async function submitVisit(userId, projectId, input, { now = datetime.now() } = 
   const stagedRows = await visitMediaStagingModel.findByIds(mediaIds)
   const ordered = validateStagedRows(stagedRows, mediaIds, { projectId, userId })
 
+  // 水印里除了坐标，还要有「签到位置」的文字地址。
+  // 逆地理编码失败时不编造地址：保留坐标，水印写「实时地址未解析」。
+  let locationAddress = null
+  try {
+    locationAddress = await mapService.reverseGeocode(coords)
+  } catch (err) {
+    logger.warn('签到位置逆地理编码失败，水印保留坐标', { message: err.message })
+  }
+
   // ── 事务外生成水印文件 ──
   // sharp 处理 1–3 张图可能要几百毫秒；放进事务会长时间持有暂存行锁。
   // 失败时把已经生成的文件删掉，暂存原图保持 staged，用户可以原样重试。
@@ -395,6 +405,7 @@ async function submitVisit(userId, projectId, input, { now = datetime.now() } = 
         lines: visitUtil.buildWatermarkLines({
           checkinAt,
           address: project.address,
+          locationAddress,
           latitude: coords.latitude,
           longitude: coords.longitude,
         }),

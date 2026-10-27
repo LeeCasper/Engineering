@@ -159,11 +159,31 @@
       }
     },
     {
+      "path": "pages/admin/workbench/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "white",
+        "backgroundColor": "#EB5C20",
+        "backgroundTextStyle": "light",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/admin/projects/index",
       "style": {
         "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4",
+        "backgroundColor": "#F6F7F9",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/admin/members/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#F6F7F9",
         "backgroundTextStyle": "dark",
         "enablePullDownRefresh": true
       }
@@ -172,8 +192,20 @@
       "path": "pages/admin/profile/index",
       "style": {
         "navigationStyle": "custom",
+        "navigationBarTextStyle": "white",
+        "backgroundColor": "#F85A2A",
+        "backgroundTextStyle": "light",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/admin/templates/index",
+      "style": {
+        "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4"
+        "backgroundColor": "#FFFFFF",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
       }
     },
     {
@@ -189,7 +221,7 @@
       "style": {
         "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4",
+        "backgroundColor": "#F6F7F9",
         "backgroundTextStyle": "dark",
         "enablePullDownRefresh": true
       }
@@ -199,7 +231,7 @@
       "style": {
         "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4",
+        "backgroundColor": "#F6F7F9",
         "backgroundTextStyle": "dark",
         "enablePullDownRefresh": true
       }
@@ -294,26 +326,26 @@
       {
         "pagePath": "pages/projects/index",
         "text": "项目",
-        "iconPath": "static/images/icon-tab-project-gray.png",
-        "selectedIconPath": "static/images/icon-tab-project-accent.png"
+        "iconPath": "static/images/icon-tab-project-flat-gray.png",
+        "selectedIconPath": "static/images/icon-tab-project-flat-theme.png"
       },
       {
         "pagePath": "pages/acceptance/index",
         "text": "验收",
-        "iconPath": "static/images/icon-tab-acceptance-gray.png",
-        "selectedIconPath": "static/images/icon-tab-acceptance-accent.png"
+        "iconPath": "static/images/icon-tab-acceptance-flat-gray.png",
+        "selectedIconPath": "static/images/icon-tab-acceptance-flat-theme.png"
       },
       {
         "pagePath": "pages/ledger/index",
         "text": "记账",
-        "iconPath": "static/images/icon-tab-ledger-gray.png",
-        "selectedIconPath": "static/images/icon-tab-ledger-accent.png"
+        "iconPath": "static/images/icon-tab-ledger-flat-gray.png",
+        "selectedIconPath": "static/images/icon-tab-ledger-flat-theme.png"
       },
       {
         "pagePath": "pages/mine/index",
         "text": "我的",
-        "iconPath": "static/images/icon-tab-mine-gray.png",
-        "selectedIconPath": "static/images/icon-tab-mine-accent.png"
+        "iconPath": "static/images/icon-tab-mine-flat-gray.png",
+        "selectedIconPath": "static/images/icon-tab-mine-flat-theme.png"
       }
     ]
   }

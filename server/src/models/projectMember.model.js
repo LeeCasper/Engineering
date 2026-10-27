@@ -13,6 +13,7 @@
  */
 
 const db = require('../db/pool')
+const dataScope = require('../services/dataScope.service')
 
 /** 唯一合法的「有权限」状态。任何权限查询都必须带上它 */
 const ACTIVE = "pm.status = 'active' AND pm.deleted_at IS NULL"
@@ -272,6 +273,119 @@ async function listByProject(projectId) {
   )
 }
 
+/** 搜索框里的角色词，映射到 project_member.role */
+const ROLE_KEYWORDS = {
+  工长: 'foreman',
+  foreman: 'foreman',
+  监理: 'supervisor',
+  supervisor: 'supervisor',
+  业主: 'owner',
+  owner: 'owner',
+}
+
+/** 转义 LIKE 通配符：用户输入的 % 与 _ 按字面匹配 */
+function escapeLike(value) {
+  return String(value).replace(/[\\%_]/g, (ch) => `\\${ch}`)
+}
+
+/**
+ * 跨项目成员列表的 WHERE。
+ *
+ * 数据权限仍然只来自 `dataScope.buildFilter()`，它引用的别名是 `p`，
+ * 因此这里必须先 JOIN project 再拼 scope.clause —— 不能只看 project_member，
+ * 否则项目管理员能搜到未授权项目里的成员姓名与手机号。
+ */
+function buildDirectoryWhere(scope, { keyword, role, projectId } = {}) {
+  dataScope.assertValid(scope)
+
+  const where = ['pm.deleted_at IS NULL', "pm.status <> 'removed'", scope.clause]
+  const params = [...scope.params]
+
+  if (projectId) {
+    where.push('p.id = ?')
+    params.push(projectId)
+  }
+  if (role) {
+    where.push('pm.role = ?')
+    params.push(role)
+  }
+  if (keyword) {
+    const like = `%${escapeLike(keyword)}%`
+    const roleKey = ROLE_KEYWORDS[keyword]
+    if (roleKey) {
+      // 搜索框占位写的是「姓名 / 手机号 / 角色」，角色词要真的能搜到
+      where.push('(u.nickname LIKE ? OR u.phone LIKE ? OR p.name LIKE ? OR pm.role = ?)')
+      params.push(like, like, like, roleKey)
+    } else {
+      where.push('(u.nickname LIKE ? OR u.phone LIKE ? OR p.name LIKE ?)')
+      params.push(like, like, like)
+    }
+  }
+
+  return { where, params }
+}
+
+const DIRECTORY_FROM = `
+  FROM project_member pm
+  JOIN project p ON p.id = pm.project_id AND p.deleted_at IS NULL
+  JOIN user u ON u.id = pm.user_id
+`
+
+/**
+ * 管理端「成员」tab 的跨项目成员列表。
+ *
+ * 与项目列表一样强制分页（AC-AD45）。排序刻意让主工长 / 主业主排在前面，
+ * 已加入的排在待确认前面 —— 与设计稿的成员排序一致。
+ */
+async function listAcrossProjects(scope, { filters = {}, paging }) {
+  const { where, params } = buildDirectoryWhere(scope, filters)
+  const clause = `${DIRECTORY_FROM} WHERE ${where.join(' AND ')}`
+
+  const total = await db.count(clause, params)
+  const rows = await db.query(
+    `SELECT pm.id, pm.project_id, pm.user_id, pm.role, pm.status, pm.is_primary, pm.owner_type,
+            pm.created_at AS invited_at, pm.confirmed_at, pm.left_at,
+            u.nickname, u.phone,
+            p.name AS project_name, p.status AS project_status
+       ${clause}
+      ORDER BY FIELD(pm.role, 'foreman', 'supervisor', 'owner'),
+               pm.is_primary DESC,
+               (pm.owner_type = 'primary') DESC,
+               FIELD(pm.status, 'active', 'pending', 'removed'),
+               p.name, pm.id
+      LIMIT ? OFFSET ?`,
+    [...params, paging.limit, paging.offset]
+  )
+
+  return { total, rows }
+}
+
+/**
+ * 成员 tab 的角色计数。
+ *
+ * 计数**忽略当前角色筛选**，否则点了「工长」之后另外三个胶囊都变成 0，
+ * 用户会以为项目里没有监理和业主。关键词与项目范围仍然生效，
+ * 这样搜索时胶囊上的数字与结果一致。
+ */
+async function countDirectoryByRole(scope, { keyword, projectId } = {}) {
+  const { where, params } = buildDirectoryWhere(scope, { keyword, projectId })
+  const row = await db.queryOne(
+    `SELECT COUNT(*) AS total,
+            COALESCE(SUM(pm.role = 'foreman'), 0) AS foreman,
+            COALESCE(SUM(pm.role = 'supervisor'), 0) AS supervisor,
+            COALESCE(SUM(pm.role = 'owner'), 0) AS owner
+       ${DIRECTORY_FROM} WHERE ${where.join(' AND ')}`,
+    params
+  )
+
+  return {
+    all: Number(row.total) || 0,
+    foreman: Number(row.foreman) || 0,
+    supervisor: Number(row.supervisor) || 0,
+    owner: Number(row.owner) || 0,
+  }
+}
+
 /**
  * 按 id 查某人的待确认邀请。
  *
@@ -361,6 +475,8 @@ module.exports = {
   promoteFirstTemporaryOwner,
   setPrimary,
   listByProject,
+  listAcrossProjects,
+  countDirectoryByRole,
   listKeyMembersOfProjects,
   findPendingById,
   findPendingInvitations,

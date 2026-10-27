@@ -5,7 +5,7 @@
       <image class="hero-skyline" src="/static/images/home-skyline.png" mode="widthFix" />
       <view class="hero-content">
         <view class="brand">
-          <image class="brand-logo" :src="branding.logoUrl || '/static/images/home-logo.png'" mode="aspectFit" />
+          <image class="brand-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
           <view class="brand-text">
             <text class="brand-name">{{ branding.name }}</text>
             <text class="brand-slogan">让装修工程更透明、更可控</text>
@@ -122,7 +122,7 @@
 
     <!-- 完全没有任何项目：沿用「绑定手机号 + 联系管理员」引导 -->
     <view v-if="noProjects" class="no-project">
-      <image class="no-project-logo" src="/static/images/logo.png" mode="aspectFit" />
+      <image class="no-project-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
       <text class="no-project-title">还没有加入任何项目</text>
       <text class="no-project-text">
         项目邀请按手机号发送。请确认已绑定手机号，再联系邀请您的装修公司管理员。
@@ -272,7 +272,7 @@
       <button class="load-error-retry" @tap="load">重新加载</button>
     </view>
 
-    <!-- 新建项目只对租户管理员开放，入口在 pages/admin/projects/index；C 端不展示 FAB -->
+    <!-- 新建项目只对租户管理员开放，入口在管理端工作台/项目列表；C 端不展示 FAB -->
 
     <!-- 筛选面板 -->
     <view v-if="filterSheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeFilterSheet">
@@ -465,7 +465,7 @@ async function refreshAdminAccess() {
 
 function openAdmin() {
   if (getAdminToken()) {
-    uni.navigateTo({ url: '/pages/admin/projects/index' })
+    uni.navigateTo({ url: '/pages/admin/workbench/index' })
     return
   }
   uni.navigateTo({ url: '/pages/admin/login/index' })
@@ -978,7 +978,9 @@ function closeActiveSheet() {
 }
 
 .search-wrap--stuck {
-  background: #faf6f1;
+  background: rgba(250, 246, 241, 0.82);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
   box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.05);
 }
 
@@ -991,8 +993,8 @@ function closeActiveSheet() {
   height: dp(26);
   background: linear-gradient(
     180deg,
-    rgba(250, 246, 241, 1) 0%,
-    rgba(250, 246, 241, 0.78) 32%,
+    rgba(250, 246, 241, 0.88) 0%,
+    rgba(250, 246, 241, 0.56) 32%,
     rgba(250, 246, 241, 0) 100%
   );
   pointer-events: none;
@@ -1021,10 +1023,10 @@ function closeActiveSheet() {
   min-width: 0;
   height: dp(42);
   padding: 0 dp(14);
-  background: #fff;
-  border: 1px solid #f1ebe5;
-  border-radius: dp(999);
-  box-shadow: 0 dp(4) dp(16) rgba(94, 45, 22, 0.08);
+  @include glass-surface(dp(999), 18px);
+  box-shadow:
+    0 dp(4) dp(16) rgba(94, 45, 22, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
 }
 
 .search-filter {
@@ -1034,10 +1036,10 @@ function closeActiveSheet() {
   justify-content: center;
   height: dp(42);
   padding: 0 dp(12);
-  background: #fff;
-  border: 1px solid #f1ebe5;
-  border-radius: dp(999);
-  box-shadow: 0 dp(4) dp(16) rgba(94, 45, 22, 0.08);
+  @include glass-surface(dp(999), 18px);
+  box-shadow:
+    0 dp(4) dp(16) rgba(94, 45, 22, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
   color: #eb5c20;
   flex-shrink: 0;
 }
@@ -1103,11 +1105,19 @@ function closeActiveSheet() {
   justify-content: center;
   flex: 1;
   height: dp(30);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: dp(999);
-  background: #f6ece5;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 247, 242, 0.62) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #5A4638;
   font-size: dp(12);
   font-weight: 500;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -1155,14 +1165,16 @@ function closeActiveSheet() {
 .invite-section {
   margin: dp(16) dp(16) 0;
   padding: dp(14);
-  background: #fff;
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
+  @include glass-surface(dp(16), 20px);
 }
 
 .invite-section--focus {
-  background: #fff7f2;
-  border-color: #f7c7b1;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 249, 245, 0.94) 0%,
+    rgba(255, 238, 228, 0.74) 100%
+  );
+  border-color: rgba(247, 199, 177, 0.9);
 }
 
 .invite-head {
@@ -1298,8 +1310,12 @@ function closeActiveSheet() {
 .invite-hint {
   margin: dp(12) dp(16) 0;
   padding: dp(12) dp(14);
-  background: #fff7f2;
-  border-radius: dp(8);
+  @include glass-surface(dp(10), 16px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 248, 243, 0.9) 0%,
+    rgba(255, 240, 232, 0.7) 100%
+  );
   color: #6d6259;
   font-size: dp(12);
   line-height: 1.5;
@@ -1316,14 +1332,11 @@ function closeActiveSheet() {
 
 .project-card {
   padding: dp(14);
-  background: #fff;
-  border: 1px solid #f1ebe5;
-  border-radius: dp(16);
-  box-shadow: 0 dp(2) dp(10) rgba(94, 45, 22, 0.03);
+  @include glass-surface(dp(16), 20px);
 }
 
 .project-card:active {
-  background: #fcfaf8;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .project-main {
@@ -1841,7 +1854,15 @@ function closeActiveSheet() {
      再叠加 env(safe-area-inset-bottom) 会在按钮和 tabBar 之间留出一大块空白 */
   padding: dp(8) dp(16) dp(16);
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(255, 255, 255, 0.9) 100%
+  );
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 -#{dp(10)} dp(40) rgba(29, 33, 41, 0.16);
 }
 
 .sheet-handle {

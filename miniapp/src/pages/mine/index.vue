@@ -118,7 +118,7 @@
         <view class="quick-grid">
           <view class="quick-card" @tap="goMessages">
             <view class="quick-icon-wrap">
-              <image class="quick-icon" src="/static/images/icon-message-accent.png" mode="aspectFit" />
+              <image class="quick-icon" src="/static/images/icon-quick-message.png" mode="aspectFit" />
               <text v-if="unreadTotal > 0" class="quick-badge">{{ unreadBadge }}</text>
             </view>
             <text class="quick-title">消息</text>
@@ -126,21 +126,21 @@
           </view>
           <view class="quick-card" @tap="goProjects">
             <view class="quick-icon-wrap">
-              <image class="quick-icon" src="/static/images/icon-home-accent.png" mode="aspectFit" />
+              <image class="quick-icon" src="/static/images/icon-quick-project.png" mode="aspectFit" />
             </view>
             <text class="quick-title">我的项目</text>
             <text class="quick-sub">项目管理</text>
           </view>
           <view class="quick-card" @tap="goAcceptance">
             <view class="quick-icon-wrap">
-              <image class="quick-icon" src="/static/images/icon-acceptance-accent.png" mode="aspectFit" />
+              <image class="quick-icon" src="/static/images/icon-quick-acceptance.png" mode="aspectFit" />
             </view>
             <text class="quick-title">验收</text>
             <text class="quick-sub">在线验收</text>
           </view>
           <view v-if="canUseLedger" class="quick-card" @tap="goLedger">
             <view class="quick-icon-wrap">
-              <image class="quick-icon" src="/static/images/icon-wallet-fill-accent.png" mode="aspectFit" />
+              <image class="quick-icon" src="/static/images/icon-quick-ledger.png" mode="aspectFit" />
             </view>
             <text class="quick-title">记账</text>
             <text class="quick-sub">收支对账</text>
@@ -898,10 +898,16 @@ function closeActiveSheet() {
 /* ── 资料卡 ── */
 .profile-card {
   padding: dp(16);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: dp(20);
-  background: #fff;
-  box-shadow: 0 dp(10) dp(24) rgba(120, 45, 20, 0.12);
+  @include glass-surface(dp(20), 24px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.74) 46%,
+    rgba(255, 255, 255, 0.84) 100%
+  );
+  box-shadow:
+    0 dp(12) dp(28) rgba(120, 45, 20, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
 }
 
 .profile-row {
@@ -982,9 +988,12 @@ function closeActiveSheet() {
   justify-content: space-between;
   margin-top: dp(14);
   padding: dp(9) dp(11);
-  border: 1px solid #f0eae4;
-  border-radius: dp(12);
-  background: #f8f4ef;
+  @include glass-surface(dp(12), 14px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(248, 244, 239, 0.66) 100%
+  );
 }
 
 .project-switch-main {
@@ -1030,10 +1039,16 @@ function closeActiveSheet() {
   align-items: center;
   margin-top: dp(18);
   padding: dp(13) dp(14);
-  border: 1px solid #f3dfd1;
-  border-radius: dp(16);
-  background: linear-gradient(135deg, #fff7f2 0%, #fff 58%, #fff3e8 100%);
-  box-shadow: 0 dp(4) dp(16) rgba(235, 92, 32, 0.06);
+  @include glass-surface(dp(16), 18px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 247, 242, 0.92) 0%,
+    rgba(255, 255, 255, 0.68) 58%,
+    rgba(255, 243, 232, 0.74) 100%
+  );
+  box-shadow:
+    0 dp(4) dp(16) rgba(235, 92, 32, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
 }
 
 .route-banner:active {
@@ -1104,10 +1119,7 @@ function closeActiveSheet() {
 .card {
   margin-top: dp(18);
   padding: dp(16);
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(4) dp(16) rgba(235, 92, 32, 0.05);
+  @include glass-surface(dp(16), 20px);
 }
 
 .contacts-card {
@@ -1338,10 +1350,7 @@ function closeActiveSheet() {
   flex: 1;
   min-width: 0;
   padding: dp(12) dp(4) dp(10);
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(10) rgba(0, 0, 0, 0.02);
+  @include glass-surface(dp(16), 18px);
   flex-direction: column;
 }
 
@@ -1357,8 +1366,18 @@ function closeActiveSheet() {
   width: dp(40);
   height: dp(40);
   margin-bottom: dp(8);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 50%;
-  background: #fff3e8;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.72) 100%
+  );
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+  backdrop-filter: blur(10px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 dp(1) dp(4) rgba(94, 45, 22, 0.05);
 }
 
 .quick-icon {
@@ -1403,10 +1422,7 @@ function closeActiveSheet() {
 .settings-card {
   overflow: hidden;
   padding: 0 dp(14);
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(10) rgba(0, 0, 0, 0.02);
+  @include glass-surface(dp(16), 20px);
 }
 
 .setting-row {
@@ -1517,7 +1533,7 @@ function closeActiveSheet() {
   /* tab 页；微信原生 tabBar 已经处理底部安全区 */
   padding: dp(8) dp(16) dp(18);
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  @include glass-sheet;
 }
 
 .sheet-handle {

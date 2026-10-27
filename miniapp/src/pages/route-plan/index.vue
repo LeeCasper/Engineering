@@ -424,9 +424,7 @@ function goBack() {
   display: flex;
   align-items: center;
   padding: dp(26) dp(18);
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  background: #fff;
+  @include glass-surface(dp(16), 18px);
   flex-direction: column;
   text-align: center;
 }
@@ -488,10 +486,7 @@ function goBack() {
 
 .plan-card {
   padding: dp(14);
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(3) dp(12) rgba(0, 0, 0, 0.025);
+  @include glass-surface(dp(16), 18px);
 }
 
 .plan-card:active {

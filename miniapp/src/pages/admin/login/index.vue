@@ -168,7 +168,7 @@ const submitting = ref(false)
 const error = ref('')
 const bindings = ref([])
 const loggingBindingId = ref(null)
-const redirect = ref('/pages/admin/projects/index')
+const redirect = ref('/pages/admin/workbench/index')
 
 onLoad((options) => {
   loadBranding()

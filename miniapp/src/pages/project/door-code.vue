@@ -25,7 +25,7 @@
       <view class="content" :class="{ 'content--owner': canManage }">
         <view class="notice-card">
           <view class="notice-icon-wrap">
-            <image class="notice-icon" src="/static/images/icon-lock-gray.png" mode="aspectFit" />
+            <image class="notice-icon" src="/static/images/icon-lock-notice.png" mode="aspectFit" />
           </view>
           <view class="notice-main">
             <text class="notice-title">
@@ -483,9 +483,12 @@ function closeActiveSheet() {
   align-items: flex-start;
   padding: dp(13);
   margin-bottom: dp(12);
-  background: #fff7f2;
-  border: 1px solid #f7d8c8;
-  border-radius: dp(14);
+  @include glass-surface(dp(14), 18px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 247, 242, 0.92) 0%,
+    rgba(255, 236, 226, 0.72) 100%
+  );
 }
 
 .notice-icon-wrap {
@@ -495,15 +498,24 @@ function closeActiveSheet() {
   width: dp(32);
   height: dp(32);
   margin-right: dp(10);
-  background: #fdebe4;
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: dp(10);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 255, 255, 0.72) 100%
+  );
+  -webkit-backdrop-filter: blur(8px) saturate(160%);
+  backdrop-filter: blur(8px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 dp(1) dp(4) rgba(94, 45, 22, 0.05);
   flex-shrink: 0;
 }
 
 .notice-icon {
-  width: dp(18);
-  height: dp(18);
-  opacity: 0.8;
+  width: dp(24);
+  height: dp(24);
 }
 
 .notice-main {
@@ -535,10 +547,7 @@ function closeActiveSheet() {
 
 .code-card {
   padding: dp(14);
-  background: #fff;
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  box-shadow: 0 dp(4) dp(20) rgba(94, 45, 22, 0.05);
+  @include glass-surface(dp(16), 20px);
 }
 
 .code-head {
@@ -663,9 +672,7 @@ function closeActiveSheet() {
   display: flex;
   align-items: center;
   padding: dp(34) dp(20);
-  background: #fff;
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
+  @include glass-surface(dp(16), 18px);
   flex-direction: column;
   text-align: center;
 }
@@ -760,9 +767,9 @@ function closeActiveSheet() {
   width: 100%;
   max-height: 86vh;
   padding: dp(8) dp(18) calc(#{dp(18)} + env(safe-area-inset-bottom));
-  background: #fff;
   border-radius: dp(22) dp(22) 0 0;
   overflow-y: auto;
+  @include glass-sheet;
 }
 
 .sheet--log {

@@ -143,6 +143,11 @@ async function list(req, res) {
   res.page(result.list, result.total, { page: result.page, pageSize: result.pageSize })
 }
 
+/** GET /admin/projects/stats —— 工作台与状态筛选计数的统一口径 */
+async function stats(req, res) {
+  res.ok(await projectService.getProjectStats(req.auth))
+}
+
 /** POST /admin/projects */
 async function create(req, res) {
   const input = validate(createSchema, req.body)
@@ -251,6 +256,7 @@ async function unlockPaymentNode(req, res) {
 
 module.exports = {
   list,
+  stats,
   create,
   detail,
   update,

@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * 电子签配置门禁：生产必须 fail-closed。
+ * 电子签配置门禁：可靠电子签是可选项，关闭时走手写签名。
  *
  * 用子进程隔离，避免进程内已经加载的 config 缓存影响结果。
  */
@@ -42,9 +42,14 @@ function runFailure(env) {
 }
 
 describe('电子签配置门禁', () => {
-  it('生产未启用电子签时拒绝启动', () => {
-    const output = runFailure({ ESIGN_ENABLED: 'false' })
-    expect(output).toContain('生产环境必须启用 ESIGN_ENABLED')
+  it('生产未启用电子签时允许启动（走手写签名）', () => {
+    const output = run({ ESIGN_ENABLED: 'false' })
+    expect(output.trim()).toBe('')
+  })
+
+  it('关闭电子签且关闭手写签名时拒绝启动', () => {
+    const output = runFailure({ ESIGN_ENABLED: 'false', ESIGN_LEGACY_SIGNING: 'false' })
+    expect(output).toContain('未启用可靠电子签时必须允许手写签名')
   })
 
   it('生产使用 mock provider 时拒绝启动', () => {

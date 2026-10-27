@@ -972,10 +972,7 @@ function closeActiveSheet() {
 .card {
   margin-bottom: dp(12);
   padding: dp(14);
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(3) dp(12) rgba(0, 0, 0, 0.025);
+  @include glass-surface(dp(16), 20px);
 }
 
 .card-head {
@@ -1266,7 +1263,11 @@ function closeActiveSheet() {
 
 .summary-card {
   padding: dp(16);
-  background: linear-gradient(150deg, #fff 0%, #fff8f3 100%);
+  background: linear-gradient(
+    150deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 248, 243, 0.68) 100%
+  );
 }
 
 .summary-head {
@@ -1679,7 +1680,7 @@ function closeActiveSheet() {
   width: 100%;
   padding: dp(8) dp(16) calc(#{dp(16)} + env(safe-area-inset-bottom));
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  @include glass-sheet;
 }
 
 .sheet-handle {

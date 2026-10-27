@@ -57,28 +57,31 @@ describe('visit · 阈值判定（AC-N19）', () => {
 })
 
 describe('visit · 水印文案（AC-N18）', () => {
-  it('包含签到时间、项目地址与坐标', () => {
+  it('包含签到时间、实时位置、项目地址与坐标', () => {
     const lines = visit.buildWatermarkLines({
       checkinAt: '2026-10-24 09:31:12',
       address: '上海市浦东新区世纪大道 100 号',
+      locationAddress: '上海市浦东新区世纪大道 88 号附近',
       latitude: 31.2304,
       longitude: 121.4737,
     })
 
-    expect(lines).toHaveLength(3)
+    expect(lines).toHaveLength(4)
     expect(lines[0]).toBe('2026-10-24 09:31:12')
-    expect(lines[1]).toBe('上海市浦东新区世纪大道 100 号')
-    expect(lines[2]).toBe('坐标 31.230400, 121.473700')
+    expect(lines[1]).toBe('签到位置：上海市浦东新区世纪大道 88 号附近')
+    expect(lines[2]).toBe('项目地址：上海市浦东新区世纪大道 100 号')
+    expect(lines[3]).toBe('坐标 31.230400, 121.473700')
   })
 
-  it('地址为空时给出可读兜底', () => {
+  it('地址为空时给出可读兜底，不编造实时地址', () => {
     const lines = visit.buildWatermarkLines({
       checkinAt: '2026-10-24 09:31:12',
       address: '   ',
       latitude: 31.2304,
       longitude: 121.4737,
     })
-    expect(lines[1]).toBe('项目地址未填写')
+    expect(lines[1]).toBe('签到位置：实时地址未解析')
+    expect(lines[2]).toBe('项目地址：项目地址未填写')
   })
 })
 

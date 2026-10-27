@@ -44,6 +44,9 @@ export const TRIGGER_LABELS = {
 
 export const BIND_FRESH_MS = 30 * 60 * 1000
 
+/** 管理端默认落地页。管理入口、登录成功、会话失效兜底都回这里 */
+export const ADMIN_HOME = '/pages/admin/workbench/index'
+
 export function formatMoney(value) {
   if (value === null || value === undefined || value === '') return '0'
   const text = String(value)
@@ -86,6 +89,24 @@ export function memberRoleLabel(role) {
   return MEMBER_ROLE_LABELS[role] || role || '成员'
 }
 
+/**
+ * 成员的角色展示文案取「最具体」的那一层：
+ * 主工长 > 主业主 > 临时业主 > 基础角色。
+ * 管理端不能只显示 roleLabel —— 工长与主工长的权限完全不同。
+ */
+export function memberRoleText(member) {
+  if (!member) return '成员'
+  if (member.isPrimaryForeman) return '主工长'
+  if (member.isPrimaryOwner) return '主业主'
+  if (member.ownerType === 'temporary') return '临时业主'
+  return member.roleLabel || memberRoleLabel(member.role)
+}
+
+export function memberStatusText(member) {
+  if (!member) return ''
+  return MEMBER_STATUS_LABELS[member.status] || member.statusLabel || member.status || ''
+}
+
 export function nodeStatusLabel(status) {
   return NODE_STATUS_LABELS[status] || status || '未知'
 }
@@ -101,11 +122,11 @@ export function isAdminFresh(profile) {
 
 export function sanitizeAdminRedirect(path) {
   if (typeof path !== 'string' || !path.startsWith('/pages/admin/')) {
-    return '/pages/admin/projects/index'
+    return ADMIN_HOME
   }
   // 登录页与改密页不能作为登录后的目标，否则会绕回自己
   if (path.startsWith('/pages/admin/login') || path.startsWith('/pages/admin/change-password')) {
-    return '/pages/admin/projects/index'
+    return ADMIN_HOME
   }
   return path
 }
@@ -114,11 +135,15 @@ export function goCProjects() {
   uni.switchTab({ url: '/pages/projects/index' })
 }
 
+export function goAdminHome() {
+  uni.redirectTo({ url: ADMIN_HOME })
+}
+
 export function goAdminProjects() {
   uni.redirectTo({ url: '/pages/admin/projects/index' })
 }
 
-export function adminBack(fallback = '/pages/admin/projects/index') {
+export function adminBack(fallback = ADMIN_HOME) {
   const pages = getCurrentPages()
   if (pages && pages.length > 1) {
     uni.navigateBack()

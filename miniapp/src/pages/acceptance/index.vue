@@ -916,7 +916,9 @@ function closeActiveSheet() {
 }
 
 .search-wrap--stuck {
-  background: #faf7f4;
+  background: rgba(250, 247, 244, 0.82);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
   box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.05);
 }
 
@@ -929,8 +931,8 @@ function closeActiveSheet() {
   height: dp(26);
   background: linear-gradient(
     180deg,
-    rgba(250, 247, 244, 1) 0%,
-    rgba(250, 247, 244, 0.78) 32%,
+    rgba(250, 247, 244, 0.88) 0%,
+    rgba(250, 247, 244, 0.56) 32%,
     rgba(250, 247, 244, 0) 100%
   );
   pointer-events: none;
@@ -959,10 +961,10 @@ function closeActiveSheet() {
   min-width: 0;
   height: dp(42);
   padding: 0 dp(14);
-  background: #fff;
-  border: 1px solid #f1ebe5;
-  border-radius: dp(999);
-  box-shadow: 0 dp(4) dp(16) rgba(94, 45, 22, 0.08);
+  @include glass-surface(dp(999), 18px);
+  box-shadow:
+    0 dp(4) dp(16) rgba(94, 45, 22, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
 }
 
 .search-icon {
@@ -1007,10 +1009,10 @@ function closeActiveSheet() {
   justify-content: center;
   height: dp(42);
   padding: 0 dp(12);
-  background: #fff;
-  border: 1px solid #f1ebe5;
-  border-radius: dp(999);
-  box-shadow: 0 dp(4) dp(16) rgba(94, 45, 22, 0.08);
+  @include glass-surface(dp(999), 18px);
+  box-shadow:
+    0 dp(4) dp(16) rgba(94, 45, 22, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
   color: #eb5c20;
   flex-shrink: 0;
 }
@@ -1056,11 +1058,19 @@ function closeActiveSheet() {
   flex: 1;
   height: dp(30);
   margin-right: dp(6);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: dp(999);
-  background: #f6ece5;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 247, 242, 0.62) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #5A4638;
   font-size: dp(12);
   font-weight: 500;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -1124,14 +1134,11 @@ function closeActiveSheet() {
 
 .card {
   padding: dp(14);
-  background: #fff;
-  border: 1px solid #f0eae4;
-  border-radius: dp(16);
-  box-shadow: 0 dp(4) dp(20) rgba(94, 45, 22, 0.05);
+  @include glass-surface(dp(16), 20px);
 }
 
 .card:active {
-  background: #fcfaf8;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .card-top {
@@ -1417,7 +1424,7 @@ function closeActiveSheet() {
   /* tab 页；微信原生 tabBar 已经处理底部安全区 */
   padding: dp(8) dp(16) dp(16);
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  @include glass-sheet;
 }
 
 .sheet--stage {

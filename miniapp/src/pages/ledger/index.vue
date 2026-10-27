@@ -239,8 +239,8 @@
           <view v-if="currentStageRow" class="stage-metrics">
             <view class="stage-tile">
               <view class="stage-metric">
-                <view class="stage-metric-icon stage-metric-icon--accent">
-                  <text class="stage-yen">¥</text>
+                <view class="stage-metric-icon stage-metric-icon--due">
+                  <image class="stage-metric-img" src="/static/images/icon-stage-due.png" mode="aspectFit" />
                 </view>
                 <view class="stage-metric-text">
                   <text class="stage-metric-label">应收</text>
@@ -249,8 +249,8 @@
               </view>
               <view class="stage-divider" />
               <view class="stage-metric">
-                <view class="stage-metric-icon stage-metric-icon--green">
-                  <image class="stage-metric-img" src="/static/images/icon-check-white.png" mode="aspectFit" />
+                <view class="stage-metric-icon">
+                  <image class="stage-metric-img" src="/static/images/icon-stage-paid.png" mode="aspectFit" />
                 </view>
                 <view class="stage-metric-text">
                   <text class="stage-metric-label">{{ heroLabels.stagePaid }}</text>
@@ -261,8 +261,8 @@
 
             <view class="stage-tile">
               <view class="stage-metric">
-                <view class="stage-metric-icon stage-metric-icon--orange">
-                  <image class="stage-metric-img" src="/static/images/icon-expense-white.png" mode="aspectFit" />
+                <view class="stage-metric-icon">
+                  <image class="stage-metric-img" src="/static/images/icon-stage-expense.png" mode="aspectFit" />
                 </view>
                 <view class="stage-metric-text">
                   <text class="stage-metric-label">支出</text>
@@ -271,8 +271,8 @@
               </view>
               <view class="stage-divider" />
               <view class="stage-metric">
-                <view class="stage-metric-icon stage-metric-icon--indigo">
-                  <image class="stage-metric-img" src="/static/images/icon-pie-white.png" mode="aspectFit" />
+                <view class="stage-metric-icon">
+                  <image class="stage-metric-img" src="/static/images/icon-stage-balance.png" mode="aspectFit" />
                 </view>
                 <view class="stage-metric-text">
                   <text class="stage-metric-label">结余</text>
@@ -1958,7 +1958,11 @@ onPullDownRefresh(async () => {
   padding-right: dp(14);
   padding-bottom: dp(8);
   padding-left: dp(16);
-  background: #faf7f4;
+  background: rgba(250, 247, 244, 0.86);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.04);
 }
 
 .nav-main {
@@ -2090,9 +2094,7 @@ onPullDownRefresh(async () => {
   width: 100%;
   margin-top: dp(20);
   overflow: hidden;
-  border: 1px solid #e8e1da;
-  border-radius: dp(14);
-  background: #fff;
+  @include glass-surface(dp(14), 18px);
 }
 
 .project-picker-row {
@@ -2237,9 +2239,15 @@ onPullDownRefresh(async () => {
   display: flex;
   margin-top: dp(14);
   padding: dp(10) dp(4);
-  border-radius: dp(12);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(6) rgba(94, 45, 22, 0.08);
+  @include glass-surface(dp(12), 18px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 255, 255, 0.84) 100%
+  );
+  box-shadow:
+    0 dp(4) dp(14) rgba(94, 45, 22, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
 }
 
 .hero-cell {
@@ -2304,10 +2312,15 @@ onPullDownRefresh(async () => {
 .pending-card {
   margin-bottom: dp(12);
   padding: dp(14);
-  border: 1px solid #ffe8ce;
-  border-radius: dp(14);
-  background: linear-gradient(90deg, #fff9f3 0%, #fffdf9 100%);
-  box-shadow: 0 dp(2) dp(6) rgba(255, 125, 0, 0.05);
+  @include glass-surface(dp(14), 18px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 249, 243, 0.9) 0%,
+    rgba(255, 253, 249, 0.7) 100%
+  );
+  box-shadow:
+    0 dp(4) dp(16) rgba(255, 125, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
 }
 
 .pending-head {
@@ -2358,9 +2371,8 @@ onPullDownRefresh(async () => {
   display: flex;
   align-items: center;
   padding: dp(10);
-  border: 1px solid rgba(253, 229, 204, 0.7);
-  border-radius: dp(10);
-  background: #fff;
+  @include glass-surface(dp(10), 16px);
+  border-color: rgba(253, 229, 204, 0.7);
 }
 
 .pending-icon {
@@ -2424,10 +2436,7 @@ onPullDownRefresh(async () => {
   overflow: hidden;
   margin: dp(2) 0 dp(12);
   padding: dp(4);
-  border: 1px solid #e8e1da;
-  border-radius: dp(999);
-  background: #fff;
-  box-shadow: 0 dp(1) dp(3) rgba(0, 0, 0, 0.03);
+  @include glass-surface(dp(999), 18px);
 }
 
 /* 胶囊背景。位置由 JS 弹簧模型驱动，translateX(100%) 对应一个选项宽度 */
@@ -2466,10 +2475,7 @@ onPullDownRefresh(async () => {
 .card {
   margin-bottom: dp(12);
   padding: dp(14);
-  border: 1px solid rgba(229, 231, 235, 0.9);
-  border-radius: dp(14);
-  background: #fff;
-  box-shadow: 0 dp(2) dp(8) rgba(0, 0, 0, 0.04);
+  @include glass-surface(dp(14), 18px);
 }
 
 .section-head {
@@ -2689,9 +2695,12 @@ onPullDownRefresh(async () => {
   display: flex;
   align-items: center;
   padding: dp(10);
-  border: 1px solid #f1ebe5;
-  border-radius: dp(10);
-  background: #faf7f3;
+  @include glass-surface(dp(10), 14px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.84) 0%,
+    rgba(250, 247, 243, 0.62) 100%
+  );
 }
 
 .stage-metric {
@@ -2705,39 +2714,25 @@ onPullDownRefresh(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: dp(20);
-  height: dp(20);
-  margin-right: dp(6);
-  border-radius: dp(999);
+  width: dp(24);
+  height: dp(24);
+  margin-right: dp(7);
   flex-shrink: 0;
 }
 
-.stage-metric-icon--accent {
-  background: #eb5c20;
+.stage-metric-icon--due {
+  width: dp(28);
+  height: dp(28);
 }
 
-.stage-metric-icon--green {
-  background: #00b42a;
-}
-
-.stage-metric-icon--orange {
-  background: #ff7d00;
-}
-
-.stage-metric-icon--indigo {
-  background: #c44710;
-}
-
-.stage-yen {
-  color: #fff;
-  font-size: dp(10);
-  font-weight: 700;
-  line-height: 1;
+.stage-metric-icon--due .stage-metric-img {
+  width: dp(28);
+  height: dp(28);
 }
 
 .stage-metric-img {
-  width: dp(11);
-  height: dp(11);
+  width: dp(24);
+  height: dp(24);
 }
 
 .stage-metric-text {
@@ -2827,11 +2822,18 @@ onPullDownRefresh(async () => {
 
 .filter-chip {
   padding: dp(5) dp(12);
-  border: 1px solid #e8e1da;
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: dp(999);
-  background: #fff;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.66) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #51463e;
   font-size: dp(11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .filter-chip--active {
@@ -2877,10 +2879,7 @@ onPullDownRefresh(async () => {
 
 .flow-card {
   padding: dp(13);
-  border: 1px solid rgba(229, 231, 235, 0.9);
-  border-radius: dp(12);
-  background: #fff;
-  box-shadow: 0 dp(1) dp(5) rgba(0, 0, 0, 0.03);
+  @include glass-surface(dp(12), 16px);
 }
 
 .flow-top {
@@ -3005,10 +3004,7 @@ onPullDownRefresh(async () => {
 
 .rec-card {
   padding: dp(13);
-  border: 1px solid rgba(229, 231, 235, 0.9);
-  border-radius: dp(12);
-  background: #fff;
-  box-shadow: 0 dp(1) dp(5) rgba(0, 0, 0, 0.03);
+  @include glass-surface(dp(12), 16px);
 }
 
 .rec-top {
@@ -3357,7 +3353,7 @@ onPullDownRefresh(async () => {
   /* tab 页；微信原生 tabBar 已经处理底部安全区 */
   padding: dp(8) dp(16) dp(16);
   border-radius: dp(20) dp(20) 0 0;
-  background: #fff;
+  @include glass-sheet;
 }
 
 .sheet--reconcile {
@@ -3613,8 +3609,12 @@ onPullDownRefresh(async () => {
   display: flex;
   margin-top: dp(12);
   padding: dp(12);
-  border-radius: dp(10);
-  background: #faf7f3;
+  @include glass-surface(dp(10), 14px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.84) 0%,
+    rgba(250, 247, 243, 0.62) 100%
+  );
 }
 
 .rec-summary-item {
