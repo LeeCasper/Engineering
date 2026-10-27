@@ -14,6 +14,7 @@ import {
   fetchProjectList,
   fetchUpdateProject,
   type BatchResult,
+  type CoordinateSource,
   type ProjectListItem,
   type ProjectStatus
 } from '@/service/api/project';
@@ -21,6 +22,7 @@ import { fetchTemplateList, type TemplateListItem } from '@/service/api/template
 import { useAuthStore } from '@/store/modules/auth';
 import { useTenantReadOnly } from '@/hooks/common/tenant';
 import { formatDate, formatMoney, PROJECT_STATUS_META } from '@/utils/format';
+import ProjectMapPicker from './components/ProjectMapPicker.vue';
 
 defineOptions({ name: 'ProjectListPage' });
 
@@ -107,6 +109,18 @@ const dialog = reactive({
 });
 
 const formRef = ref<FormInstance>();
+const locationPickerRef = ref<InstanceType<typeof ProjectMapPicker> | null>(null);
+const coordinateSource = ref<CoordinateSource>('none');
+const coordinateAddress = ref('');
+
+const COORDINATE_PATTERN = /^-?\d{1,3}(\.\d{1,7})?$/;
+
+function isValidCoordinate(value: string, min: number, max: number) {
+  const text = value.trim();
+  if (!COORDINATE_PATTERN.test(text)) return false;
+  const number = Number(text);
+  return Number.isFinite(number) && number >= min && number <= max;
+}
 
 const form = reactive({
   name: '',
@@ -116,7 +130,9 @@ const form = reactive({
   startDate: '',
   planEndDate: '',
   templateId: undefined as number | undefined,
-  remark: ''
+  remark: '',
+  longitude: '',
+  latitude: ''
 });
 
 const rules = {
@@ -168,6 +184,10 @@ function resetForm() {
   form.planEndDate = '';
   form.templateId = undefined;
   form.remark = '';
+  form.longitude = '';
+  form.latitude = '';
+  coordinateSource.value = 'none';
+  coordinateAddress.value = '';
   formRef.value?.clearValidate();
 }
 
@@ -200,9 +220,31 @@ async function openEdit(row: ProjectListItem) {
     form.planEndDate = data.planEndDate;
     form.templateId = data.templateId;
     form.remark = data.remark ?? '';
+    form.longitude = data.longitude ?? '';
+    form.latitude = data.latitude ?? '';
+
+    const hasCoordinates = Boolean(form.longitude && form.latitude);
+    coordinateSource.value = hasCoordinates ? 'hydrate' : 'none';
+    coordinateAddress.value = hasCoordinates ? form.address.trim() : '';
   }
 
   dialog.visible = true;
+}
+
+/**
+ * 地址失焦时自动定位。
+ *
+ * 地图组件内部会跳过「管理员刚刚手动拖过地图」的情况，
+ * 只有点「按地址定位 / 重新定位」才会强制覆盖手动坐标。
+ */
+async function onAddressBlur() {
+  if (!form.address.trim()) return;
+  await locationPickerRef.value?.locateByAddress();
+}
+
+function onCoordinateSourceChange(payload: { source: CoordinateSource; address: string }) {
+  coordinateSource.value = payload.source;
+  coordinateAddress.value = payload.address;
 }
 
 async function submitForm() {
@@ -212,17 +254,44 @@ async function submitForm() {
     return;
   }
 
+  const longitude = form.longitude.trim();
+  const latitude = form.latitude.trim();
+
+  if ((longitude && !latitude) || (!longitude && latitude)) {
+    ElMessage.warning('经度和纬度必须同时填写');
+    return;
+  }
+  if (longitude && !isValidCoordinate(longitude, -180, 180)) {
+    ElMessage.warning('经度格式不正确（-180 ~ 180，最多 7 位小数）');
+    return;
+  }
+  if (latitude && !isValidCoordinate(latitude, -85.0511288, 85.0511288)) {
+    ElMessage.warning('纬度格式不正确（-85.0511288 ~ 85.0511288，最多 7 位小数）');
+    return;
+  }
+
+  const addressText = form.address.trim();
+  // 地址改掉后，旧的地理编码 / 回填坐标不再可信：不提交坐标，让后端按新地址重新解析。
+  // manual（拖动 / 手工输入）是管理员明确选择的位置，地址文字变了也照常提交。
+  const staleCoordinates =
+    Boolean(longitude && latitude) &&
+    (coordinateSource.value === 'geocode' || coordinateSource.value === 'hydrate') &&
+    coordinateAddress.value !== addressText;
+  const coordinates: { longitude?: string; latitude?: string } =
+    longitude && latitude && !staleCoordinates ? { longitude, latitude } : {};
+
   dialog.submitting = true;
 
   try {
     const payload = {
       name: form.name.trim(),
-      address: form.address.trim(),
+      address: addressText,
       area: form.area.trim() || undefined,
       contractAmount: form.contractAmount.trim(),
       startDate: form.startDate,
       planEndDate: form.planEndDate,
-      remark: form.remark.trim() || undefined
+      remark: form.remark.trim() || undefined,
+      ...coordinates
     };
 
     const { data, error } =
@@ -235,8 +304,12 @@ async function submitForm() {
     ElMessage.success(dialog.mode === 'create' ? '项目已创建' : '项目已更新');
     dialog.visible = false;
 
-    if (dialog.mode === 'create' && data && 'needsCoordinates' in data && data.needsCoordinates) {
-      ElMessage.warning('地址未能自动解析坐标，可在项目详情页手工拾取');
+    if (data?.needsCoordinates) {
+      ElMessage.warning(
+        dialog.mode === 'create'
+          ? '地址未能自动解析坐标，可在编辑项目时用地图选点或手工填写'
+          : '已保存，但地址未解析出坐标，可在编辑项目时用地图选点或手工填写'
+      );
     }
 
     await load();
@@ -621,6 +694,8 @@ onMounted(async () => {
     <!-- 新建 / 编辑 -->
     <ElDialog
       v-model="dialog.visible"
+      class="project-form-dialog"
+      top="5vh"
       :title="dialog.mode === 'create' ? '新建项目' : '编辑项目'"
       width="680px"
       destroy-on-close
@@ -631,7 +706,24 @@ onMounted(async () => {
         </ElFormItem>
 
         <ElFormItem label="项目地址" prop="address">
-          <ElInput v-model="form.address" maxlength="200" placeholder="保存后自动解析坐标，失败可在详情页手工拾取" />
+          <ElInput
+            v-model="form.address"
+            maxlength="200"
+            placeholder="输入详细地址，失焦后自动定位；也可在下方地图选点"
+            @blur="onAddressBlur"
+          />
+        </ElFormItem>
+
+        <ElFormItem label="地图定位">
+          <ProjectMapPicker
+            ref="locationPickerRef"
+            v-model:longitude="form.longitude"
+            v-model:latitude="form.latitude"
+            :address="form.address"
+            :disabled="readOnly"
+            @source-change="onCoordinateSourceChange"
+            @address-suggestion="value => (form.address = value)"
+          />
         </ElFormItem>
 
         <ElFormItem label="户型面积">
@@ -740,6 +832,12 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* 地图 + 阶段模板让弹窗变高，矮屏下让 body 自己滚动，而不是把底部按钮挤出视口 */
+.project-form-dialog :deep(.el-dialog__body) {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
 /*
  * Element Plus 的 ElDropdown 会给触发元素包一层 inline-flex 且
  * vertical-align: top，而普通 ElButton 是 vertical-align: middle ——

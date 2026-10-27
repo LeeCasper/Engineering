@@ -549,8 +549,13 @@ async function createProject(operator, input) {
     throw AppError.badRequest('所选阶段模板没有任何阶段，无法生成项目结构')
   }
 
-  // 地理编码失败不阻断建档（AC-AD54）：地址照存，坐标留空，后台提示手工拾取
-  const coordinates = await mapService.geocode(input.address)
+  // 地图选点坐标优先：管理员已经在地图上确认过的位置，不再让地址解析覆盖。
+  // 没有手工坐标时才走原有地理编码；失败不阻断建档（AC-AD54）。
+  const hasManualCoordinates = input.longitude !== undefined && input.latitude !== undefined
+  const coordinates = hasManualCoordinates
+    ? { longitude: input.longitude, latitude: input.latitude }
+    : await mapService.geocode(input.address)
+  const coordinateSource = hasManualCoordinates ? 'manual' : coordinates ? 'geocode' : 'none'
 
   // B-2.3：同一管理员下重名时告警，但**允许保存** —— 返回 warning 而不是抛错
   const duplicate = await db.queryOne(
@@ -605,6 +610,9 @@ async function createProject(operator, input) {
             status: 'pending',
             templateId,
             stageCount: structure.length,
+            longitude: coordinates ? coordinates.longitude : null,
+            latitude: coordinates ? coordinates.latitude : null,
+            coordinateSource,
           },
         },
       },
@@ -620,6 +628,7 @@ async function createProject(operator, input) {
     stageCount: structure.length,
     itemCount: structure.reduce((sum, s) => sum + s.items.length, 0),
     geocoded: Boolean(coordinates),
+    coordinateSource,
     // AC-AD54：未解析出坐标时明确告知，让前端引导管理员手工拾取
     needsCoordinates: !coordinates,
     duplicates: duplicate ? { id: duplicate.id, name: input.name } : null,
@@ -648,23 +657,50 @@ async function updateProject(operator, projectId, input) {
   const project = await projectAccess.load(operator, projectId, { requireWritable: true })
 
   const addressChanged = input.address !== undefined && input.address !== project.address
+  const hasManualCoordinates = input.longitude !== undefined && input.latitude !== undefined
 
-  // 地址变更触发重新解析（§6.2：geocoded_at 置空并重新解析）
+  // 坐标来源优先级：
+  //   1. 地图选点 / 手工坐标 —— 管理员明确确认过，地址同时改也不重新解析；
+  //   2. 地址变更 —— 沿用既有地理编码，失败时清空旧坐标（AC-N10）；
+  //   3. 都不涉及 —— 坐标保持原值。
   let coordinates = null
-  if (addressChanged) {
+  if (hasManualCoordinates) {
+    coordinates = { longitude: input.longitude, latitude: input.latitude }
+  } else if (addressChanged) {
     coordinates = await mapService.geocode(input.address)
   }
 
-  await projectModel.update(projectId, {
-    ...input,
-    longitude: addressChanged ? (coordinates ? coordinates.longitude : null) : undefined,
-    latitude: addressChanged ? (coordinates ? coordinates.latitude : null) : undefined,
-    geocodedAt: addressChanged ? (coordinates ? datetime.format() : null) : undefined,
-  })
+  const coordinatePatch = {}
+  if (hasManualCoordinates || addressChanged) {
+    coordinatePatch.longitude = coordinates ? coordinates.longitude : null
+    coordinatePatch.latitude = coordinates ? coordinates.latitude : null
+    coordinatePatch.geocodedAt = coordinates ? datetime.format() : null
+  }
+
+  await projectModel.update(projectId, { ...input, ...coordinatePatch })
+
+  const coordinateSource = hasManualCoordinates
+    ? 'manual'
+    : addressChanged
+      ? (coordinates ? 'geocode' : 'none')
+      : 'unchanged'
 
   // AC-AD09 要求记「变更前后内容」。只记 input 里出现的键 ——
   // 把整行 before/after 都塞进去的话，每次编辑的 diff 里都会夹着
-  // updated_at 这类无论如何都会变的字段，真正改了哪一项反而看不出来
+  // updated_at 这类无论如何都会变的字段，真正改了哪一项反而看不出来。
+  // 地址变更会连带改变坐标，因此这里显式把坐标加入审计键；
+  // 否则「改地址导致坐标被清空」这件事在日志里看不到。
+  const auditKeys = Object.keys(input)
+  if (hasManualCoordinates || addressChanged) {
+    for (const key of ['longitude', 'latitude']) {
+      if (!auditKeys.includes(key)) auditKeys.push(key)
+    }
+  }
+  const auditAfter =
+    hasManualCoordinates || addressChanged
+      ? { ...input, longitude: coordinatePatch.longitude, latitude: coordinatePatch.latitude }
+      : input
+
   await operationLog.record({
     ...operationLog.fromOperator(operator),
     action: operationLog.ACTIONS.PROJECT_UPDATE,
@@ -672,12 +708,23 @@ async function updateProject(operator, projectId, input) {
     targetId: projectId,
     projectId,
     detail: {
-      before: pickChanged(project, Object.keys(input)),
-      after: pickChanged(input, Object.keys(input)),
+      before: pickChanged(project, auditKeys),
+      after: pickChanged(auditAfter, auditKeys),
     },
   })
 
-  return { id: projectId, needsCoordinates: addressChanged && !coordinates }
+  const projectHasCoordinates =
+    project.longitude !== null &&
+    project.longitude !== undefined &&
+    project.latitude !== null &&
+    project.latitude !== undefined
+
+  let needsCoordinates
+  if (hasManualCoordinates) needsCoordinates = false
+  else if (addressChanged) needsCoordinates = !coordinates
+  else needsCoordinates = !projectHasCoordinates
+
+  return { id: projectId, needsCoordinates, coordinateSource }
 }
 
 /** 从源对象里挑出若干字段，并把下划线列名转成接口常见的驼峰名，供审计 diff 使用 */

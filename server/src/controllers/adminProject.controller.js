@@ -7,6 +7,7 @@
 const { z } = require('zod')
 const { validate } = require('../utils/validate')
 const { parsePaging } = require('../utils/pagination')
+const { coordinateField, refineCoordinatePair } = require('../utils/coordinate')
 const money = require('../utils/money')
 const datetime = require('../utils/datetime')
 const projectService = require('../services/project.service')
@@ -32,60 +33,48 @@ const dateField = (label) =>
  */
 const amountField = z.string().refine((value) => money.validate(value).ok, '合同金额必须大于 0 且最多两位小数')
 
-const createSchema = z
-  .object({
-    name: z.string().trim().min(1, '请输入项目名称').max(50, '项目名称不超过 50 字'),
-    address: z.string().trim().min(1, '请输入项目地址').max(200, '项目地址不超过 200 字'),
-    area: z
-      .string()
-      .trim()
-      .optional()
-      .refine((v) => v === undefined || v === '' || money.validate(v).ok, '户型面积必须大于 0 且最多两位小数'),
-    contractAmount: amountField,
-    startDate: dateField('开工日期'),
-    planEndDate: dateField('计划竣工日期'),
-    templateId: z.number().int().positive().optional(),
-    remark: z.string().trim().max(500, '备注不超过 500 字').optional(),
-  })
-  // AC-AD14：计划竣工日期早于开工日期时拒绝提交
-  .refine((data) => datetime.parse(data.planEndDate).isSameOrAfter(datetime.parse(data.startDate), 'day'), {
-    message: '计划竣工日期不得早于开工日期',
-    path: ['planEndDate'],
-  })
+const createSchema = refineCoordinatePair(
+  z
+    .object({
+      name: z.string().trim().min(1, '请输入项目名称').max(50, '项目名称不超过 50 字'),
+      address: z.string().trim().min(1, '请输入项目地址').max(200, '项目地址不超过 200 字'),
+      area: z
+        .string()
+        .trim()
+        .optional()
+        .refine((v) => v === undefined || v === '' || money.validate(v).ok, '户型面积必须大于 0 且最多两位小数'),
+      contractAmount: amountField,
+      startDate: dateField('开工日期'),
+      planEndDate: dateField('计划竣工日期'),
+      templateId: z.number().int().positive().optional(),
+      remark: z.string().trim().max(500, '备注不超过 500 字').optional(),
+      // 地图选点结果。与 address 同时存在时，服务层直接用坐标，不再地理编码。
+      longitude: coordinateField('经度', -180, 180).optional(),
+      latitude: coordinateField('纬度', -90, 90).optional(),
+    })
+    // AC-AD14：计划竣工日期早于开工日期时拒绝提交
+    .refine((data) => datetime.parse(data.planEndDate).isSameOrAfter(datetime.parse(data.startDate), 'day'), {
+      message: '计划竣工日期不得早于开工日期',
+      path: ['planEndDate'],
+    })
+)
 
-const updateSchema = z
-  .object({
-    name: z.string().trim().min(1).max(50).optional(),
-    address: z.string().trim().min(1).max(200).optional(),
-    area: z.string().trim().optional(),
-    contractAmount: amountField.optional(),
-    startDate: dateField('开工日期').optional(),
-    planEndDate: dateField('计划竣工日期').optional(),
-    remark: z.string().trim().max(500).optional(),
-  })
-  .refine((data) => Object.keys(data).length > 0, '没有需要更新的字段')
-
-/**
- * 坐标字段（GCJ-02，DECIMAL(10,7)）。
- *
- * **不能复用 money.validate**：它对金额限制「最多两位小数」，
- * 而坐标需要到小数点后 7 位。用它会同时犯两个错 ——
- * 拒绝合法的 `121.4737010`，以及把精度截断成 `121.47`（约 1 公里误差）。
- *
- * 校验要求：
- *   - 整数位不超过 3 位（DECIMAL(10,7) 扣掉 7 位小数只剩 3 位）；
- *   - 小数位不超过 7 位；
- *   - 落在合理区间内。范围之外的输入一定是坐标系搞错了（AC-N03）。
- *
- * 返回值保持**字符串**，不转 Number —— 只有字符串才能原样保住 7 位小数。
- */
-function coordinateField(label, min, max) {
-  return z
-    .union([z.string(), z.number()])
-    .transform((v) => String(v).trim())
-    .refine((v) => /^-?\d{1,3}(\.\d{1,7})?$/.test(v), `${label}格式不正确（最多 7 位小数）`)
-    .refine((v) => Number(v) >= min && Number(v) <= max, `${label}必须在 ${min} ~ ${max} 之间`)
-}
+const updateSchema = refineCoordinatePair(
+  z
+    .object({
+      name: z.string().trim().min(1).max(50).optional(),
+      address: z.string().trim().min(1).max(200).optional(),
+      area: z.string().trim().optional(),
+      contractAmount: amountField.optional(),
+      startDate: dateField('开工日期').optional(),
+      planEndDate: dateField('计划竣工日期').optional(),
+      remark: z.string().trim().max(500).optional(),
+      // 允许只改坐标（不传 address）；两者必须同时出现或同时省略
+      longitude: coordinateField('经度', -180, 180).optional(),
+      latitude: coordinateField('纬度', -90, 90).optional(),
+    })
+    .refine((data) => Object.keys(data).length > 0, '没有需要更新的字段')
+)
 
 const coordinatesSchema = z.object({
   longitude: coordinateField('经度', -180, 180),

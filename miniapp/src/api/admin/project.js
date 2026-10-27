@@ -91,6 +91,31 @@ export function deleteAdminTemplate(id) {
   return adminRequest({ url: `/stage-templates/${id}`, method: 'DELETE' })
 }
 
+// ── 地图定位（服务端代理高德，Key 不下发小程序）──────────────
+//
+// 与网页后台共用 /admin/maps/*。放在已有模块里，避免微信开发者工具
+// 对新增 JS 模块的缓存问题（见上方管理员消息接口说明）。
+
+export function geocodeAdminMap(address) {
+  return adminRequest({ url: `/maps/geocode?${queryString({ address })}` })
+}
+
+export function reverseGeocodeAdminMap({ longitude, latitude }) {
+  return adminRequest({ url: `/maps/reverse-geocode?${queryString({ longitude, latitude })}` })
+}
+
+export function fetchAdminMapPreview({
+  longitude,
+  latitude,
+  zoom = 16,
+  width = 360,
+  height = 200,
+  scale = 2,
+} = {}) {
+  const query = queryString({ longitude, latitude, zoom, width, height, scale })
+  return adminRequest({ url: `/maps/static?${query}` })
+}
+
 export function createAdminProject(data) {
   return adminRequest({ url: '/projects', method: 'POST', data })
 }

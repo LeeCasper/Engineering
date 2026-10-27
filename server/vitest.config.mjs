@@ -19,7 +19,10 @@ export default defineConfig({
     // 而集成测试会 DROP DATABASE —— 那等于每次跑测试都清空开发数据。
     // WX_MOCK 固定为 true：测试必须走 mock openid，绝不能打真实微信接口；
     // 本地 .env 可能为了联调切成 WX_MOCK=false。
-    env: { NODE_ENV: 'test', WX_MOCK: 'true' },
+    // 地图 Key 必须显式清空：本地 .env 可能为了联调配了真实 AMAP_KEY，
+    // 不清空的话测试会打真实地图接口（慢、消耗配额，且结果随网络变化）。
+    // 空字符串在 dotenv 眼里也是「已设置」，因此不会被 .env 覆盖。
+    env: { NODE_ENV: 'test', WX_MOCK: 'true', AMAP_KEY: '', TENCENT_MAP_KEY: '', MAP_PROVIDER: 'auto' },
     // globals 必须开启：本项目源码是 CommonJS，测试文件也写成 CJS，
     // 而 vitest 包本身是 ESM-only，`require('vitest')` 会失败。
     // 开启后 describe/it/expect 直接可用，测试文件与源码风格保持一致。

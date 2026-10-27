@@ -151,7 +151,12 @@ export interface CreateProjectInput {
   planEndDate: string;
   templateId?: number;
   remark?: string;
+  /** 地图选点结果（GCJ-02，7 位小数字符串）；必须成对出现 */
+  longitude?: string;
+  latitude?: string;
 }
+
+export type CoordinateSource = 'manual' | 'geocode' | 'hydrate' | 'none' | 'unchanged';
 
 export interface InviteMemberInput {
   phone: string;
@@ -205,7 +210,7 @@ export function fetchProjectDetail(id: number) {
 }
 
 export function fetchCreateProject(data: CreateProjectInput) {
-  return request<{ id: number; needsCoordinates: boolean }>({
+  return request<{ id: number; needsCoordinates: boolean; coordinateSource: CoordinateSource }>({
     url: '/admin/projects',
     method: 'post',
     data
@@ -213,7 +218,7 @@ export function fetchCreateProject(data: CreateProjectInput) {
 }
 
 export function fetchUpdateProject(id: number, data: Partial<CreateProjectInput>) {
-  return request<{ id: number; needsCoordinates: boolean }>({
+  return request<{ id: number; needsCoordinates: boolean; coordinateSource: CoordinateSource }>({
     url: `/admin/projects/${id}`,
     method: 'put',
     data

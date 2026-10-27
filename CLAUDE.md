@@ -75,7 +75,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | — | C 端小程序（`miniapp/`） | 🚧 已开始：首页（我的项目）、项目详情页、工程动态页、记账页、验收页、验收详情页、登录页、角色说明页、我的页 1:1 还原；我的项目 / 项目详情 / 工程动态 / 记账总览、流水与对账 / 消息中心 / 订阅状态 / 意见反馈 / 注销账号 / 租户管理员移动管理端 / **考察计划与路线规划** / **现场签到与考察记录时间轴** / **进度汇报提交** / **门锁密码（业主管理、工长监理查看）** / 搜索筛选 / 邀请确认 / 无项目引导 / 跨项目验收收件箱 / 业主签名 / 移动管理端（工作台、项目、项目详情、跨项目成员目录、阶段模板、我的管理设置）已接通 |
 
 **后端 M1~M13、V1.2-A 路线规划、V1.2-B 现场签到、V2.9 看板、V2.10 小程序品牌、V2.12 主业主与 V2.13 可靠电子签名（可选，默认关闭）已完成**：
-167 条路由、44 张业务表、984 条自动化测试（46 个测试文件）、123~124 项端到端冒烟断言
+170 条路由、44 张业务表、1007 条自动化测试（47 个测试文件）、123~124 项端到端冒烟断言
 （平台账号首登改密那条只在首次运行时出现）。
 
 管理后台页面已交付；C 端小程序的进度汇报提交页也已接通，本轮 C 端页面清单完成。
@@ -278,6 +278,13 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **首页的搜索与筛选是前端的**：列表一次性拉全量（C 端不分页），按名称/地址/业主、
   状态、我的角色、租户在本地过滤。后端的项目状态只有 `pending/building/finished/archived`，
   设计稿里的「已暂停」在本系统没有对应值，第三个 tab 显示为「已归档」。
+- **新建 / 编辑项目支持地图定位**：网页后台与小程序管理端的项目表单都调用
+  `/admin/maps/{geocode,reverse-geocode,static}`。静态地图由服务端请求高德 Web 服务、
+  以 base64 data URL 返回，**AMap Key 不下发前端，也不要接 AMap JS SDK**。
+  创建 / 编辑接口接受可选 `longitude/latitude`（必须成对），手动坐标优先于地址地理编码；
+  地址改动后若坐标来源是地理编码 / 回填，前端不提交旧坐标，交给后端重新解析。
+  静态图拖拽使用 CSS 像素 + Web Mercator，**高德静态图 zoom 比标准 Mercator 大 1**，
+  服务端与两端前端必须使用同一偏移，否则拖动会偏一倍。
 - **项目详情与阶段树的字段来源**：`GET /projects/:id` 返回 `ownerName`、`foremanName`、
   `memberCount`、`hasSupervisor`、`isPrimaryForeman`、`currentStageId/Name/GateStatus/Progress`；
   `GET /projects/:id/stages` 返回 `gateStrength` 与每个阶段的 `canReport`、`lockedReason`。

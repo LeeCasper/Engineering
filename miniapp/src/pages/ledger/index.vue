@@ -239,7 +239,7 @@
           <view v-if="currentStageRow" class="stage-metrics">
             <view class="stage-tile">
               <view class="stage-metric">
-                <view class="stage-metric-icon stage-metric-icon--due">
+                <view class="stage-metric-icon">
                   <image class="stage-metric-img" src="/static/images/icon-stage-due.png" mode="aspectFit" />
                 </view>
                 <view class="stage-metric-text">
@@ -2718,16 +2718,6 @@ onPullDownRefresh(async () => {
   height: dp(24);
   margin-right: dp(7);
   flex-shrink: 0;
-}
-
-.stage-metric-icon--due {
-  width: dp(28);
-  height: dp(28);
-}
-
-.stage-metric-icon--due .stage-metric-img {
-  width: dp(28);
-  height: dp(28);
 }
 
 .stage-metric-img {

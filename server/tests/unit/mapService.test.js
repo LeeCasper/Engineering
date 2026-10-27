@@ -13,6 +13,9 @@ const {
   parseAmapLocation,
   parseAmapRegeo,
   parseTencentRegeo,
+  staticMapBounds,
+  moveCenterByPixels,
+  parseAmapStaticError,
 } = require('../../src/services/map.service')
 
 describe('parseAmapLocation', () => {
@@ -71,6 +74,71 @@ describe('parseAmapRegeo / parseTencentRegeo', () => {
       })
     ).toBe('上海市浦东新区世纪大道 100 号')
     expect(parseTencentRegeo({ status: 1 })).toBeNull()
+  })
+})
+
+describe('staticMapBounds / moveCenterByPixels', () => {
+  const center = { longitude: 121.473701, latitude: 31.230416 }
+
+  it('中心落在可视范围内，东西南北方向正确', () => {
+    const bounds = staticMapBounds(center, 16, 640, 360)
+
+    expect(bounds.west).toBeLessThan(center.longitude)
+    expect(bounds.east).toBeGreaterThan(center.longitude)
+    expect(bounds.south).toBeLessThan(center.latitude)
+    expect(bounds.north).toBeGreaterThan(center.latitude)
+    expect((bounds.east + bounds.west) / 2).toBeCloseTo(center.longitude, 9)
+  })
+
+  it('经度跨度符合高德静态图的 zoom / 像素关系（AMap zoom 比标准 Mercator 大 1）', () => {
+    const bounds = staticMapBounds(center, 16, 640, 360)
+    const expected = (640 / (256 * 2 ** 17)) * 360
+
+    expect(bounds.east - bounds.west).toBeCloseTo(expected, 9)
+  })
+
+  it('拖动方向与中心变化方向一致：右拖往西、下拖往北', () => {
+    const right = moveCenterByPixels(center, 100, 0, 16)
+    const down = moveCenterByPixels(center, 0, 100, 16)
+    const left = moveCenterByPixels(center, -100, 0, 16)
+    const up = moveCenterByPixels(center, 0, -100, 16)
+
+    expect(right.longitude).toBeLessThan(center.longitude)
+    expect(left.longitude).toBeGreaterThan(center.longitude)
+    expect(down.latitude).toBeGreaterThan(center.latitude)
+    expect(up.latitude).toBeLessThan(center.latitude)
+  })
+
+  it('零位移是恒等变换，往返位移可回到原点附近', () => {
+    const same = moveCenterByPixels(center, 0, 0, 16)
+    expect(same.longitude).toBeCloseTo(center.longitude, 9)
+    expect(same.latitude).toBeCloseTo(center.latitude, 9)
+
+    const moved = moveCenterByPixels(center, 120, -80, 16)
+    const back = moveCenterByPixels(moved, -120, 80, 16)
+    expect(back.longitude).toBeCloseTo(center.longitude, 9)
+    expect(back.latitude).toBeCloseTo(center.latitude, 9)
+  })
+
+  it('极区边界被限制在 Web Mercator 可用纬度内', () => {
+    const bounds = staticMapBounds({ longitude: 0, latitude: 85.05 }, 3, 640, 360)
+
+    expect(bounds.north).toBeLessThanOrEqual(85.0511287798066 + 1e-9)
+    expect(bounds.south).toBeGreaterThanOrEqual(-85.0511287798066 - 1e-9)
+  })
+})
+
+describe('parseAmapStaticError', () => {
+  it('提取高德 JSON 错误中的可读原因', () => {
+    expect(
+      parseAmapStaticError(Buffer.from(JSON.stringify({ status: '0', info: 'INVALID_USER_KEY', infocode: '10001' })))
+    ).toBe('INVALID_USER_KEY')
+  })
+
+  it('非 JSON 响应给出通用原因，不回显原始内容', () => {
+    const message = parseAmapStaticError(Buffer.from('<html>gateway error</html>'))
+    expect(message).toBe('返回了非图片内容')
+    expect(message).not.toContain('key')
   })
 })
 

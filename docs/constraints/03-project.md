@@ -159,3 +159,23 @@ C-2.4 规定完成度是**随进度汇报提交**的，而留痕正是这个产�
 - **不能删掉项目的最后一个阶段**：同理，时间轴会是一片空白。
 
 两条都返回 409 并说明原因，而不是放行后留下一个说不清状态的项目。
+
+---
+
+## 补充：项目地图定位（实现说明，不占用约束编号）
+
+新建 / 编辑项目时，网页后台与小程序管理端共用 `/admin/maps/geocode`、
+`/admin/maps/reverse-geocode`、`/admin/maps/static`。静态地图由服务端调用高德
+Web 服务，以 base64 data URL 返回；**AMap Key 只留在服务端**，前端不加载地图 JS SDK。
+
+- 创建 / 编辑接口接受可选 `longitude` / `latitude`，两者必须同时出现；
+  同时存在时直接使用，不再按地址地理编码。
+- 只改坐标（不传 address）是合法更新；`projectModel.update` 的坐标写入与
+  `address` 已解耦。
+- 前端按 `coordinateSource` 判断：地址改动后，`geocode` / `hydrate` 来源的旧坐标
+  不再提交，交给后端重新解析；`manual` / `choose` 是管理员明确选择的位置，继续提交。
+- 静态图拖拽使用 CSS 像素 + Web Mercator。**高德静态图的 zoom 比标准 Web Mercator
+  大 1**（实测 zoom=16 的覆盖范围等同 `256 * 2^17` 世界像素）；服务端与两端前端
+  必须使用同一偏移，否则拖动距离会偏一倍。
+- 地图服务不可用时返回 `found:false` / `available:false`，表单仍可保存并手工填写坐标
+  （AC-AD54）；不要把第三方地图错误打成 500。

@@ -294,6 +294,10 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 - **顶层导航**：`components/admin/AdminTabBar.vue`，四栏为工作台 / 项目 / 成员 / 我的。
   它只是管理端非 tab 页的内页导航，不注册进 `pages.json` 的 `tabBar`；顶层页之间用
   `redirectTo`，详情/表单页用 `navigateTo` 且不显示底部导航。
+- **项目表单地图定位**：`pages/admin/project/form` 新建 / 编辑项目支持按地址定位、
+  服务端静态地图拖动 / 缩放、微信原生 `uni.chooseLocation` 与手工坐标。
+  静态图来自 `/admin/maps/static` 的 base64 data URL，**小程序端不持有 AMap Key**；
+  创建 / 编辑提交可选 `longitude/latitude`，地址改动后不提交旧的地理编码坐标。
 - **动画**：管理端沿用 C 端的全局效果 —— 筛选胶囊与底部导航选中态用
   `gc-tab-pop`，列表 / 卡片用 `gc-stagger`（`gc-reveal-up` 依次上浮），
   底部面板沿用 `sheet-rise` 的缓入缓出与弹性回弹；不要再写一套 keyframes。

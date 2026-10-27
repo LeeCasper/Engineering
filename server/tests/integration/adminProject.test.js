@@ -11,6 +11,7 @@
 const db = require('../../src/db/pool')
 const cache = require('../../src/cache')
 const datetime = require('../../src/utils/datetime')
+const mapService = require('../../src/services/map.service')
 const { prepareDatabase } = require('./helpers/db')
 const request = require('./helpers/request')
 const auth = require('./helpers/auth')
@@ -462,6 +463,165 @@ describe('AC-AD12~16 / 53 / 54 建档', () => {
         .send(bad)
       expect(res.status).toBe(400)
     }
+  })
+})
+
+describe('地图坐标直传与更新', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  async function createWithCoordinates(token, templateId, coordinates = {}) {
+    return request.authed('post', '/admin/projects', token).send({
+      ...VALID_PROJECT,
+      templateId,
+      ...coordinates,
+    })
+  }
+
+  it('创建时直传坐标：跳过地理编码，按字符串原样保存', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+    const geocode = vi.spyOn(mapService, 'geocode').mockResolvedValue({
+      longitude: '1.0000000',
+      latitude: '2.0000000',
+    })
+
+    const res = await createWithCoordinates(token, templateId, {
+      longitude: '121.4737010',
+      latitude: '31.2304160',
+    })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.geocoded).toBe(true)
+    expect(res.body.data.coordinateSource).toBe('manual')
+    expect(res.body.data.needsCoordinates).toBe(false)
+    expect(geocode).not.toHaveBeenCalled()
+
+    const detail = await request.authed('get', `/admin/projects/${res.body.data.id}`, token)
+    expect(detail.body.data.longitude).toBe('121.4737010')
+    expect(detail.body.data.latitude).toBe('31.2304160')
+    expect(detail.body.data.needsCoordinates).toBe(false)
+  })
+
+  it('只传一个坐标或小数超过 7 位时返回 400', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+
+    const onlyLng = await createWithCoordinates(token, templateId, {
+      longitude: '121.4737010',
+    })
+    expect(onlyLng.status).toBe(400)
+
+    const tooPrecise = await createWithCoordinates(token, templateId, {
+      longitude: '121.47370101',
+      latitude: '31.2304160',
+    })
+    expect(tooPrecise.status).toBe(400)
+  })
+
+  it('仅更新坐标：地址不变，坐标与 geocoded_at 更新，操作日志记录前后值', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+    const created = await createWithCoordinates(token, templateId, {
+      longitude: '121.4737010',
+      latitude: '31.2304160',
+    })
+    const projectId = created.body.data.id
+
+    const res = await request.authed('put', `/admin/projects/${projectId}`, token).send({
+      longitude: '121.5000000',
+      latitude: '31.3000000',
+    })
+    expect(res.status).toBe(200)
+    expect(res.body.data.coordinateSource).toBe('manual')
+
+    const detail = await request.authed('get', `/admin/projects/${projectId}`, token)
+    expect(detail.body.data.address).toBe(VALID_PROJECT.address)
+    expect(detail.body.data.longitude).toBe('121.5000000')
+    expect(detail.body.data.latitude).toBe('31.3000000')
+
+    const row = await db.queryOne(
+      "SELECT detail FROM operation_log WHERE action = 'project.update' AND target_id = ? ORDER BY id DESC LIMIT 1",
+      [projectId]
+    )
+    const logDetail = typeof row.detail === 'string' ? JSON.parse(row.detail) : row.detail
+    expect(logDetail.before.longitude).toBe('121.4737010')
+    expect(logDetail.after.longitude).toBe('121.5000000')
+    expect(logDetail.before.latitude).toBe('31.2304160')
+    expect(logDetail.after.latitude).toBe('31.3000000')
+  })
+
+  it('地址与坐标同时更新时使用传入坐标，不再调用地理编码', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+    const created = await createWithCoordinates(token, templateId, {
+      longitude: '121.4737010',
+      latitude: '31.2304160',
+    })
+    const projectId = created.body.data.id
+    const geocode = vi.spyOn(mapService, 'geocode')
+
+    const res = await request.authed('put', `/admin/projects/${projectId}`, token).send({
+      address: '上海市徐汇区新地址 1 号',
+      longitude: '121.5000000',
+      latitude: '31.3000000',
+    })
+    expect(res.status).toBe(200)
+    expect(geocode).not.toHaveBeenCalled()
+
+    const detail = await request.authed('get', `/admin/projects/${projectId}`, token)
+    expect(detail.body.data.address).toBe('上海市徐汇区新地址 1 号')
+    expect(detail.body.data.longitude).toBe('121.5000000')
+    expect(detail.body.data.latitude).toBe('31.3000000')
+  })
+
+  it('只改地址：重新地理编码成功时更新坐标', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+    const created = await createWithCoordinates(token, templateId, {
+      longitude: '121.4737010',
+      latitude: '31.2304160',
+    })
+    const projectId = created.body.data.id
+    const geocode = vi.spyOn(mapService, 'geocode').mockResolvedValue({
+      longitude: '121.6000000',
+      latitude: '31.4000000',
+    })
+
+    const res = await request.authed('put', `/admin/projects/${projectId}`, token).send({
+      address: '上海市静安区新地址 2 号',
+    })
+    expect(res.status).toBe(200)
+    expect(res.body.data.coordinateSource).toBe('geocode')
+    expect(geocode).toHaveBeenCalledWith('上海市静安区新地址 2 号')
+
+    const detail = await request.authed('get', `/admin/projects/${projectId}`, token)
+    expect(detail.body.data.longitude).toBe('121.6000000')
+    expect(detail.body.data.latitude).toBe('31.4000000')
+  })
+
+  it('只改地址且解析失败：清空旧坐标并提示 needsCoordinates', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+    const created = await createWithCoordinates(token, templateId, {
+      longitude: '121.4737010',
+      latitude: '31.2304160',
+    })
+    const projectId = created.body.data.id
+    vi.spyOn(mapService, 'geocode').mockResolvedValue(null)
+
+    const res = await request.authed('put', `/admin/projects/${projectId}`, token).send({
+      address: '无法解析的地址',
+    })
+    expect(res.status).toBe(200)
+    expect(res.body.data.needsCoordinates).toBe(true)
+    expect(res.body.data.coordinateSource).toBe('none')
+
+    const detail = await request.authed('get', `/admin/projects/${projectId}`, token)
+    expect(detail.body.data.longitude).toBeNull()
+    expect(detail.body.data.latitude).toBeNull()
+    expect(detail.body.data.needsCoordinates).toBe(true)
   })
 })
 

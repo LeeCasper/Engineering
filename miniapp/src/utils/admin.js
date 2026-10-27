@@ -201,3 +201,58 @@ export function showAdminError(err, fallback = '操作失败') {
   if (err.statusCode === 401) return
   uni.showToast({ title: err.message || fallback, icon: 'none', duration: 2600 })
 }
+
+// ── 管理端静态地图换算 ─────────────────────────────────────
+//
+// 刻意放在已有的 utils/admin 模块里，而不是新建 mapProjection.js：
+// 微信开发者工具对运行期间新增的 JS 模块经常不更新模块映射，会报
+// `module '...' is not defined`（见 miniapp/README 的说明）。
+// 这些函数与网页后台 / 服务端使用同一套 Web Mercator 公式。
+
+const MAP_WORLD_AT_ZOOM1 = 256
+// 高德静态图 zoom 比标准 Web Mercator 大 1
+const MAP_STATIC_ZOOM_OFFSET = 1
+const MAP_COORDINATE_PATTERN = /^-?\d{1,3}(\.\d{1,7})?$/
+
+export const MAX_MERCATOR_LAT = 85.0511287798066
+
+function clampMapValue(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function lngLatToMercator(longitude, latitude, zoom) {
+  const worldSize = MAP_WORLD_AT_ZOOM1 * 2 ** (zoom + MAP_STATIC_ZOOM_OFFSET)
+  const x = ((longitude + 180) / 360) * worldSize
+  const rad = (clampMapValue(latitude, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT) * Math.PI) / 180
+  const y =
+    (0.5 - Math.log((1 + Math.sin(rad)) / (1 - Math.sin(rad))) / (4 * Math.PI)) * worldSize
+  return { x, y, worldSize }
+}
+
+function mercatorToLngLat(x, y, zoom) {
+  const worldSize = MAP_WORLD_AT_ZOOM1 * 2 ** (zoom + MAP_STATIC_ZOOM_OFFSET)
+  const longitude = (x / worldSize) * 360 - 180
+  const n = Math.PI - (2 * Math.PI * y) / worldSize
+  const latitude = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
+  return {
+    longitude: clampMapValue(longitude, -180, 180),
+    latitude: clampMapValue(latitude, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT),
+  }
+}
+
+export function moveCenterByPixels(center, dx, dy, zoom) {
+  const { x, y } = lngLatToMercator(center.longitude, center.latitude, zoom)
+  // 向右拖 → 中心往西；向下拖 → 中心往北
+  return mercatorToLngLat(x - dx, y - dy, zoom)
+}
+
+export function toCoordinateString(value) {
+  return Number(value).toFixed(7)
+}
+
+export function isValidCoordinate(value, min, max) {
+  const text = value === null || value === undefined ? '' : String(value).trim()
+  if (!MAP_COORDINATE_PATTERN.test(text)) return false
+  const number = Number(text)
+  return Number.isFinite(number) && number >= min && number <= max
+}

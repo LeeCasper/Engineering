@@ -21,6 +21,8 @@ router.use('/platform', require('./platform.routes'))
 // Express 的挂载路径按段匹配，`/platform-grants` 不会落进 `/platform`
 router.use('/platform-grants', require('./platformGrant.routes'))
 router.use('/admin-users', require('./adminUser.routes'))
+// 项目建档 / 编辑的地图定位。独立挂载，避免 /projects/:id 把固定路径当成 id
+router.use('/maps', require('./map.routes'))
 router.use('/projects', require('./project.routes'))
 // 成员 tab 的跨项目只读目录。写操作仍挂在 /projects/:id/members
 router.use('/members', require('./member.routes'))

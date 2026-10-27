@@ -183,16 +183,18 @@ async function update(id, data, tx = db) {
     }
   }
 
-  // 地址变更必须清空 geocoded_at 并触发重新解析（§6.2）：
-  // 否则项目坐标停留在旧地址上，导航会把人带到错误的地方，
-  // 而引用该项目的路线方案也失去失效判定依据（AC-N10）
-  if (data.address !== undefined) {
-    if (data.longitude !== undefined) {
-      fields.push('longitude = ?', 'latitude = ?')
-      params.push(data.longitude, data.latitude)
-    }
+  // 坐标写入与 address 解耦：地图选点允许只改坐标、不动地址。
+  // 服务层在地址变更但解析失败时会显式传 null，从而清空旧坐标
+  // （项目停留在旧地址坐标会让导航带到错误地点，AC-N10）。
+  if (data.longitude !== undefined && data.latitude !== undefined) {
+    fields.push('longitude = ?', 'latitude = ?')
+    params.push(data.longitude, data.latitude)
+  }
+
+  // geocoded_at 独立判断：手工坐标与地址解析都要留下最近一次定位时间
+  if (data.geocodedAt !== undefined) {
     fields.push('geocoded_at = ?')
-    params.push(data.geocodedAt ?? null)
+    params.push(data.geocodedAt)
   }
 
   if (fields.length === 0) return

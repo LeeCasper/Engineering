@@ -19,16 +19,27 @@
  * 本模块所有日志都不得包含完整请求 URL（URL 里带 Key）。
  */
 
+const https = require('node:https')
 const config = require('../../config')
 const logger = require('../utils/logger')
 
 const AMAP_GEOCODE_URL = 'https://restapi.amap.com/v3/geocode/geo'
 const AMAP_REGEO_URL = 'https://restapi.amap.com/v3/geocode/regeo'
 const AMAP_DRIVING_URL = 'https://restapi.amap.com/v3/direction/driving'
+const AMAP_STATICMAP_URL = 'https://restapi.amap.com/v3/staticmap'
 const TENCENT_GEOCODE_URL = 'https://apis.map.qq.com/ws/geocoder/v1/'
 const REQUEST_TIMEOUT_MS = 7000
 // 签到提交要等逆地理编码，不能像建档那样等 7 秒；超时就退回坐标水印
 const REVERSE_GEO_TIMEOUT_MS = 4000
+// 静态地图会返回几百 KB 的图片，超时比普通 JSON 稍宽松
+const STATIC_MAP_TIMEOUT_MS = 6000
+const STATIC_MAP_MAX_BYTES = 512 * 1024
+// 高德静态地图的 zoom 比标准 Web Mercator 大 1：
+// 实测 zoom=16 的覆盖范围等同于 256*2^17 世界像素。
+// bounds 与拖拽换算必须使用同一个偏移，否则拖动会偏一倍。
+const STATIC_MAP_ZOOM_OFFSET = 1
+// Web Mercator 在南北极附近发散；项目坐标实际都在中国，这里只是防呆
+const MERCATOR_MAX_LAT = 85.0511287798066
 
 /** 地图服务不可用。路线服务据此降级，而不是把整个请求打成 500 */
 class MapUnavailableError extends Error {
@@ -41,24 +52,72 @@ class MapUnavailableError extends Error {
 }
 
 /**
+ * 地图服务的底层 HTTPS 请求。
+ *
+ * 刻意不用全局 fetch：高德域名同时解析出 IPv4 / IPv6，而部分部署网络没有
+ * IPv6，Undici 的 Happy Eyeballs 会偶发先连 IPv6 并超时（实测同一进程里
+ * 第一次失败、第二次成功）。这里显式 `family: 4`，结果稳定可复现。
+ * https.request 也不会读取 HTTP_PROXY，本地代理未启动时不影响地图调用。
+ *
+ * 只接受 URL 与查询参数；**不记录完整 URL**，因为 URL 里带 Key（AC-N13）。
+ */
+function requestBuffer(url, params, timeoutMs) {
+  const query = new URLSearchParams(params)
+  const target = `${url}?${query.toString()}`
+
+  return new Promise((resolve, reject) => {
+    const req = https.get(target, { family: 4, timeout: timeoutMs }, (res) => {
+      const chunks = []
+      res.on('data', (chunk) => chunks.push(chunk))
+      res.on('end', () => {
+        resolve({
+          status: res.statusCode || 0,
+          contentType: (res.headers['content-type'] || '').split(';')[0].trim().toLowerCase(),
+          buffer: Buffer.concat(chunks),
+        })
+      })
+      res.on('error', reject)
+    })
+
+    req.on('timeout', () => req.destroy(new Error('地图服务请求超时')))
+    req.on('error', reject)
+  })
+}
+
+/**
  * 带超时的 JSON 请求。
  *
  * 只接受 URL 与查询参数，Key 在调用方拼进参数里；本函数不会把 URL 打日志。
  */
 async function fetchJson(url, params, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const query = new URLSearchParams(params)
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-
   try {
-    const res = await fetch(`${url}?${query.toString()}`, { signal: controller.signal })
-    if (!res.ok) throw new MapUnavailableError(`地图服务返回 HTTP ${res.status}`)
-    return await res.json()
+    const { status, buffer } = await requestBuffer(url, params, timeoutMs)
+    if (status < 200 || status >= 300) {
+      throw new MapUnavailableError(`地图服务返回 HTTP ${status}`)
+    }
+    return JSON.parse(buffer.toString('utf8'))
   } catch (err) {
     if (err instanceof MapUnavailableError) throw err
     throw new MapUnavailableError('地图服务请求失败', { cause: err })
-  } finally {
-    clearTimeout(timer)
+  }
+}
+
+/**
+ * 带超时的二进制请求（静态地图）。
+ *
+ * 与 fetchJson 一样只接受 URL 与查询参数；**不记录完整 URL**，
+ * 因为 URL 里带 Key（AC-N13）。
+ */
+async function fetchBinary(url, params, timeoutMs = REQUEST_TIMEOUT_MS) {
+  try {
+    const { status, contentType, buffer } = await requestBuffer(url, params, timeoutMs)
+    if (status < 200 || status >= 300) {
+      throw new MapUnavailableError(`地图服务返回 HTTP ${status}`)
+    }
+    return { buffer, contentType }
+  } catch (err) {
+    if (err instanceof MapUnavailableError) throw err
+    throw new MapUnavailableError('地图服务请求失败', { cause: err })
   }
 }
 
@@ -259,6 +318,158 @@ async function reverseGeocode({ latitude, longitude }) {
   return null
 }
 
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
+/** GCJ-02 经纬度 → Web Mercator 世界像素坐标（zoom 对应的 256*2^z 世界） */
+function lngLatToMercator(longitude, latitude, zoom) {
+  const worldSize = 256 * 2 ** (zoom + STATIC_MAP_ZOOM_OFFSET)
+  const lng = Number(longitude)
+  const lat = clampNumber(Number(latitude), -MERCATOR_MAX_LAT, MERCATOR_MAX_LAT)
+  const x = ((lng + 180) / 360) * worldSize
+  const rad = (lat * Math.PI) / 180
+  const y =
+    (0.5 - Math.log((1 + Math.sin(rad)) / (1 - Math.sin(rad))) / (4 * Math.PI)) * worldSize
+  return { x, y, worldSize }
+}
+
+/** Web Mercator 世界像素坐标 → GCJ-02 经纬度 */
+function mercatorToLngLat(x, y, zoom) {
+  const worldSize = 256 * 2 ** (zoom + STATIC_MAP_ZOOM_OFFSET)
+  const longitude = (x / worldSize) * 360 - 180
+  const n = Math.PI - (2 * Math.PI * y) / worldSize
+  const latitude = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
+  return {
+    longitude: clampNumber(longitude, -180, 180),
+    latitude: clampNumber(latitude, -MERCATOR_MAX_LAT, MERCATOR_MAX_LAT),
+  }
+}
+
+/**
+ * 静态地图的可视范围。
+ *
+ * width / height 是**前端 CSS 显示尺寸**，不是乘过 scale 的图片像素。
+ * scale 只影响清晰度，不改变地理覆盖范围。
+ */
+function staticMapBounds({ longitude, latitude }, zoom, width, height) {
+  const { x, y } = lngLatToMercator(longitude, latitude, zoom)
+  return {
+    west: mercatorToLngLat(x - width / 2, y, zoom).longitude,
+    east: mercatorToLngLat(x + width / 2, y, zoom).longitude,
+    north: mercatorToLngLat(x, y - height / 2, zoom).latitude,
+    south: mercatorToLngLat(x, y + height / 2, zoom).latitude,
+  }
+}
+
+/**
+ * 按拖拽像素移动中心。
+ *
+ * dx > 0 表示把地图向右拖，中心应该往西（经度变小）；
+ * dy > 0 表示把地图向下拖，中心应该往北（纬度变大）。
+ */
+function moveCenterByPixels({ longitude, latitude }, dx, dy, zoom) {
+  const { x, y } = lngLatToMercator(longitude, latitude, zoom)
+  return mercatorToLngLat(x - dx, y - dy, zoom)
+}
+
+/** 有的响应会漏掉 Content-Type，PNG 文件头作为兜底 */
+function isPngBuffer(buffer) {
+  return (
+    buffer &&
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  )
+}
+
+/** 高德静态地图失败时返回 JSON（HTTP 仍可能是 200），提取可读原因 */
+function parseAmapStaticError(buffer) {
+  try {
+    const data = JSON.parse(buffer.toString('utf8'))
+    return data.info || data.message || data.infocode || '未知错误'
+  } catch {
+    return '返回了非图片内容'
+  }
+}
+
+/**
+ * 高德静态地图。
+ *
+ * 返回原始 Buffer 与 Content-Type，由上层决定是否转 data URL。
+ * 不传 markers：前端用固定中心图钉表示选中点，避免图片内标记与图钉重复。
+ *
+ * @returns {Promise<{buffer: Buffer, contentType: string, scale: 1|2}>}
+ * @throws {MapUnavailableError}
+ */
+async function staticMap({ longitude, latitude, zoom = 16, width = 640, height = 360, scale = 2 }) {
+  const lng = Number(longitude)
+  const lat = Number(latitude)
+  const z = Math.trunc(Number(zoom))
+  const w = Math.trunc(Number(width))
+  const h = Math.trunc(Number(height))
+  const requestedScale = Number(scale)
+
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+    throw new MapUnavailableError('经度不合法')
+  }
+  if (!Number.isFinite(lat) || lat < -MERCATOR_MAX_LAT || lat > MERCATOR_MAX_LAT) {
+    throw new MapUnavailableError('纬度不合法')
+  }
+  if (!Number.isInteger(z) || z < 1 || z > 17) {
+    throw new MapUnavailableError('地图缩放级别不合法')
+  }
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || w > 1024 || h > 1024) {
+    throw new MapUnavailableError('地图尺寸不合法')
+  }
+  if (w * h > 640 * 480) {
+    throw new MapUnavailableError('地图预览尺寸过大')
+  }
+  if (requestedScale !== 1 && requestedScale !== 2) {
+    throw new MapUnavailableError('地图缩放比例不合法')
+  }
+  if (!config.map.amapKey || config.map.provider === 'tencent') {
+    throw new MapUnavailableError('未配置高德 Web 服务 Key，无法生成地图预览')
+  }
+
+  const center = `${lng.toFixed(7)},${lat.toFixed(7)}`
+  const request = (actualScale) =>
+    fetchBinary(
+      AMAP_STATICMAP_URL,
+      {
+        location: center,
+        zoom: z,
+        size: `${w}*${h}`,
+        scale: actualScale,
+        key: config.map.amapKey,
+      },
+      STATIC_MAP_TIMEOUT_MS
+    )
+
+  const normalize = (result, usedScale) => {
+    if (result.contentType.startsWith('image/') || isPngBuffer(result.buffer)) {
+      return { ...result, scale: usedScale }
+    }
+    throw new MapUnavailableError(`高德静态地图失败：${parseAmapStaticError(result.buffer)}`)
+  }
+
+  let actualScale = requestedScale
+  let result = normalize(await request(actualScale), actualScale)
+
+  // Retina 图会明显更大；超过上限时降级清晰度，而不是让整个预览失败
+  if (result.buffer.length > STATIC_MAP_MAX_BYTES && actualScale === 2) {
+    actualScale = 1
+    result = normalize(await request(actualScale), actualScale)
+  }
+  if (result.buffer.length > STATIC_MAP_MAX_BYTES) {
+    throw new MapUnavailableError('地图预览过大，请缩小预览尺寸')
+  }
+
+  return result
+}
+
 /**
  * 解析高德路径中的折线。
  *
@@ -345,8 +556,12 @@ module.exports = {
   geocode,
   reverseGeocode,
   drivingRoute,
+  staticMap,
+  staticMapBounds,
+  moveCenterByPixels,
   decodeAmapPolyline,
   parseAmapLocation,
   parseAmapRegeo,
   parseTencentRegeo,
+  parseAmapStaticError,
 }

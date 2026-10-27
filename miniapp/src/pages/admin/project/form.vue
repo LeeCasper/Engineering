@@ -38,10 +38,97 @@
               v-model="form.address"
               class="admin-input"
               maxlength="200"
-              placeholder="请输入详细地址"
+              placeholder="请输入详细地址，失焦后自动定位"
               placeholder-class="admin-placeholder"
+              @blur="onAddressBlur"
             />
-            <text class="admin-form-hint">地址解析坐标失败时仍可保存，坐标可在网页后台手工拾取。</text>
+            <text class="admin-form-hint">也可以在地图上选点；地图解析失败时仍可保存，并手工填写坐标。</text>
+          </view>
+
+          <view class="admin-form-group">
+            <text class="admin-form-label">地图定位</text>
+
+            <view
+              v-if="hasCoordinates"
+              class="location-map"
+              @touchstart="onMapTouchStart"
+              @touchmove.stop.prevent="onMapTouchMove"
+              @touchend="onMapTouchEnd"
+              @touchcancel="onMapTouchCancel"
+            >
+              <image
+                v-if="mapPreview && !mapImageError"
+                class="location-map-image"
+                :src="mapPreview"
+                mode="aspectFill"
+                :style="mapImageStyle"
+                @error="onMapImageError"
+              />
+              <view v-else class="location-map-placeholder">
+                <text>{{ mapError || '地图预览不可用，可直接保存坐标' }}</text>
+              </view>
+              <view v-if="!mapError && !mapImageError" class="location-pin" />
+              <view v-if="mapLoading" class="location-map-loading">
+                <text>地图加载中…</text>
+              </view>
+            </view>
+
+            <view v-else class="location-empty">
+              <text class="location-empty-title">还没有设置项目位置</text>
+              <text class="location-empty-sub">输入地址后按「按地址定位」，或使用地图选点 / 手工坐标。</text>
+            </view>
+
+            <view class="location-actions">
+              <button class="admin-btn admin-btn--ghost location-btn" :disabled="locating" @tap="locateByAddress">
+                {{ locating ? '定位中…' : '按地址定位' }}
+              </button>
+              <button class="admin-btn admin-btn--ghost location-btn" @tap="chooseOnMap">地图选点</button>
+              <button class="admin-btn admin-btn--ghost location-btn" @tap="toggleManual">
+                {{ manualOpen ? '收起坐标' : '手工坐标' }}
+              </button>
+            </view>
+
+            <view v-if="hasCoordinates" class="location-meta">
+              <text>经度 {{ form.longitude }} · 纬度 {{ form.latitude }}</text>
+              <text class="location-zoom">缩放 {{ mapZoom }}</text>
+            </view>
+
+            <view v-if="hasCoordinates" class="location-actions">
+              <button class="admin-btn admin-btn--ghost location-btn" @tap="zoomOut">－ 缩小</button>
+              <button class="admin-btn admin-btn--ghost location-btn" @tap="zoomIn">＋ 放大</button>
+            </view>
+
+            <text v-if="pickedAddress" class="admin-form-hint">
+              地图位置：{{ pickedAddress }}
+              <text class="location-link" @tap="usePickedAddress">填入项目地址</text>
+            </text>
+            <text v-if="addressStale" class="admin-form-hint location-warn">
+              地址已修改，建议重新定位或确认地图位置。
+            </text>
+
+            <view v-if="manualOpen" class="manual-coords">
+              <input
+                v-model="manualLng"
+                class="admin-input"
+                type="digit"
+                maxlength="20"
+                placeholder="经度，如 121.4737010"
+                placeholder-class="admin-placeholder"
+              />
+              <input
+                v-model="manualLat"
+                class="admin-input"
+                type="digit"
+                maxlength="20"
+                placeholder="纬度，如 31.2304160"
+                placeholder-class="admin-placeholder"
+              />
+              <view class="location-actions">
+                <button class="admin-btn admin-btn--ghost location-btn" @tap="applyManual">应用坐标</button>
+                <button class="admin-btn admin-btn--ghost location-btn" @tap="toggleManual">取消</button>
+              </view>
+              <text v-if="manualError" class="location-error">{{ manualError }}</text>
+            </view>
           </view>
 
           <view class="form-grid">
@@ -166,16 +253,26 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import AdminNav from '../../../components/admin/AdminNav.vue'
 import {
   createAdminProject,
   updateAdminProject,
   fetchAdminProject,
+  geocodeAdminMap,
+  fetchAdminMapPreview,
 } from '../../../api/admin/project'
 import { fetchAdminTemplates } from '../../../api/admin/template'
-import { requireAdminSession, formatDate, showAdminError } from '../../../utils/admin'
+import {
+  requireAdminSession,
+  formatDate,
+  showAdminError,
+  MAX_MERCATOR_LAT,
+  isValidCoordinate,
+  moveCenterByPixels,
+  toCoordinateString,
+} from '../../../utils/admin'
 
 defineOptions({ name: 'AdminProjectFormPage' })
 
@@ -190,7 +287,47 @@ const form = reactive({
   planEndDate: '',
   templateId: '',
   remark: '',
+  longitude: '',
+  latitude: '',
 })
+
+const mapPreview = ref('')
+const mapLoading = ref(false)
+const mapError = ref('')
+const mapImageError = ref(false)
+const locating = ref(false)
+const mapZoom = ref(16)
+const coordinateSource = ref('none')
+const locatedAddress = ref('')
+const pickedAddress = ref('')
+const manualOpen = ref(false)
+const manualLng = ref('')
+const manualLat = ref('')
+const manualError = ref('')
+const dragState = reactive({ active: false, startX: 0, startY: 0, dx: 0, dy: 0 })
+const mapWidth = ref(0)
+const mapHeight = ref(0)
+
+let previewSeq = 0
+let locateSeq = 0
+
+const hasCoordinates = computed(
+  () =>
+    isValidCoordinate(form.longitude, -180, 180) &&
+    isValidCoordinate(form.latitude, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)
+)
+
+const addressStale = computed(() => {
+  const address = form.address.trim()
+  return Boolean(hasCoordinates.value && locatedAddress.value && address && address !== locatedAddress.value)
+})
+
+const mapImageStyle = computed(
+  () =>
+    `transform: translate3d(${dragState.dx}px, ${dragState.dy}px, 0); transition: ${
+      dragState.active ? 'none' : 'transform .15s ease'
+    };`
+)
 
 const templates = ref([])
 const templatesLoading = ref(false)
@@ -259,6 +396,12 @@ async function loadProject() {
     form.planEndDate = formatDate(data.planEndDate)
     form.remark = data.remark || ''
     form.templateId = data.templateId || ''
+    form.longitude = data.longitude || ''
+    form.latitude = data.latitude || ''
+
+    const hasCoords = Boolean(form.longitude && form.latitude)
+    coordinateSource.value = hasCoords ? 'hydrate' : 'none'
+    locatedAddress.value = hasCoords ? form.address.trim() : ''
   } catch (err) {
     loadError.value = err.message || '项目加载失败'
     showAdminError(err, '项目加载失败')
@@ -266,6 +409,340 @@ async function loadProject() {
     loading.value = false
   }
 }
+
+// ── 地图定位 ─────────────────────────────────────────────
+//
+// 静态图由服务端生成，地图 Key 不在小程序里出现。拖动、缩放只改
+// 中心坐标；松手后重新拉一张图。微信端额外提供原生 chooseLocation 快捷选点。
+
+function setCoordinates(lng, lat, source, address) {
+  const lngNumber = Number(lng)
+  const latNumber = Number(lat)
+  if (!Number.isFinite(lngNumber) || !Number.isFinite(latNumber)) return false
+
+  // 必须先格式化成 7 位小数字符串再校验：拖拽得到的原始 Number 通常有
+  // 十几位小数，直接传给 isValidCoordinate 会被「最多 7 位小数」规则拒绝。
+  const lngText = toCoordinateString(lngNumber)
+  const latText = toCoordinateString(latNumber)
+  if (!isValidCoordinate(lngText, -180, 180)) return false
+  if (!isValidCoordinate(latText, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)) return false
+
+  form.longitude = lngText
+  form.latitude = latText
+  coordinateSource.value = source
+  locatedAddress.value = String(address || '').trim()
+  mapImageError.value = false
+  return true
+}
+
+function resetMapPreview() {
+  previewSeq += 1
+  mapPreview.value = ''
+  mapLoading.value = false
+  mapError.value = ''
+  mapImageError.value = false
+}
+
+function clearCoordinates() {
+  resetMapPreview()
+  form.longitude = ''
+  form.latitude = ''
+  coordinateSource.value = 'none'
+  locatedAddress.value = ''
+  pickedAddress.value = ''
+  dragState.active = false
+  dragState.dx = 0
+  dragState.dy = 0
+}
+
+function measureMap() {
+  return new Promise((resolve) => {
+    uni
+      .createSelectorQuery()
+      .select('.location-map')
+      .boundingClientRect((rect) => {
+        resolve(
+          rect && rect.width
+            ? { width: Math.round(rect.width), height: Math.round(rect.height) }
+            : null
+        )
+      })
+      .exec()
+  })
+}
+
+async function refreshMapPreview() {
+  if (!hasCoordinates.value) {
+    resetMapPreview()
+    return
+  }
+
+  const seq = ++previewSeq
+  mapLoading.value = true
+  mapError.value = ''
+
+  try {
+    await nextTick()
+    const measured = await measureMap()
+    if (seq !== previewSeq || !hasCoordinates.value) return
+
+    const info = uni.getSystemInfoSync()
+    const width = Math.max(
+      240,
+      Math.min(640, (measured && measured.width) || Math.round((info.windowWidth || 375) - 64))
+    )
+    const height = Math.max(
+      120,
+      Math.min(480, (measured && measured.height) || Math.round((width * 200) / 360))
+    )
+    mapWidth.value = width
+    mapHeight.value = height
+
+    const data = await fetchAdminMapPreview({
+      longitude: form.longitude,
+      latitude: form.latitude,
+      zoom: mapZoom.value,
+      width,
+      height,
+      scale: 2,
+    })
+
+    if (seq !== previewSeq) return
+
+    if (data && data.available && data.dataUrl) {
+      mapPreview.value = data.dataUrl
+      mapImageError.value = false
+      mapWidth.value = data.width || width
+      mapHeight.value = data.height || height
+    } else {
+      mapPreview.value = ''
+      mapError.value = (data && data.message) || '地图预览不可用，可直接保存坐标'
+    }
+  } catch (err) {
+    if (seq === previewSeq) {
+      mapPreview.value = ''
+      mapError.value = '地图预览加载失败，可直接保存坐标'
+    }
+  } finally {
+    if (seq === previewSeq) mapLoading.value = false
+  }
+}
+
+async function locateByAddress() {
+  const address = form.address.trim()
+  if (!address) {
+    uni.showToast({ title: '请先输入项目地址', icon: 'none' })
+    return
+  }
+  if (locating.value) return
+
+  const seq = ++locateSeq
+  locating.value = true
+
+  try {
+    const result = await geocodeAdminMap(address)
+    if (seq !== locateSeq) return
+
+    if (result && result.found && result.longitude && result.latitude) {
+      setCoordinates(result.longitude, result.latitude, 'geocode', address)
+      pickedAddress.value = ''
+      return
+    }
+
+    // 地址改坏时不要继续保留旧的地理编码坐标；手动选点则尊重管理员的选择
+    if (coordinateSource.value !== 'manual' && coordinateSource.value !== 'choose') {
+      clearCoordinates()
+    }
+    uni.showToast({
+      title:
+        result && result.reason === 'unavailable'
+          ? '地图服务不可用，请手工填坐标'
+          : '没有找到地址坐标，可地图选点',
+      icon: 'none',
+    })
+  } catch (err) {
+    if (seq === locateSeq) showAdminError(err, '地址定位失败')
+  } finally {
+    if (seq === locateSeq) locating.value = false
+  }
+}
+
+function onAddressBlur() {
+  const address = form.address.trim()
+  if (!address) return
+  // 手动选点后失焦不覆盖，只有明确点「按地址定位」才重新解析
+  if (coordinateSource.value === 'manual' || coordinateSource.value === 'choose') return
+  // 已经按同一地址解析过，不必重复请求
+  if (hasCoordinates.value && locatedAddress.value === address) return
+  locateByAddress()
+}
+
+function chooseOnMap() {
+  if (typeof uni.chooseLocation !== 'function') {
+    uni.showToast({ title: '当前环境不支持地图选点，请用地址定位', icon: 'none' })
+    return
+  }
+
+  const options = {}
+  if (hasCoordinates.value) {
+    options.latitude = Number(form.latitude)
+    options.longitude = Number(form.longitude)
+  }
+
+  uni.chooseLocation({
+    ...options,
+    success(res) {
+      const lat = Number(res.latitude)
+      const lng = Number(res.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        uni.showToast({ title: '没有取到有效坐标，请重试', icon: 'none' })
+        return
+      }
+
+      const picked = String(res.address || res.name || '').trim()
+      setCoordinates(lng, lat, 'choose', form.address.trim())
+      pickedAddress.value = picked
+      if (!form.address.trim() && picked) {
+        form.address = picked
+        locatedAddress.value = picked
+      }
+    },
+    fail(err) {
+      const detail = String((err && err.errMsg) || '')
+      if (detail.includes('cancel')) return
+      uni.showModal({
+        title: '无法选择位置',
+        content: '请允许小程序使用位置信息，或使用「按地址定位」。',
+        showCancel: false,
+      })
+    },
+  })
+}
+
+function usePickedAddress() {
+  if (!pickedAddress.value) return
+  form.address = pickedAddress.value
+  locatedAddress.value = pickedAddress.value
+  pickedAddress.value = ''
+}
+
+function toggleManual() {
+  if (manualOpen.value) {
+    manualOpen.value = false
+    manualError.value = ''
+    return
+  }
+  manualLng.value = form.longitude || ''
+  manualLat.value = form.latitude || ''
+  manualError.value = ''
+  manualOpen.value = true
+}
+
+function applyManual() {
+  const lng = manualLng.value.trim()
+  const lat = manualLat.value.trim()
+
+  if (!lng || !lat) {
+    manualError.value = '经度和纬度必须同时填写'
+    return
+  }
+  if (!isValidCoordinate(lng, -180, 180)) {
+    manualError.value = '经度格式不正确（-180 ~ 180，最多 7 位小数）'
+    return
+  }
+  if (!isValidCoordinate(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)) {
+    manualError.value = '纬度格式不正确（最多 7 位小数）'
+    return
+  }
+
+  if (!setCoordinates(lng, lat, 'manual', form.address)) return
+  manualOpen.value = false
+  manualError.value = ''
+}
+
+function zoomIn() {
+  if (mapLoading.value || mapZoom.value >= 17) return
+  mapZoom.value += 1
+}
+
+function zoomOut() {
+  if (mapLoading.value || mapZoom.value <= 10) return
+  mapZoom.value -= 1
+}
+
+function touchPoint(event) {
+  const touch =
+    (event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0])
+  if (!touch) return null
+  return {
+    x: touch.clientX !== undefined ? touch.clientX : touch.pageX,
+    y: touch.clientY !== undefined ? touch.clientY : touch.pageY,
+  }
+}
+
+function onMapTouchStart(event) {
+  if (!hasCoordinates.value || mapLoading.value || mapError.value || mapImageError.value) return
+  const point = touchPoint(event)
+  if (!point) return
+
+  dragState.active = true
+  dragState.startX = point.x
+  dragState.startY = point.y
+  dragState.dx = 0
+  dragState.dy = 0
+}
+
+function onMapTouchMove(event) {
+  if (!dragState.active) return
+  const point = touchPoint(event)
+  if (!point) return
+  dragState.dx = point.x - dragState.startX
+  dragState.dy = point.y - dragState.startY
+}
+
+function onMapTouchEnd() {
+  if (!dragState.active) return
+
+  dragState.active = false
+  const dx = dragState.dx
+  const dy = dragState.dy
+  dragState.dx = 0
+  dragState.dy = 0
+
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
+  if (!mapWidth.value || !mapHeight.value) return
+
+  const next = moveCenterByPixels(
+    { longitude: Number(form.longitude), latitude: Number(form.latitude) },
+    dx,
+    dy,
+    mapZoom.value
+  )
+  setCoordinates(next.longitude, next.latitude, 'manual', form.address)
+}
+
+function onMapTouchCancel() {
+  dragState.active = false
+  dragState.dx = 0
+  dragState.dy = 0
+}
+
+function onMapImageError() {
+  mapImageError.value = true
+}
+
+watch([() => form.longitude, () => form.latitude, mapZoom], () => {
+  if (!hasCoordinates.value) {
+    resetMapPreview()
+    return
+  }
+  refreshMapPreview()
+})
+
+onBeforeUnmount(() => {
+  previewSeq += 1
+  locateSeq += 1
+})
 
 async function submit() {
   if (saving.value) return
@@ -275,7 +752,17 @@ async function submit() {
   saving.value = true
   try {
     if (isEdit.value) {
-      await updateAdminProject(projectId.value, buildPayload(false))
+      const updated = await updateAdminProject(projectId.value, buildPayload(false))
+      if (updated && updated.needsCoordinates) {
+        uni.showModal({
+          title: '已保存',
+          content: '地址未解析出坐标，可在编辑项目时用地图选点或手工填写坐标。',
+          showCancel: false,
+          success: () => uni.navigateBack(),
+        })
+        return
+      }
+
       uni.showToast({ title: '已保存', icon: 'success' })
       setTimeout(() => uni.navigateBack(), 350)
       return
@@ -284,7 +771,9 @@ async function submit() {
     const created = await createAdminProject(buildPayload(true))
     const messages = []
     if (created && created.duplicates) messages.push('存在同名项目，已按允许重复的规则创建')
-    if (created && created.needsCoordinates) messages.push('地址未解析出坐标，可稍后在网页后台手工拾取')
+    if (created && created.needsCoordinates) {
+      messages.push('地址未解析出坐标，可在编辑项目时用地图选点或手工填写坐标')
+    }
 
     if (messages.length) {
       uni.showModal({
@@ -307,9 +796,10 @@ async function submit() {
 }
 
 function buildPayload(includeTemplate) {
+  const address = form.address.trim()
   const payload = {
     name: form.name.trim(),
-    address: form.address.trim(),
+    address,
     contractAmount: String(form.contractAmount).trim(),
     startDate: form.startDate,
     planEndDate: form.planEndDate,
@@ -318,6 +808,19 @@ function buildPayload(includeTemplate) {
   if (form.area && String(form.area).trim()) payload.area = String(form.area).trim()
   if (form.remark && form.remark.trim()) payload.remark = form.remark.trim()
   if (includeTemplate && form.templateId) payload.templateId = Number(form.templateId)
+
+  // 地址改掉后，旧的地理编码 / 回填坐标不再可信，交给后端按新地址重新解析；
+  // manual / choose 是管理员明确选的位置，地址文字变了也保留。
+  const hasCoords = Boolean(form.longitude && form.latitude)
+  const staleCoordinates =
+    hasCoords &&
+    (coordinateSource.value === 'geocode' || coordinateSource.value === 'hydrate') &&
+    locatedAddress.value !== address
+  if (hasCoords && !staleCoordinates) {
+    payload.longitude = String(form.longitude)
+    payload.latitude = String(form.latitude)
+  }
+
   return payload
 }
 
@@ -329,6 +832,15 @@ function validate() {
   }
   if (form.area && !/^\d+(\.\d{1,2})?$/.test(String(form.area).trim())) {
     return '面积必须大于 0，且最多两位小数'
+  }
+  if (form.longitude || form.latitude) {
+    if (!form.longitude || !form.latitude) return '经度和纬度必须同时填写'
+    if (!isValidCoordinate(form.longitude, -180, 180)) {
+      return '经度格式不正确（-180 ~ 180，最多 7 位小数）'
+    }
+    if (!isValidCoordinate(form.latitude, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)) {
+      return '纬度格式不正确（最多 7 位小数）'
+    }
   }
   if (!form.startDate) return '请选择开工日期'
   if (!form.planEndDate) return '请选择计划竣工日期'
@@ -357,6 +869,145 @@ function chooseTemplate(template) {
 </script>
 
 <style scoped lang="scss">
+.location-empty {
+  padding: dp(16);
+  border: 1px dashed #e5e1dc;
+  border-radius: dp(10);
+  background: #fffaf6;
+  text-align: center;
+}
+
+.location-empty-title {
+  display: block;
+  color: #241c17;
+  font-size: dp(13);
+  font-weight: 600;
+}
+
+.location-empty-sub {
+  display: block;
+  margin-top: dp(4);
+  color: #8b8179;
+  font-size: dp(10);
+  line-height: 1.6;
+}
+
+.location-map {
+  position: relative;
+  width: 100%;
+  /* 服务端预览宽度上限 640；H5 宽屏下也按 640 渲染，保证拖拽像素换算一致 */
+  max-width: 640px;
+  margin: 0 auto;
+  padding-top: 55.56%;
+  overflow: hidden;
+  border-radius: dp(10);
+  background: #f0ede9;
+  touch-action: none;
+}
+
+.location-map-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+.location-map-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: dp(16);
+  color: #8b8179;
+  font-size: dp(11);
+  text-align: center;
+}
+
+.location-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: dp(14);
+  height: dp(14);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #eb5c20;
+  box-shadow: 0 0 0 2px rgba(235, 92, 32, 0.28), 0 2px 6px rgba(0, 0, 0, 0.22);
+  transform: translate(-50%, -50%);
+}
+
+.location-map-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.78);
+  color: #8b8179;
+  font-size: dp(11);
+}
+
+.location-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: dp(8);
+  margin-top: dp(8);
+}
+
+.location-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: dp(32);
+  margin: 0;
+  padding: 0 dp(12);
+  font-size: dp(11);
+  line-height: 1;
+}
+
+.location-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: dp(8);
+  margin-top: dp(6);
+  color: #6b625b;
+  font-size: dp(10);
+}
+
+.location-zoom {
+  color: #a0968d;
+}
+
+.location-warn {
+  color: #d97706;
+}
+
+.location-link {
+  margin-left: dp(4);
+  color: #eb5c20;
+}
+
+.manual-coords {
+  display: flex;
+  flex-direction: column;
+  gap: dp(8);
+  margin-top: dp(8);
+}
+
+.location-error {
+  color: #f53f3f;
+  font-size: dp(10);
+}
+
 .form-grid {
   display: flex;
   gap: dp(10);
