@@ -400,20 +400,19 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **C 端没有建档权限**：项目新建只对租户管理员开放，入口在管理端工作台的
   「新建项目」快捷入口和项目管理列表头部的「+ 新建项目」。C 端项目列表**不展示**
   「新建项目」按钮，也不要把用户引导到一个不存在的 C 端建档接口。
-- **C 端底部导航是自绘的 `ClientTabBar`**：`pages.json` 的 `tabBar` 保留项目 / 验收 /
-  记账 / 我的四项与图标配置（`switchTab` 依赖它），并设置 **`"custom": true`** ——
-  微信从此完全不再渲染原生栏，登录后首屏也不会闪。按微信约定还需要
-  `src/custom-tab-bar/` 的空组件占位，否则开发者工具会报组件不存在；
-  那个目录是**原生 WXML 组件**，只放占位，不要在里面实现底栏。
-  真正显示的是 `components/ClientTabBar.vue` 的固定定位玻璃底栏，
-  位置、高度与原生栏一致；App 启动 / 登录跳转前 / tab 页 `onLoad` 仍保留
-  `uni.hideTabBar()` 作为 H5 的兜底（微信端在 custom 模式下是空操作）。
-  每个 tab 页底部至少预留 `76dp + 安全区`（项目页沿用 96dp），不要再用 H5 专用的 padding 分支。
-  切 tab 用 `uni.switchTab`，**不要用 `reLaunch`**（会重建页面并白屏）。
-  「我的」未读数走 `utils/notificationBadge.js` 的 `mineTabBadge` ref，
-  由底栏渲染红点；`uni.setTabBarBadge` 对隐藏的原生栏无效，不要恢复。
-  底栏 z-index 是 900，低于所有底部弹窗遮罩，避免盖住面板。
-  「我的」是个人工作台（资料、多项目切换、业主联系人 / 工长统计、消息、订阅、反馈、注销）。
+- **C 端底栏分平台实现**：`pages.json` 的 `tabBar` 保留四项与图标配置
+  （`switchTab` 依赖它）并设置 **`"custom": true`**。
+  - **微信端**用 `src/custom-tab-bar/` 的**原生 WXML 组件**：它由微信渲染在
+    webview 之外，切换 tab 时不会随页面重建，因此不会闪。**不要**把底栏放回
+    Vue 页面里，也不要在 `switchTab` 里再 `setData({ selected })`（会二次重绘）。
+    选中态由组件按当前路由初始化，页面 `onShow` 通过 `utils/tabBar.js` 兜底同步；
+    未读红点由 `notificationBadge` 写入 `gc_mine_badge` 并推送 `badge`。
+  - **H5** 仍用 `components/ClientTabBar.vue`（条件编译只在 H5 渲染），
+    并在 `App.onLaunch` / 登录跳转前 / tab 页 `onLoad` 调 `uni.hideTabBar()`
+    隐藏 H5 的 `uni-tabbar`。
+  - 每个 tab 页底部至少预留 `76dp + 安全区`（项目页沿用 96dp）。
+  - 切 tab 用 `uni.switchTab`，**不要用 `reLaunch`**（会重建页面并白屏）。
+  - 「我的」是个人工作台（资料、多项目切换、业主联系人 / 工长统计、消息、订阅、反馈、注销）。
 - **管理端底部导航是内页 `AdminTabBar`**：只用于管理端顶层页（工作台 / 项目 /
   成员 / 我的），不注册进 `pages.json` 的 `tabBar`，也不要在 C 端页面渲染它。
   顶层页之间用 `redirectTo`；详情、表单、成员、付款节点、阶段工序等嵌套页用
@@ -422,7 +421,7 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   移除仍走具体项目的 `/admin/projects/:id/members`，不要为写操作另开跨项目接口。
   项目详情 `pages/admin/project/detail` 按 Stitch `64c024eb…` 还原，单项目成员页
   `pages/admin/project/members` 复用成员卡片与筛选样式；两页都不显示底部导航。
-- **底部浮层的 z-index**：C 端自绘底栏 `ClientTabBar` 用 900，页面内的筛选 / 阶段 / 签名等底部弹窗遮罩用 1000 以上（管理端面板 1300），保证遮罩盖住底栏；不要再按「H5 的 uni-tabbar 是 1000」来定层级 —— 原生栏已被隐藏。
+- **底部浮层的 z-index**：H5 的 `ClientTabBar` 用 900，页面内的筛选 / 阶段 / 签名等底部弹窗遮罩用 1000 以上（管理端面板 1300），保证遮罩盖住底栏。微信端的 `custom-tab-bar` 在 webview 之外，页面弹窗不会盖住它，这是自定义 tabBar 的固有限制。
 - **H5 的 `uni.showModal` 要盖住管理端面板**：它默认 `z-index: 999`，而管理端底部面板是 1300，
   从成员操作 / 模板编辑面板里弹出的确认框会被盖住、按钮点不到。`App.vue` 已在 H5 下把
   `.uni-mask` / `uni-modal` 统一抬到 2000/2001，不要在单个页面里再调低模态层。

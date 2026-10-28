@@ -7,7 +7,11 @@
  * 登录跳转前都先隐藏一次，组件挂载再兜底。
  */
 function hideNativeTabBar() {
+  // 微信端由 custom-tab-bar 原生组件承载，不存在需要隐藏的原生栏；
+  // H5 仍是 uni-tabbar，进入页面前先隐藏避免闪。
+  // #ifdef H5
   uni.hideTabBar({ animation: false, fail: () => {} })
+  // #endif
 }
 
 export default {

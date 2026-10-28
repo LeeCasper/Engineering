@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { getToken } from '../store/session'
 import { fetchUnreadSummary } from '../api/notification'
+import { syncCustomTabBar } from './tabBar'
 
 /**
  * 「我的」tab 的未读红点由自绘底栏 `ClientTabBar` 渲染。
@@ -12,7 +13,17 @@ import { fetchUnreadSummary } from '../api/notification'
 export const mineTabBadge = ref(0)
 
 export function setMineTabBadge(total) {
-  mineTabBadge.value = getToken() ? Number(total) || 0 : 0
+  const count = getToken() ? Number(total) || 0 : 0
+  mineTabBadge.value = count
+
+  // 微信端底栏是原生 custom-tab-bar，需要写 storage 并推送一次；
+  // H5 的 ClientTabBar 直接读上面的 ref。
+  try {
+    uni.setStorageSync('gc_mine_badge', count)
+  } catch (err) {
+    // 存储失败不影响页面
+  }
+  syncCustomTabBar({ badge: count })
 }
 
 /** 拉一次未读数并同步底栏红点；失败返回 null，不打断页面 */

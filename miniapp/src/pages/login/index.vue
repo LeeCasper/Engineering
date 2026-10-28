@@ -222,7 +222,10 @@ async function bootstrap() {
  * 随后被 ClientTabBar 隐藏造成的闪烁。
  */
 function hideNativeTabBar() {
+  // 仅 H5 需要（微信端由 custom-tab-bar 原生组件承载）
+  // #ifdef H5
   uni.hideTabBar({ animation: false, fail: () => {} })
+  // #endif
 }
 
 /** 微信端取 code；H5 / 其他端用固定开发 code（后端 WX_MOCK 派生稳定账号） */

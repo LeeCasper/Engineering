@@ -313,14 +313,19 @@
         </view>
       </view>
     </view>
+    <!-- #ifdef H5 -->
     <ClientTabBar active="projects" />
+    <!-- #endif -->
   </view>
 </template>
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { onLoad, onShow, onPageScroll, onPullDownRefresh } from '@dcloudio/uni-app'
+// #ifdef H5
 import ClientTabBar from '../../components/ClientTabBar.vue'
+// #endif
+import { syncCustomTabBar } from '../../utils/tabBar'
 import { branding, loadBranding } from '../../store/branding'
 import { myProjects, confirmInvitation, rejectInvitation } from '../../api/project'
 import { resolveMediaUrl } from '../../api/request'
@@ -485,8 +490,10 @@ onPageScroll((event) => {
 })
 
 onLoad((options) => {
-  // 底栏是自绘的，原生栏必须尽早隐藏，避免首帧闪一下
+  // #ifdef H5
+  // H5 没有原生 custom-tab-bar，仍需隐藏 uni-tabbar
   uni.hideTabBar({ animation: false, fail: () => {} })
+  // #endif
   loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
@@ -502,6 +509,8 @@ onLoad((options) => {
 })
 
 onShow(() => {
+  // 原生自定义底栏不在 Vue 树里，进入页面时同步选中态
+  syncCustomTabBar({ selected: 0 })
   // 从其他页面返回时同步用户信息；首次 onLoad 已经触发加载
   user.value = getUser() || {}
   if (getToken()) {

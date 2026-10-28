@@ -310,14 +310,19 @@
         </view>
       </view>
     </view>
+    <!-- #ifdef H5 -->
     <ClientTabBar active="acceptance" />
+    <!-- #endif -->
   </view>
 </template>
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { onLoad, onShow, onPageScroll, onPullDownRefresh } from '@dcloudio/uni-app'
+// #ifdef H5
 import ClientTabBar from '../../components/ClientTabBar.vue'
+// #endif
+import { syncCustomTabBar } from '../../utils/tabBar'
 import {
   createAcceptance,
   fetchAcceptanceInbox,
@@ -457,8 +462,10 @@ function tabCount(key) {
 }
 
 onLoad(() => {
-  // 底栏是自绘的，原生栏必须尽早隐藏，避免首帧闪一下
+  // #ifdef H5
+  // H5 没有原生 custom-tab-bar，仍需隐藏 uni-tabbar
   uni.hideTabBar({ animation: false, fail: () => {} })
+  // #endif
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 
@@ -470,6 +477,8 @@ onLoad(() => {
 })
 
 onShow(() => {
+  // 原生自定义底栏不在 Vue 树里，进入页面时同步选中态
+  syncCustomTabBar({ selected: 1 })
   if (!loading.value && getToken()) load()
   measureSearchSticky()
 })

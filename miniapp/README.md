@@ -424,15 +424,18 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 
 ## 底部导航
 
-C 端底部四项使用自绘的 `components/ClientTabBar.vue`。`pages.json` 设置
-`tabBar.custom = true`：原生栏不再渲染（登录后也不会闪），`tabBar.list` 只用于
-`switchTab`；微信要求配套的 `src/custom-tab-bar/` 空组件占位（原生 WXML，不放逻辑）：
+C 端底部四项分平台实现，`pages.json` 统一设置 `tabBar.custom = true`，
+`tabBar.list` 只用于 `switchTab` 的路由判定：
 
-- 底栏是固定定位的液态玻璃（半透明白 + `backdrop-filter`），位置、高度与原生栏一致；
-- 四个 tab 页底部至少预留 `76dp + 安全区`（项目页是 96dp），不要再写 H5 专用 padding 分支；
+- **微信端**：`src/custom-tab-bar/` 原生 WXML 组件（液态玻璃 WXSS）。它由微信渲染在
+  webview 之外，切换 tab 不会随页面重建，因此底栏不闪；选中态按当前路由初始化，
+  页面 `onShow` 通过 `utils/tabBar.js` 同步兜底，不要在 `switchTab` 里重复 setData。
+- **H5**：`components/ClientTabBar.vue`（条件编译只在 H5 渲染），并用
+  `uni.hideTabBar()` 隐藏 H5 的 `uni-tabbar`。
+- 四个 tab 页底部至少预留 `76dp + 安全区`（项目页是 96dp）。
 - 项目 / 验收 / 记账 / 我的都是真实页面；管理端、消息、订阅、反馈、考察计划、现场签到与考察记录是非 tab 页面；
-- 页面内的筛选、详情、签名等浮层遮罩 z-index 高于底栏（900），不会被底栏盖住；
-- 「我的」未读数由 `utils/notificationBadge.js` 的 `mineTabBadge` 驱动，底栏自行渲染红点。
+- 「我的」未读数由 `utils/notificationBadge.js` 写入 `gc_mine_badge` 并推送给原生底栏；
+  H5 的 `ClientTabBar` 直接读 `mineTabBadge` ref。
 
 管理端是例外：它的工作台 / 项目 / 成员 / 我的使用内页 `AdminTabBar`，
 只出现在 `pages/admin/**` 的顶层页，不注册进原生 tabBar，也不会出现在 C 端页面。
