@@ -1,10 +1,25 @@
 <script>
+/**
+ * C 端底栏是自绘的 `ClientTabBar`，原生 tabBar 需要尽早隐藏。
+ *
+ * 只在组件 onMounted 里隐藏会晚一帧：登录后第一次 reLaunch 到项目页时，
+ * 原生白色底栏会先画出来再被隐藏，表现为「闪一下」。因此启动、回前台、
+ * 登录跳转前都先隐藏一次，组件挂载再兜底。
+ */
+function hideNativeTabBar() {
+  uni.hideTabBar({ animation: false, fail: () => {} })
+}
+
 export default {
   onLaunch() {
     // 登录页是入口；不在这里做静默跳转 ——
     // 用户可能是第一次打开，也可能是被邀请后回来确认。
     // 由登录页根据 /projects 的结果决定去邀请列表还是项目列表。
     // 角色由管理员邀请时固定，不在登录主路径上；登录后直接按项目成员关系进入。
+    hideNativeTabBar()
+  },
+  onShow() {
+    hideNativeTabBar()
   },
 }
 </script>

@@ -1,31 +1,21 @@
+import { ref } from 'vue'
 import { getToken } from '../store/session'
 import { fetchUnreadSummary } from '../api/notification'
 
 /**
- * 消息红点挂在“我的”tab 上（tabBar index 3）。
+ * 「我的」tab 的未读红点由自绘底栏 `ClientTabBar` 渲染。
  *
+ * 原生 tabBar 已被隐藏（自绘底栏才有液态玻璃），`uni.setTabBarBadge`
+ * 即使调用也看不到，因此这里只维护一个响应式计数。
  * 口径是全局未读数，与消息分类、当前项目无关（G-29）。
- * 调用方要吞掉失败：红点只是提示，不能因为它让页面进入错误态。
  */
-export function setMineTabBadge(total) {
-  const count = Number(total) || 0
-  if (!getToken()) {
-    uni.removeTabBarBadge({ index: 3, fail: () => {} })
-    return
-  }
+export const mineTabBadge = ref(0)
 
-  if (count > 0) {
-    uni.setTabBarBadge({
-      index: 3,
-      text: count > 99 ? '99+' : String(count),
-      fail: () => {},
-    })
-  } else {
-    uni.removeTabBarBadge({ index: 3, fail: () => {} })
-  }
+export function setMineTabBadge(total) {
+  mineTabBadge.value = getToken() ? Number(total) || 0 : 0
 }
 
-/** 拉一次未读数并同步 tab 红点；失败返回 null，不打断页面 */
+/** 拉一次未读数并同步底栏红点；失败返回 null，不打断页面 */
 export async function refreshMineTabBadge() {
   if (!getToken()) {
     setMineTabBadge(0)

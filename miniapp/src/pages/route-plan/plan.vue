@@ -28,7 +28,7 @@
 
         <view class="origin-row" @tap="chooseOrigin">
           <view class="origin-pin">
-            <image class="origin-pin-icon" src="/static/images/icon-navigation-accent.png" mode="aspectFit" />
+            <image class="origin-pin-icon" src="/static/images/icon-route-plan-accent.png" mode="aspectFit" />
           </view>
           <view class="origin-main">
             <text class="origin-name">{{ origin ? origin.name : '尚未设置起点' }}</text>
@@ -1017,8 +1017,8 @@ function closeActiveSheet() {
 }
 
 .origin-pin-icon {
-  width: dp(18);
-  height: dp(18);
+  width: dp(22);
+  height: dp(22);
 }
 
 .origin-main {

@@ -1,4 +1,4 @@
-import { adminRequest } from './request'
+import { adminRequest, adminUploadFile } from './request'
 
 /**
  * 管理端项目 / 成员 / 付款节点 / 阶段工序接口。
@@ -30,6 +30,16 @@ export function fetchAdminProjects({
 /** 工作台 / 状态筛选计数。全局口径，不受列表搜索与状态筛选影响 */
 export function fetchAdminProjectStats() {
   return adminRequest({ url: '/projects/stats' })
+}
+
+/**
+ * 上传项目封面。
+ *
+ * 微信 `uni.uploadFile` 一次只能带一个文件，所以这里是「先上传拿 url，
+ * 再随创建 / 编辑提交 coverUrl」两步；不要试图塞进 JSON 建档请求。
+ */
+export function uploadAdminProjectCover(filePath) {
+  return adminUploadFile({ url: '/projects/cover', filePath, name: 'cover' })
 }
 
 // ── 管理员站内消息（工作台待办）────────────────────────────

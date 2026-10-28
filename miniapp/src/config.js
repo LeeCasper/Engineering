@@ -21,6 +21,16 @@ export const API_BASE =
 export const DEV_WX_CODE = 'gongchengbao-h5-dev'
 
 /**
+ * 微信开发者工具（dev 构建）使用的固定 code。
+ *
+ * 开发者工具每次编译的 `uni.login` code 都会变，后端在 WX_MOCK=true 时按 code
+ * 派生 openid —— 于是清缓存 / 重新编译就会变成一个新用户，手机号会撞上旧账号
+ * （「该手机号已被其他账号绑定」）。dev 构建改用固定 code，保证无论编译多少次
+ * 都回到同一个测试账号；**正式构建不会用到它**。
+ */
+export const DEV_MP_WX_CODE = 'gongchengbao-mp-dev'
+
+/**
  * 是否允许开发环境直接输入手机号绑定。
  *
  * 只有后端 WX_MOCK=true（没有真实 AppID/Secret）时才应该打开；

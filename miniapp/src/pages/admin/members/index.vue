@@ -1,13 +1,6 @@
 <template>
-  <view class="admin-page admin-page--cool admin-page--tabbar">
-    <AdminRootHeader title="成员管理" background="#F6F7F9" glass>
-      <template #right>
-        <view class="invite-pill" @tap="openInvitePicker">
-          <text class="invite-plus">+</text>
-          <text>邀请成员</text>
-        </view>
-      </template>
-    </AdminRootHeader>
+  <view class="admin-page admin-page--cool admin-page--tabbar admin-page--fab">
+    <AdminRootHeader title="成员管理" background="#F6F7F9" glass />
 
     <view class="content">
       <view class="search-box">
@@ -69,6 +62,11 @@
         <text class="rules-title">成员邀请规则</text>
         <text class="rules-text">手机号邀请 → 对方确认后生效；主工长每项目仅 1 人</text>
       </view>
+    </view>
+
+    <view class="invite-fab" @tap="openInvitePicker">
+      <image class="invite-fab-icon" src="/static/images/icon-plus-white.png" mode="aspectFit" />
+      <text>邀请成员</text>
     </view>
 
     <AdminTabBar active="members" />
@@ -470,39 +468,42 @@ async function removeMember() {
 </script>
 
 <style scoped lang="scss">
-.invite-pill {
-  display: inline-flex;
+/* 邀请成员固定在右下角，浮在列表之上、管理端 tabBar 之上 */
+.invite-fab {
+  position: fixed;
+  right: dp(16);
+  bottom: calc(#{dp(76)} + env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  height: dp(32);
-  padding: 0 dp(13);
-  border: 1px solid rgba(255, 255, 255, 0.76);
+  gap: dp(5);
+  height: dp(44);
+  padding: 0 dp(18);
   border-radius: dp(999);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 243, 236, 0.94) 0%,
-    rgba(255, 227, 214, 0.74) 100%
-  );
-  -webkit-backdrop-filter: blur(14px) saturate(170%);
-  backdrop-filter: blur(14px) saturate(170%);
-  color: #eb5c20;
-  font-size: dp(13);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(14);
   font-weight: 600;
-  white-space: nowrap;
   box-shadow:
-    0 dp(2) dp(8) rgba(235, 92, 32, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    0 dp(6) dp(18) rgba(235, 92, 32, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
-.invite-plus {
-  margin-right: dp(4);
-  font-size: dp(15);
-  font-weight: 500;
-  line-height: 1;
+.invite-fab:active {
+  background: #c44710;
+}
+
+.invite-fab-icon {
+  width: dp(14);
+  height: dp(14);
 }
 
 .content {
   padding: 0 dp(16) dp(16);
+}
+
+.admin-page--fab .content {
+  padding-bottom: dp(68);
 }
 
 .search-box {

@@ -712,7 +712,7 @@
 
     <!-- 工长：登记流水 -->
     <view v-if="entrySheetOpen" class="sheet-mask" @touchmove.stop.prevent="sheetSwipe.onMaskTouchMove" @tap="closeEntrySheet">
-      <view class="sheet" :style="sheetSwipeStyle" @tap.stop>
+      <view class="sheet sheet--form" :style="sheetSwipeStyle" @tap.stop>
         <view class="sheet-handle" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd" />
         <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
@@ -726,7 +726,10 @@
           </view>
         </view>
 
-        <view class="entry-type-row">
+        <scroll-view class="form-sheet-scroll" scroll-y>
+          <view class="form-sheet-body gc-stagger">
+            <view class="entry-type-row">
+          <view class="entry-type-thumb" :style="entryTypeThumbStyle" />
           <view
             class="entry-type"
             :class="{ 'entry-type--active': entryForm.type === 'expense' }"
@@ -774,7 +777,7 @@
           </picker>
         </view>
 
-        <view v-if="entryForm.type === 'expense'" class="form-field">
+        <view v-if="entryForm.type === 'expense'" class="form-field type-switch-field">
           <text class="form-label">支出分类</text>
           <view class="category-row">
             <view
@@ -789,7 +792,7 @@
           </view>
         </view>
 
-        <view v-else class="form-field">
+        <view v-else class="form-field type-switch-field">
           <text class="form-label">关联付款节点</text>
           <picker
             v-if="incomeNodes.length"
@@ -829,6 +832,8 @@
           </view>
           <text class="form-hint">当前支持 1 张；上传后会由服务端添加水印。</text>
         </view>
+          </view>
+        </scroll-view>
 
         <view class="form-actions">
           <button class="form-cancel" @tap="closeEntrySheet">取消</button>
@@ -890,12 +895,14 @@
         </view>
       </view>
     </view>
+    <ClientTabBar active="ledger" />
   </view>
 </template>
 
 <script setup>
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
+import ClientTabBar from '../../components/ClientTabBar.vue'
 import {
   myProjects,
   projectDetail,
@@ -1055,6 +1062,11 @@ const entryForm = reactive({
   paymentNodeId: '',
   remark: '',
 })
+
+// 支出 / 收入两段式开关：胶囊用 transform 滑动，和主页面分段控件保持同一手感
+const entryTypeThumbStyle = computed(() => ({
+  transform: entryForm.type === 'expense' ? 'translateX(0)' : 'translateX(100%)',
+}))
 
 const initiateSheetOpen = ref(false)
 const initiateSubmitting = ref(false)
@@ -1922,6 +1934,8 @@ function openSettlement() {
 }
 
 onLoad(() => {
+  // 底栏是自绘的，原生栏必须尽早隐藏，避免首帧闪一下
+  uni.hideTabBar({ animation: false, fail: () => {} })
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 
@@ -1946,7 +1960,8 @@ onPullDownRefresh(async () => {
 <style scoped lang="scss">
 .page {
   min-height: 100vh;
-  padding-bottom: calc(#{dp(24)} + env(safe-area-inset-bottom));
+  /* 自绘底栏固定悬浮，底部留出与原生 tabBar 一致的高度 */
+  padding-bottom: calc(#{dp(76)} + env(safe-area-inset-bottom));
   background: #faf7f4;
 }
 
@@ -3115,6 +3130,7 @@ onPullDownRefresh(async () => {
 
 /* ── 登记流水 / 发起对账表单 ── */
 .entry-type-row {
+  position: relative;
   display: flex;
   padding: dp(4);
   margin: dp(14) 0;
@@ -3123,23 +3139,46 @@ onPullDownRefresh(async () => {
   border-radius: dp(999);
 }
 
+/* 两段式胶囊：translateX(100%) 正好到右半段 */
+.entry-type-thumb {
+  position: absolute;
+  top: dp(4);
+  bottom: dp(4);
+  left: dp(4);
+  width: calc((100% - #{dp(8)}) / 2);
+  border-radius: dp(999);
+  background: #eb5c20;
+  box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.22);
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
 .entry-type {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: 1;
   height: dp(34);
   border-radius: dp(999);
+  background: transparent;
   color: #51463e;
   font-size: dp(12);
   font-weight: 500;
+  transition: color 180ms ease;
 }
 
 .entry-type--active {
-  background: #eb5c20;
+  background: transparent;
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.22);
+  box-shadow: none;
+}
+
+/* 支出 / 收入切换后，分类 / 付款节点字段重挂载时淡入 */
+.form-field.type-switch-field {
+  animation: gc-reveal-up 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .form-field {
@@ -3284,14 +3323,11 @@ onPullDownRefresh(async () => {
 }
 
 .form-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
   display: flex;
   gap: dp(9);
-  margin-top: dp(18);
-  padding-top: dp(10);
-  padding-bottom: dp(4);
+  margin-top: 0;
+  padding: dp(10) 0 dp(14);
+  border-top: 1px solid #f3efea;
   background: #fff;
 }
 
@@ -3334,6 +3370,7 @@ onPullDownRefresh(async () => {
   display: flex;
   align-items: flex-end;
   background: rgba(29, 33, 41, 0.5);
+  animation: sheet-mask-in 220ms ease-out;
 }
 
 .sheet {
@@ -3352,6 +3389,31 @@ onPullDownRefresh(async () => {
   max-height: 88vh;
   overflow: hidden;
   padding-bottom: 0;
+}
+
+/*
+ * 登记流水 / 发起对账是长表单：标题与底部按钮固定，中间字段放进
+ * scroll-view。只靠 .sheet 的 overflow-y 在微信里会被蒙层的
+ * catchtouchmove 拦住，表现为「内容被按钮盖住、怎么滑都不动」。
+ */
+.sheet--form {
+  display: flex;
+  flex-direction: column;
+  height: 86vh;
+  max-height: 86vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding-bottom: 0;
+  animation: sheet-rise 480ms cubic-bezier(0.45, 0, 0.25, 1);
+}
+
+.form-sheet-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.form-sheet-body {
+  padding-bottom: dp(2);
 }
 
 .sheet-handle {
@@ -3848,5 +3910,12 @@ onPullDownRefresh(async () => {
 
 .rec-action-note--warn {
   color: #ff7d00;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-mask,
+  .sheet--form {
+    animation: none;
+  }
 }
 </style>

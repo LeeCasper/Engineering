@@ -1552,6 +1552,68 @@ describe('C 端项目详情与可见性（AC-P26）', () => {
   })
 })
 
+describe('项目封面（缩略图）', () => {
+  const PNG_1PX = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  )
+
+  it('上传封面后随建档保存，列表与详情都返回 coverUrl', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+
+    const uploaded = await request
+      .authed('post', '/admin/projects/cover', token)
+      .attach('cover', PNG_1PX, { filename: 'cover.png', contentType: 'image/png' })
+
+    expect(uploaded.status).toBe(200)
+    expect(uploaded.body.data.url).toMatch(/\/uploads\/project-covers\//)
+
+    const created = await request
+      .authed('post', '/admin/projects', token)
+      .send({ ...VALID_PROJECT, templateId, coverUrl: uploaded.body.data.url })
+
+    expect(created.status).toBe(200)
+
+    const detail = await request.authed('get', `/admin/projects/${created.body.data.id}`, token)
+    expect(detail.body.data.coverUrl).toBe(uploaded.body.data.url)
+
+    const list = await request.authed('get', '/admin/projects', token)
+    const item = list.body.data.list.find((project) => project.id === created.body.data.id)
+    expect(item.coverUrl).toBe(uploaded.body.data.url)
+  })
+
+  it('编辑时可用空字符串清除封面，非法地址被拒绝', async () => {
+    const { token } = await superAdmin()
+    const templateId = await fixtures.createTemplate()
+    const created = await request
+      .authed('post', '/admin/projects', token)
+      .send({ ...VALID_PROJECT, templateId, coverUrl: 'https://example.com/a.jpg' })
+    const id = created.body.data.id
+
+    const cleared = await request.authed('put', `/admin/projects/${id}`, token).send({ coverUrl: '' })
+    expect(cleared.status).toBe(200)
+
+    const detail = await request.authed('get', `/admin/projects/${id}`, token)
+    expect(detail.body.data.coverUrl).toBeNull()
+
+    const bad = await request
+      .authed('put', `/admin/projects/${id}`, token)
+      .send({ coverUrl: 'javascript:alert(1)' })
+    expect(bad.status).toBe(400)
+  })
+
+  it('非图片文件不能作为封面', async () => {
+    const { token } = await superAdmin()
+
+    const res = await request
+      .authed('post', '/admin/projects/cover', token)
+      .attach('cover', Buffer.from('not-an-image'), { filename: 'cover.txt', contentType: 'text/plain' })
+
+    expect(res.status).toBe(400)
+  })
+})
+
 // ── 测试内部的小工具 ──
 
 async function createWechatUser(openid) {

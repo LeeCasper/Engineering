@@ -15,14 +15,16 @@
           <text class="hero-sub">选工地 · 自动排序 · 逐段导航</text>
         </view>
         <view class="hero-icon-wrap">
-          <image class="hero-icon" src="/static/images/icon-navigation-accent.png" mode="aspectFit" />
+          <image class="hero-icon" src="/static/images/icon-route-plan-accent.png" mode="aspectFit" />
         </view>
         <view class="hero-steps">
-          <view v-for="(step, index) in steps" :key="step.key" class="hero-step">
-            <view class="hero-step-index">{{ index + 1 }}</view>
-            <text class="hero-step-label">{{ step.label }}</text>
+          <template v-for="(step, index) in steps" :key="step.key">
+            <view class="hero-step">
+              <view class="hero-step-index">{{ index + 1 }}</view>
+              <text class="hero-step-label">{{ step.label }}</text>
+            </view>
             <view v-if="index < steps.length - 1" class="hero-step-line" />
-          </view>
+          </template>
         </view>
       </view>
 
@@ -332,6 +334,7 @@ function goBack() {
   font-size: dp(11);
 }
 
+/* 图标底座用浅色液态玻璃：橙色图标直接压在橙色卡片上会看不清 */
 .hero-icon-wrap {
   position: absolute;
   top: dp(20);
@@ -342,20 +345,31 @@ function goBack() {
   justify-content: center;
   width: dp(48);
   height: dp(48);
-  border: 1px solid rgba(255, 255, 255, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 255, 255, 0.74) 100%
+  );
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  backdrop-filter: blur(10px) saturate(180%);
+  box-shadow:
+    0 dp(2) dp(8) rgba(120, 40, 10, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
 }
 
 .hero-icon {
-  width: dp(24);
-  height: dp(24);
+  width: dp(27);
+  height: dp(27);
 }
 
+/* 三步说明横向铺满整行：步骤固定宽度，连接线吃掉剩余空间 */
 .hero-steps {
   position: relative;
   z-index: 1;
   display: flex;
+  align-items: center;
   margin-top: dp(18);
   padding-top: dp(13);
   border-top: 1px solid rgba(255, 255, 255, 0.2);
@@ -364,7 +378,7 @@ function goBack() {
 .hero-step {
   display: flex;
   align-items: center;
-  flex: 1;
+  flex-shrink: 0;
 }
 
 .hero-step-index {
@@ -387,10 +401,10 @@ function goBack() {
 }
 
 .hero-step-line {
-  width: dp(12);
   height: 1px;
-  margin: 0 dp(6);
+  margin: 0 dp(8);
   background: rgba(255, 255, 255, 0.34);
+  flex: 1;
 }
 
 .section-head {

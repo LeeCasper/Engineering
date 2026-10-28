@@ -698,6 +698,8 @@ const stageList = computed(() => stageListRaw.value.map(withVisual))
 const projectPercent = computed(() => percent(detail.value?.progress))
 
 const coverUrl = computed(() => {
+  // 管理员上传的封面优先；没有封面时回落到内置实景占位图
+  if (detail.value?.coverUrl) return resolveMediaUrl(detail.value.coverUrl)
   const index = (Math.abs(Number(detail.value?.id) || 0) % 4) + 1
   return `/static/images/project-cover-${index}.jpg`
 })

@@ -1,0 +1,5 @@
+/* 空占位：真实底栏在页面内的 components/ClientTabBar.vue */
+.custom-tab-bar-placeholder {
+  width: 0;
+  height: 0;
+}

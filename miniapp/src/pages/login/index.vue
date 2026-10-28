@@ -131,7 +131,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { DEV_PHONE_BIND, DEV_WX_CODE } from '../../config'
+import { DEV_PHONE_BIND, DEV_WX_CODE, DEV_MP_WX_CODE } from '../../config'
 import { login, bindPhone } from '../../api/auth'
 import { myProjects } from '../../api/project'
 import {
@@ -210,16 +210,31 @@ async function bootstrap() {
     // 登录只解决身份；项目上下文由 /projects 的结果决定。
     // 有待确认邀请先去邀请列表，否则直接进项目列表 —— 不再经过角色选择页。
     // 用 reLaunch 清空页面栈，避免已登录用户还能返回登录页。
+    hideNativeTabBar()
     uni.reLaunch({ url: resolveProjectsLanding(data) })
   } catch (err) {
     // 401 已在请求层清理登录态；其他错误留在登录页，让用户重试
   }
 }
 
+/**
+ * 落点可能是 tab 页。提前隐藏原生底栏，避免项目页首帧画出白色原生栏、
+ * 随后被 ClientTabBar 隐藏造成的闪烁。
+ */
+function hideNativeTabBar() {
+  uni.hideTabBar({ animation: false, fail: () => {} })
+}
+
 /** 微信端取 code；H5 / 其他端用固定开发 code（后端 WX_MOCK 派生稳定账号） */
 function getWxCode() {
   return new Promise((resolve, reject) => {
     // #ifdef MP-WEIXIN
+    // dev 构建固定 code：开发者工具的 code 每次都变，清缓存后会变成新账号，
+    // 手机号就会撞上旧账号。正式构建（import.meta.env.DEV=false）走真实 login。
+    if (import.meta.env.DEV) {
+      resolve(DEV_MP_WX_CODE)
+      return
+    }
     uni.login({
       provider: 'weixin',
       success: (res) => (res.code ? resolve(res.code) : reject(new Error('微信登录失败'))),
@@ -282,6 +297,7 @@ async function doLogin({ bindPhone: shouldBind }) {
 
     const data = await myProjects()
     setCachedProjects(data)
+    hideNativeTabBar()
     uni.reLaunch({ url: resolveProjectsLanding(data) })
   } catch (err) {
     uni.showToast({ title: err.message || '登录失败', icon: 'none' })

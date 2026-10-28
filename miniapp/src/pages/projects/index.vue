@@ -313,14 +313,17 @@
         </view>
       </view>
     </view>
+    <ClientTabBar active="projects" />
   </view>
 </template>
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { onLoad, onShow, onPageScroll, onPullDownRefresh } from '@dcloudio/uni-app'
+import ClientTabBar from '../../components/ClientTabBar.vue'
 import { branding, loadBranding } from '../../store/branding'
 import { myProjects, confirmInvitation, rejectInvitation } from '../../api/project'
+import { resolveMediaUrl } from '../../api/request'
 import { bindPhone, listAdminBindings } from '../../api/auth'
 import { DEV_PHONE_BIND } from '../../config'
 import {
@@ -482,6 +485,8 @@ onPageScroll((event) => {
 })
 
 onLoad((options) => {
+  // 底栏是自绘的，原生栏必须尽早隐藏，避免首帧闪一下
+  uni.hideTabBar({ animation: false, fail: () => {} })
   loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
@@ -599,7 +604,8 @@ function clearFilters() {
 // ── 项目卡片 ──
 
 function coverFor(project) {
-  // 后端暂无项目封面字段；按 id 稳定映射到设计稿的 4 张实景占位图。
+  // 管理员上传的封面优先；没有封面时按 id 稳定映射到设计稿的 4 张实景占位图。
+  if (project.coverUrl) return resolveMediaUrl(project.coverUrl)
   const index = (Math.abs(Number(project.id) || 0) % 4) + 1
   return `/static/images/project-cover-${index}.jpg`
 }

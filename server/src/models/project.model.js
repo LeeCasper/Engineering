@@ -17,7 +17,7 @@ const dataScope = require('../services/dataScope.service')
 
 /** 列表字段。合同金额单独控制 —— 它只在有需要时返回 */
 const LIST_COLUMNS = `
-  p.id, p.tenant_id, p.name, p.address, p.status, p.area, p.contract_amount,
+  p.id, p.tenant_id, p.name, p.address, p.cover_url, p.status, p.area, p.contract_amount,
   p.longitude, p.latitude, p.geocoded_at,
   p.start_date, p.plan_end_date, p.actual_end_date,
   p.template_id, p.created_by, p.archived_at, p.created_at, p.updated_at
@@ -140,13 +140,14 @@ async function findByIdUnscoped(id) {
 async function create(data, tx = db) {
   const result = await tx.query(
     `INSERT INTO project
-       (tenant_id, name, address, longitude, latitude, geocoded_at, area, contract_amount,
+       (tenant_id, name, address, cover_url, longitude, latitude, geocoded_at, area, contract_amount,
         start_date, plan_end_date, template_id, remark, created_by, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
     [
       data.tenantId,
       data.name,
       data.address,
+      data.coverUrl ?? null,
       data.longitude ?? null,
       data.latitude ?? null,
       data.geocodedAt ?? null,
@@ -174,6 +175,8 @@ async function update(id, data, tx = db) {
     start_date: data.startDate,
     plan_end_date: data.planEndDate,
     remark: data.remark,
+    // 传 null 表示清除封面；undefined 表示本次不改
+    cover_url: data.coverUrl,
   }
 
   for (const [column, value] of Object.entries(mapping)) {

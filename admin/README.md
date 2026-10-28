@@ -100,7 +100,7 @@ node -e "const b=require('bcryptjs'),d=require('./src/db/pool');(async()=>{await
 | 平台 · 租户管理 | `/platform/tenant` | 租户列表 / 详情、开通（**省 / 市必填**，生成专属地址）、调整配额、到期与地区、停用 / 恢复 / 退租；租户授予窗口后可从「更多 → 只读进入（排障）」进入该租户 |
 | 平台 · 数据看板 | `/platform/dashboard` | `GET /admin/platform/dashboard/{overview,region,tenants}`；中国地图省 → 市下钻、未分配地区、地区租户列表 |
 | 平台 · 小程序品牌 | `/platform/branding` | 平台设置小程序名称与 Logo；`POST /admin/platform/branding/logo` 上传 Logo，保存到 `miniapp_name` / `miniapp_logo` 配置 |
-| 项目列表 | `/project/list` | 列表、筛选、分页、新建、编辑、状态流转、归档、解除归档、软删除、批量归档 / 分配工长、导出 Excel；新建 / 编辑内置地图定位（服务端静态地图，可拖动 / 缩放，Key 不下发前端） |
+| 项目列表 | `/project/list` | 列表、筛选、分页、新建、编辑、状态流转、归档、解除归档、软删除、批量归档 / 分配工长、导出 Excel；新建 / 编辑内置地图定位（服务端静态地图，可拖动 / 缩放，Key 不下发前端）与项目封面上传（`POST /admin/projects/cover`，列表显示缩略图） |
 | 项目详情 · 概览 | `/project/detail/:id` | 项目详情、阶段概况、付款节点概况、坐标手工拾取（AC-AD54） |
 | 项目详情 · 阶段工序 | 同上 | 阶段 / 工序增删改（**不提供改完成度的入口**） |
 | 项目详情 · 成员 | 同上 | 成员列表、手机号邀请、主工长改指、解除成员；业主区分主业主 / 临时业主，active 主业主不可移除；角色由账号固定，不能跨项目替换 |

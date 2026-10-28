@@ -75,7 +75,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | — | C 端小程序（`miniapp/`） | 🚧 已开始：首页（我的项目）、项目详情页、工程动态页、记账页、验收页、验收详情页、登录页、角色说明页、我的页 1:1 还原；我的项目 / 项目详情 / 工程动态 / 记账总览、流水与对账 / 消息中心 / 订阅状态 / 意见反馈 / 注销账号 / 租户管理员移动管理端 / **考察计划与路线规划** / **现场签到与考察记录时间轴** / **进度汇报提交** / **门锁密码（业主管理、工长监理查看）** / 搜索筛选 / 邀请确认 / 无项目引导 / 跨项目验收收件箱 / 业主签名 / 移动管理端（工作台、项目、项目详情、跨项目成员目录、阶段模板、我的管理设置）已接通 |
 
 **后端 M1~M13、V1.2-A 路线规划、V1.2-B 现场签到、V2.9 看板、V2.10 小程序品牌、V2.12 主业主与 V2.13 可靠电子签名（可选，默认关闭）已完成**：
-170 条路由、44 张业务表、1007 条自动化测试（47 个测试文件）、123~124 项端到端冒烟断言
+171 条路由、44 张业务表、1010 条自动化测试（47 个测试文件）、123~124 项端到端冒烟断言
 （平台账号首登改密那条只在首次运行时出现）。
 
 管理后台页面已交付；C 端小程序的进度汇报提交页也已接通，本轮 C 端页面清单完成。
@@ -249,6 +249,17 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **登录**：C 端身份是微信 `openid`，没有短信验证码接口。登录页的「登录 / 微信登录」
   都走 `uni.login → POST /auth/login`；手机号输入框在开发环境（`WX_MOCK=true`）
   顺带绑定手机号。**不要给短信登录做假倒计时** —— 后端没有这个能力。
+  **dev 构建固定登录 code**：`WX_MOCK=true` 时后端按 code 派生 openid，而微信开发者
+  工具每次编译的 code 都不同 —— 清缓存 / 重新编译会变成新账号，再绑手机号就会报
+  「该手机号已被其他账号绑定」。因此 H5 用 `DEV_WX_CODE`、dev 构建的微信端用
+  `DEV_MP_WX_CODE`（`import.meta.env.DEV` 分支）；正式构建仍走 `uni.login`。
+  不要为了「更像真机」把 dev 分支去掉。
+- **开发调试入口只在 dev 存在**：管理端登录页的「一键登录管理端」用
+  `<!-- dev-only:start/end -->` 与 `/* dev-only:start/end */` 包住模板 / 脚本 / 样式，
+  `vite.config.js` 的 `stripDevOnly` 在 **mode=production** 时整段删除。
+  不要用 `apply:'build'` 判断 —— `dev:mp-weixin` 内部也是 `vite build`；
+  也不要只靠 `import.meta.env.DEV + v-if` —— 账号常量会被摇掉，但按钮文案仍会留在
+  H5 render 与 WXML 里，正式包里还能被检索到。新增 dev-only 代码时沿用这套标记。
 - **内容页按当前项目租户读取**：`pages/legal/index` 请求 `/contents/:key` 时带上
   `getCurrentProject().tenantId`，后端按「租户已发布 → 平台已发布 → 404」回退；
   没有项目上下文（登录前）则读平台基础版本。不要只读平台版本，否则租户的
@@ -285,6 +296,13 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   地址改动后若坐标来源是地理编码 / 回填，前端不提交旧坐标，交给后端重新解析。
   静态图拖拽使用 CSS 像素 + Web Mercator，**高德静态图 zoom 比标准 Mercator 大 1**，
   服务端与两端前端必须使用同一偏移，否则拖动会偏一倍。
+- **项目封面（缩略图）**：`project.cover_url`（迁移 027）存绝对 URL；上传走
+  `POST /admin/projects/cover`（multipart 字段 `cover`，仅 PNG / JPG / WebP、≤5MB），
+  拿到 `url` 后再随创建 / 编辑提交 `coverUrl`。网页与小程序管理端共用这套接口；
+  没有封面时各端回落内置占位图（C 端按 id 稳定映射 4 张实景图）。
+  所有展示位（C 端首页 / 项目详情、管理端项目卡片、网页列表）都是 **1:1 正方形**，
+  用 `aspectFill` 居中裁切，上传提示也按 1:1 写 —— 不要再提示 3:2 之类的横图比例。
+  **不要下发 storage key，也不要把封面塞进建档 JSON 之外的第二种提交方式。**
 - **项目详情与阶段树的字段来源**：`GET /projects/:id` 返回 `ownerName`、`foremanName`、
   `memberCount`、`hasSupervisor`、`isPrimaryForeman`、`currentStageId/Name/GateStatus/Progress`；
   `GET /projects/:id/stages` 返回 `gateStrength` 与每个阶段的 `canReport`、`lockedReason`。
@@ -382,7 +400,20 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **C 端没有建档权限**：项目新建只对租户管理员开放，入口在管理端工作台的
   「新建项目」快捷入口和项目管理列表头部的「+ 新建项目」。C 端项目列表**不展示**
   「新建项目」按钮，也不要把用户引导到一个不存在的 C 端建档接口。
-- **C 端底部导航用原生 tabBar**：`pages.json` 配置项目 / 验收 / 记账 / 我的四项，**不要**每个 tab 页自己画一个底部栏，也不要用 `reLaunch` 切 tab —— 那会重建页面并白屏。四项现在都是真实页面；「我的」是个人工作台（资料、多项目时的切换入口、业主联系人 / 工长统计、消息、订阅、反馈、注销），消息未读数用 `uni.setTabBarBadge({ index: 3 })` 挂在「我的」tab 上。
+- **C 端底部导航是自绘的 `ClientTabBar`**：`pages.json` 的 `tabBar` 保留项目 / 验收 /
+  记账 / 我的四项与图标配置（`switchTab` 依赖它），并设置 **`"custom": true`** ——
+  微信从此完全不再渲染原生栏，登录后首屏也不会闪。按微信约定还需要
+  `src/custom-tab-bar/` 的空组件占位，否则开发者工具会报组件不存在；
+  那个目录是**原生 WXML 组件**，只放占位，不要在里面实现底栏。
+  真正显示的是 `components/ClientTabBar.vue` 的固定定位玻璃底栏，
+  位置、高度与原生栏一致；App 启动 / 登录跳转前 / tab 页 `onLoad` 仍保留
+  `uni.hideTabBar()` 作为 H5 的兜底（微信端在 custom 模式下是空操作）。
+  每个 tab 页底部至少预留 `76dp + 安全区`（项目页沿用 96dp），不要再用 H5 专用的 padding 分支。
+  切 tab 用 `uni.switchTab`，**不要用 `reLaunch`**（会重建页面并白屏）。
+  「我的」未读数走 `utils/notificationBadge.js` 的 `mineTabBadge` ref，
+  由底栏渲染红点；`uni.setTabBarBadge` 对隐藏的原生栏无效，不要恢复。
+  底栏 z-index 是 900，低于所有底部弹窗遮罩，避免盖住面板。
+  「我的」是个人工作台（资料、多项目切换、业主联系人 / 工长统计、消息、订阅、反馈、注销）。
 - **管理端底部导航是内页 `AdminTabBar`**：只用于管理端顶层页（工作台 / 项目 /
   成员 / 我的），不注册进 `pages.json` 的 `tabBar`，也不要在 C 端页面渲染它。
   顶层页之间用 `redirectTo`；详情、表单、成员、付款节点、阶段工序等嵌套页用
@@ -391,7 +422,7 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   移除仍走具体项目的 `/admin/projects/:id/members`，不要为写操作另开跨项目接口。
   项目详情 `pages/admin/project/detail` 按 Stitch `64c024eb…` 还原，单项目成员页
   `pages/admin/project/members` 复用成员卡片与筛选样式；两页都不显示底部导航。
-- **H5 下的 tabBar 在页面内**：底部浮层（筛选、阶段、签名等）的 z-index 必须高于 H5 的 `uni-tabbar`（当前用 1000）；小程序原生 tabBar 在 webview 外，不受影响。
+- **底部浮层的 z-index**：C 端自绘底栏 `ClientTabBar` 用 900，页面内的筛选 / 阶段 / 签名等底部弹窗遮罩用 1000 以上（管理端面板 1300），保证遮罩盖住底栏；不要再按「H5 的 uni-tabbar 是 1000」来定层级 —— 原生栏已被隐藏。
 - **H5 的 `uni.showModal` 要盖住管理端面板**：它默认 `z-index: 999`，而管理端底部面板是 1300，
   从成员操作 / 模板编辑面板里弹出的确认框会被盖住、按钮点不到。`App.vue` 已在 H5 下把
   `.uni-mask` / `uni-modal` 统一抬到 2000/2001，不要在单个页面里再调低模态层。
@@ -419,6 +450,10 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   `.sheet-handle` 样式撑到整条顶部，**不要改回 4px 高的胶囊**。
   composable 必须把 `onTouchStart / onTouchMove / onTouchEnd` 直接返回给模板，
   只放在 `handlers` 对象里会导致模板绑定到 `undefined`，表现为完全拖不动。
+  **长表单不能只靠 `.sheet` 的 `overflow-y`**：微信里会被蒙层的
+  `catchtouchmove` 拦住，内容被底部按钮盖住且滑不动。应使用固定标题 + 底部按钮 +
+  中间 `scroll-view`，并给面板明确高度（例如 `height: 86vh` + flex）；只给
+  `max-height` 时 `flex:1` 的滚动区会塌成几十像素。
 - **tab 页 `onShow` 静默刷新不能先清空旧数据**：切回「我的」与「验收」时，
   页面会重新拉取数据；旧实现先把 `stats.value = null` / 展示「加载中…」，
   于是每次切 tab 都闪一下。现在「我的」用 `statsScopeKey` 区分同范围刷新与切换项目，
@@ -431,8 +466,9 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   **不要加到包含固定弹窗 / 遮罩的容器**，否则面板会被重复动画。
 - **液态玻璃材质**：`src/uni.scss` 的 `glass-surface` / `glass-sheet`
   （半透明渐变 + `backdrop-filter` + 内侧高光）用于 C 端与管理端的卡片、吸顶导航、
-  搜索 / 筛选胶囊与底部面板。**底部导航保持原样**：C 端是微信原生 tabBar，
-  管理端 `AdminTabBar` 仍是白底通栏，不要给它加模糊或改成浮动坞。
+  搜索 / 筛选胶囊与底部面板。**C 端底栏 `ClientTabBar` 也使用玻璃材质**
+  （半透明白 + `backdrop-filter`，位置与原生栏一致）；管理端 `AdminTabBar`
+  仍是白底通栏，不要给它加模糊或改成浮动坞。
   表单、长文本、地图与签名画布保持不透明底，避免滚动时影响阅读。
   不支持 `backdrop-filter` 的内核会退化为半透明白，不能把关键文字放在
   仅靠模糊才能区分的背景上。改动 `uni.scss` 后必须重启 `npm run dev:mp-weixin`，

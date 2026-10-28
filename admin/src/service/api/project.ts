@@ -27,6 +27,8 @@ export interface ProjectListItem {
   id: number;
   name: string;
   address: string;
+  /** 项目封面绝对地址；为空时前端显示内置占位图 */
+  coverUrl: string | null;
   status: ProjectStatus;
   statusLabel: string;
   area: string | null;
@@ -117,6 +119,7 @@ export interface ProjectDetail {
   id: number;
   name: string;
   address: string;
+  coverUrl: string | null;
   status: ProjectStatus;
   statusLabel: string;
   area: string | null;
@@ -151,9 +154,31 @@ export interface CreateProjectInput {
   planEndDate: string;
   templateId?: number;
   remark?: string;
+  /** 封面绝对地址；传空字符串表示清除（编辑时） */
+  coverUrl?: string;
   /** 地图选点结果（GCJ-02，7 位小数字符串）；必须成对出现 */
   longitude?: string;
   latitude?: string;
+}
+
+export interface ProjectCoverResult {
+  url: string;
+  key: string;
+  sizeBytes: number;
+}
+
+/** 上传项目封面（multipart，字段名 cover）。返回的 url 再随创建 / 编辑提交 */
+export function fetchUploadProjectCover(file: File) {
+  const form = new FormData();
+  form.append('cover', file);
+
+  return request<ProjectCoverResult>({
+    url: '/admin/projects/cover',
+    method: 'post',
+    data: form,
+    // 与小程序 Logo 上传同理：不覆盖 Content-Type 会被当成 JSON 序列化
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
 }
 
 export type CoordinateSource = 'manual' | 'geocode' | 'hydrate' | 'none' | 'unchanged';

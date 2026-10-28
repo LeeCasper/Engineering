@@ -3,11 +3,7 @@
     <view class="hero" :style="{ paddingTop: `${safeTop + 6}px` }">
       <text class="hero-title">{{ brandTitle }}</text>
 
-      <view class="hero-meta">
-        <view class="company-pill" @tap="tenantOpen = true">
-          <text class="company-name">{{ tenantName }}</text>
-          <image class="company-caret" src="/static/images/icon-caret-down-accent.png" mode="aspectFit" />
-        </view>
+      <view class="hero-role">
         <text class="role-pill">{{ roleLabel }}</text>
       </view>
 
@@ -99,43 +95,6 @@
 
     <AdminTabBar active="workbench" />
 
-    <!-- 当前租户与账号 -->
-    <view v-if="tenantOpen" class="admin-sheet-mask" @touchmove.stop @tap="tenantOpen = false">
-      <view class="admin-sheet" @tap.stop>
-        <view class="admin-sheet-handle" />
-        <view class="admin-sheet-head">
-          <view>
-            <text class="admin-sheet-title">当前管理账号</text>
-            <text class="admin-sheet-sub">管理端身份与所属租户</text>
-          </view>
-          <view class="admin-sheet-close" @tap="tenantOpen = false">
-            <image class="admin-sheet-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
-          </view>
-        </view>
-
-        <view class="tenant-info">
-          <view class="admin-row">
-            <text class="admin-label">公司名称</text>
-            <text class="admin-value">{{ tenantName }}</text>
-          </view>
-          <view class="admin-row">
-            <text class="admin-label">租户编码</text>
-            <text class="admin-value">{{ tenantCode }}</text>
-          </view>
-          <view class="admin-row">
-            <text class="admin-label">当前账号</text>
-            <text class="admin-value">{{ username }}</text>
-          </view>
-          <view class="admin-row">
-            <text class="admin-label">角色</text>
-            <text class="admin-value">{{ roleLabel }}</text>
-          </view>
-        </view>
-
-        <button class="admin-btn admin-btn--block tenant-switch" @tap="switchAccount">切换管理账号</button>
-      </view>
-    </view>
-
     <!-- 待办提醒 -->
     <view
       v-if="reminderOpen"
@@ -208,7 +167,6 @@ import {
   fetchAdminNotifications,
   markAdminNotificationsRead,
 } from '../../../api/admin/project'
-import { clearAdminSession } from '../../../store/adminSession'
 import { branding, loadBranding } from '../../../store/branding'
 import {
   requireAdminSession,
@@ -230,7 +188,6 @@ const unread = ref(0)
 const loading = ref(true)
 const error = ref('')
 
-const tenantOpen = ref(false)
 const reminderOpen = ref(false)
 const sheetNotifications = ref([])
 const sheetLoading = ref(false)
@@ -245,9 +202,6 @@ let inFlight = false
 
 const brandTitle = computed(() => `${branding.name || '柏总管'} · 管理端`)
 const roleLabel = computed(() => ADMIN_ROLE_LABELS[profile.value && profile.value.role] || '管理员')
-const tenantName = computed(() => (profile.value && profile.value.tenantName) || '当前公司')
-const tenantCode = computed(() => (profile.value && profile.value.tenantCode) || '—')
-const username = computed(() => (profile.value && profile.value.username) || '—')
 
 const greeting = computed(() => {
   const hour = new Date().getHours()
@@ -435,19 +389,6 @@ function openProject(project) {
   uni.navigateTo({ url: `/pages/admin/project/detail?id=${project.id}` })
 }
 
-function switchAccount() {
-  uni.showModal({
-    title: '切换管理账号',
-    content: '将退出当前管理员会话，使用另一个后台账号登录。',
-    success: (res) => {
-      if (!res.confirm) return
-      tenantOpen.value = false
-      clearAdminSession()
-      uni.redirectTo({ url: '/pages/admin/login/index' })
-    },
-  })
-}
-
 async function openReminderSheet() {
   reminderOpen.value = true
   if (!sheetLoaded.value) await loadSheetNotifications()
@@ -559,51 +500,14 @@ async function markAllRead() {
   line-height: 1.2;
 }
 
-.hero-meta {
+.hero-role {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: dp(10);
-  margin-top: dp(18);
-}
-
-.company-pill {
-  display: inline-flex;
-  align-items: center;
-  max-width: 68%;
-  padding: dp(8) dp(14);
-  border: 1px solid rgba(255, 255, 255, 0.74);
-  border-radius: dp(999);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(255, 255, 255, 0.76) 100%
-  );
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
-  backdrop-filter: blur(18px) saturate(180%);
-  box-shadow:
-    0 dp(4) dp(16) rgba(120, 40, 10, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
-}
-
-.company-name {
-  overflow: hidden;
-  color: #eb5c20;
-  font-size: dp(14);
-  font-weight: 700;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.company-caret {
-  width: dp(14);
-  height: dp(14);
-  margin-left: dp(5);
-  flex-shrink: 0;
+  margin-top: dp(16);
 }
 
 .role-pill {
-  padding: dp(7) dp(12);
+  padding: dp(7) dp(14);
   border: 1px solid rgba(255, 255, 255, 0.74);
   border-radius: dp(999);
   background: linear-gradient(
@@ -642,7 +546,15 @@ async function markAllRead() {
 
 .overview-card {
   padding: dp(16);
-  @include glass-surface(dp(20), 22px);
+  /* 经营概览是工作台的主视觉卡片：不用半透明白，否则在冷灰画布上几乎看不出边界 */
+  border: 1px solid rgba(235, 92, 32, 0.14);
+  border-top-color: rgba(255, 255, 255, 0.96);
+  border-radius: dp(20);
+  background: linear-gradient(145deg, #fffdfb 0%, #ffffff 46%, #fff6ef 100%);
+  box-shadow:
+    0 dp(10) dp(28) rgba(29, 33, 41, 0.1),
+    0 dp(2) dp(8) rgba(235, 92, 32, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98);
 }
 
 .card-head {
@@ -675,10 +587,10 @@ async function markAllRead() {
   justify-content: space-between;
   min-height: dp(78);
   padding: dp(12);
-  border: 1px solid rgba(255, 255, 255, 0.66);
+  border: 1px solid #f1e9e2;
   border-radius: dp(14);
-  background: rgba(255, 255, 255, 0.42);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  background: #ffffff;
+  box-shadow: 0 dp(2) dp(8) rgba(29, 33, 41, 0.045);
 }
 
 .stat-label {
@@ -889,14 +801,6 @@ async function markAllRead() {
   color: #86909c;
   font-size: dp(12);
   text-align: center;
-}
-
-.tenant-info {
-  margin-top: dp(2);
-}
-
-.tenant-switch {
-  margin-top: dp(14);
 }
 
 .reminder-sheet {

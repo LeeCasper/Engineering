@@ -46,6 +46,48 @@
           </view>
 
           <view class="admin-form-group">
+            <text class="admin-form-label">项目封面</text>
+            <view class="cover-field">
+              <view
+                class="cover-preview"
+                :class="{ 'cover-preview--empty': !form.coverUrl }"
+                @tap="chooseCover"
+              >
+                <image v-if="form.coverUrl" class="cover-img" :src="form.coverUrl" mode="aspectFill" />
+                <view v-else class="cover-empty">
+                  <image
+                    class="cover-empty-icon"
+                    src="/static/images/icon-camera-gray.png"
+                    mode="aspectFit"
+                  />
+                  <text>上传封面</text>
+                </view>
+                <view v-if="coverUploading" class="cover-mask">上传中…</view>
+              </view>
+              <view class="cover-actions">
+                <view class="cover-buttons">
+                  <button
+                    class="admin-btn admin-btn--ghost admin-btn--small"
+                    :disabled="coverUploading"
+                    @tap="chooseCover"
+                  >
+                    {{ form.coverUrl ? '更换封面' : '上传封面' }}
+                  </button>
+                  <button
+                    v-if="form.coverUrl"
+                    class="admin-btn admin-btn--ghost admin-btn--small cover-remove"
+                    :disabled="coverUploading"
+                    @tap="removeCover"
+                  >
+                    移除
+                  </button>
+                </view>
+                <text class="admin-form-hint">建议 1:1 正方形图片，不超过 5MB，支持 JPG / PNG / WebP；各端按正方形居中裁切。</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="admin-form-group">
             <text class="admin-form-label">地图定位</text>
 
             <view
@@ -262,6 +304,7 @@ import {
   fetchAdminProject,
   geocodeAdminMap,
   fetchAdminMapPreview,
+  uploadAdminProjectCover,
 } from '../../../api/admin/project'
 import { fetchAdminTemplates } from '../../../api/admin/template'
 import {
@@ -281,6 +324,7 @@ const isEdit = computed(() => Boolean(projectId.value))
 const form = reactive({
   name: '',
   address: '',
+  coverUrl: '',
   area: '',
   contractAmount: '',
   startDate: '',
@@ -329,6 +373,7 @@ const mapImageStyle = computed(
     };`
 )
 
+const coverUploading = ref(false)
 const templates = ref([])
 const templatesLoading = ref(false)
 const templateSheetOpen = ref(false)
@@ -390,6 +435,7 @@ async function loadProject() {
 
     form.name = data.name || ''
     form.address = data.address || ''
+    form.coverUrl = data.coverUrl || ''
     form.area = data.area || ''
     form.contractAmount = data.contractAmount || ''
     form.startDate = formatDate(data.startDate)
@@ -800,6 +846,8 @@ function buildPayload(includeTemplate) {
   const payload = {
     name: form.name.trim(),
     address,
+    // 空字符串表示清除封面；后端把它落成 NULL
+    coverUrl: form.coverUrl || '',
     contractAmount: String(form.contractAmount).trim(),
     startDate: form.startDate,
     planEndDate: form.planEndDate,
@@ -847,6 +895,50 @@ function validate() {
   if (form.planEndDate < form.startDate) return '计划竣工日期不得早于开工日期'
   if (!isEdit.value && !form.templateId) return '请选择阶段模板'
   return ''
+}
+
+const COVER_MAX_BYTES = 5 * 1024 * 1024
+
+/**
+ * 选图后立即上传，拿到绝对 URL 再随表单提交。
+ *
+ * 不用 `uni.chooseImage` 的 success 里的临时路径直接提交：
+ * 临时文件在页面关闭 / 重启后会失效，必须先落到服务端存储。
+ */
+function chooseCover() {
+  if (coverUploading.value) return
+
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: async (res) => {
+      const file = res.tempFiles && res.tempFiles[0]
+      const path = res.tempFilePaths && res.tempFilePaths[0]
+      if (!path) return
+      if (file && file.size > COVER_MAX_BYTES) {
+        uni.showToast({ title: '封面不得超过 5MB', icon: 'none' })
+        return
+      }
+
+      coverUploading.value = true
+      try {
+        const data = await uploadAdminProjectCover(path)
+        if (!data || !data.url) throw new Error('上传失败')
+        form.coverUrl = data.url
+        uni.showToast({ title: '封面上传成功', icon: 'none' })
+      } catch (err) {
+        showAdminError(err, '封面上传失败')
+      } finally {
+        coverUploading.value = false
+      }
+    },
+  })
+}
+
+function removeCover() {
+  if (coverUploading.value) return
+  form.coverUrl = ''
 }
 
 function onStartDate(event) {
@@ -1006,6 +1098,88 @@ function chooseTemplate(template) {
 .location-error {
   color: #f53f3f;
   font-size: dp(10);
+}
+
+/* ── 项目封面 ── */
+.cover-field {
+  display: flex;
+  align-items: center;
+  gap: dp(12);
+  margin-top: dp(8);
+}
+
+.cover-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(88);
+  height: dp(88);
+  overflow: hidden;
+  border: 1px solid #e8e1da;
+  border-radius: dp(10);
+  background: #faf7f3;
+  flex-shrink: 0;
+}
+
+.cover-preview--empty {
+  border-style: dashed;
+}
+
+.cover-img {
+  width: 100%;
+  height: 100%;
+}
+
+.cover-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: dp(4);
+  color: #a79c92;
+  font-size: dp(10);
+}
+
+.cover-empty-icon {
+  width: dp(20);
+  height: dp(20);
+}
+
+.cover-mask {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: dp(11);
+}
+
+.cover-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: dp(6);
+  min-width: 0;
+}
+
+.cover-buttons {
+  display: flex;
+  align-items: center;
+  gap: dp(8);
+}
+
+.cover-remove {
+  color: #f53f3f;
+  border-color: #ffd8d2;
+}
+
+.cover-actions .admin-form-hint {
+  margin-top: 0;
 }
 
 .form-grid {

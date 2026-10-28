@@ -222,8 +222,9 @@ function goBack() {
 }
 
 .feedback-textarea {
+  display: block;
   width: 100%;
-  min-height: dp(150);
+  min-height: dp(96);
   margin-top: dp(8);
   padding: dp(11);
   border: 1px solid #e8e1da;
@@ -232,9 +233,12 @@ function goBack() {
   color: #241c17;
   font-size: dp(13);
   line-height: 1.6;
+  /* width:100% 与 padding/border 同时存在时必须 border-box，否则会溢出卡片 */
+  box-sizing: border-box;
 }
 
 .feedback-input {
+  width: 100%;
   height: dp(40);
   margin-top: dp(8);
   padding: 0 dp(11);
@@ -243,6 +247,7 @@ function goBack() {
   background: #fffdfb;
   color: #241c17;
   font-size: dp(12);
+  box-sizing: border-box;
 }
 
 .feedback-placeholder {

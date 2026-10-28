@@ -310,12 +310,14 @@
         </view>
       </view>
     </view>
+    <ClientTabBar active="acceptance" />
   </view>
 </template>
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { onLoad, onShow, onPageScroll, onPullDownRefresh } from '@dcloudio/uni-app'
+import ClientTabBar from '../../components/ClientTabBar.vue'
 import {
   createAcceptance,
   fetchAcceptanceInbox,
@@ -455,6 +457,8 @@ function tabCount(key) {
 }
 
 onLoad(() => {
+  // 底栏是自绘的，原生栏必须尽早隐藏，避免首帧闪一下
+  uni.hideTabBar({ animation: false, fail: () => {} })
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 
@@ -793,16 +797,10 @@ function closeActiveSheet() {
 .page {
   position: relative;
   min-height: 100vh;
-  padding-bottom: dp(24);
+  /* 自绘底栏固定悬浮，任何平台都要给底部留出与原生 tabBar 一致的高度 */
+  padding-bottom: calc(#{dp(76)} + env(safe-area-inset-bottom));
   background: #faf7f4;
 }
-
-/* H5 的 tabBar 在页面内，列表底部要给它留出空间 */
-/* #ifdef H5 */
-.page {
-  padding-bottom: dp(80);
-}
-/* #endif */
 
 /* ── 顶部 ── */
 .hero {

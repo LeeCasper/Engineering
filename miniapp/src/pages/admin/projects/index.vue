@@ -1,7 +1,7 @@
 <template>
   <view
     class="admin-page admin-page--cool"
-    :class="{ 'admin-page--tabbar': showTabBar }"
+    :class="{ 'admin-page--tabbar': showTabBar, 'admin-page--fab': isDefaultMode }"
   >
     <AdminRootHeader
       :title="pageTitle"
@@ -10,11 +10,7 @@
       fallback="/pages/admin/workbench/index"
       background="#F6F7F9"
       glass
-    >
-      <template #right>
-        <view v-if="isDefaultMode" class="create-pill" @tap="goCreate">+ 新建项目</view>
-      </template>
-    </AdminRootHeader>
+    />
 
     <view class="content">
       <view class="search-box">
@@ -74,6 +70,11 @@
 
         <text class="permission-note">仅展示当前管理员有权限查看的项目</text>
       </view>
+    </view>
+
+    <view v-if="isDefaultMode" class="create-fab" @tap="goCreate">
+      <image class="create-fab-icon" src="/static/images/icon-plus-white.png" mode="aspectFit" />
+      <text>新建项目</text>
     </view>
 
     <AdminTabBar v-if="showTabBar" active="projects" />
@@ -277,22 +278,42 @@ function openProject(project) {
 </script>
 
 <style scoped lang="scss">
-.create-pill {
-  display: inline-flex;
+/* 新建项目固定在右下角，浮在列表之上、管理端 tabBar 之上 */
+.create-fab {
+  position: fixed;
+  right: dp(16);
+  bottom: calc(#{dp(76)} + env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  height: dp(32);
-  padding: 0 dp(12);
+  gap: dp(5);
+  height: dp(44);
+  padding: 0 dp(18);
   border-radius: dp(999);
-  background: #fff0e6;
-  color: #eb5c20;
-  font-size: dp(13);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(14);
   font-weight: 600;
-  white-space: nowrap;
+  box-shadow:
+    0 dp(6) dp(18) rgba(235, 92, 32, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.create-fab:active {
+  background: #c44710;
+}
+
+.create-fab-icon {
+  width: dp(14);
+  height: dp(14);
 }
 
 .content {
   padding: 0 dp(16) dp(12);
+}
+
+.admin-page--fab .content {
+  padding-bottom: dp(64);
 }
 
 .search-box {

@@ -13,6 +13,7 @@
 const express = require('express')
 const asyncHandler = require('../../utils/asyncHandler')
 const { requireAdmin, requireTenant } = require('../../middlewares/adminAuth')
+const { uploadAny } = require('../../middlewares/upload')
 const controller = require('../../controllers/adminProject.controller')
 const structure = require('../../controllers/adminStructure.controller')
 const operations = require('../../controllers/adminOperations.controller')
@@ -24,6 +25,8 @@ router.use(requireAdmin, requireTenant)
 router.get('/', asyncHandler(controller.list))
 // 固定路径段必须排在 /:id 之前，否则会被当成项目 id
 router.get('/stats', asyncHandler(controller.stats))
+// 封面先上传再随创建 / 编辑提交 coverUrl；同样必须先于 /:id
+router.post('/cover', uploadAny, asyncHandler(controller.uploadCover))
 router.post('/', asyncHandler(controller.create))
 
 // ── 固定路径段必须排在 /:id 之前 ──

@@ -111,9 +111,10 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 - 设计稿里的「已暂停」在本系统没有对应状态，按后端的 `archived` 显示为「已归档」；
 - 项目新建只对租户管理员开放：C 端项目列表**不展示**「新建项目」FAB；
   管理员从项目列表顶部「管理」进入工作台，再从工作台或项目管理列表头部新建；
-- 底部导航使用 `pages.json` 的**原生 tabBar**（项目 / 验收 / 记账 / 我的）。
-  四项均已成为真实页面；「我的」是个人工作台，消息未读数通过
-  `uni.setTabBarBadge({ index: 3 })` 显示在「我的」tab 上。
+- 底部导航使用自绘的 `components/ClientTabBar.vue`（项目 / 验收 / 记账 / 我的），
+  原生 tabBar 在进入 tab 页时由 `uni.hideTabBar()` 隐藏；位置、高度与原生栏一致，
+  底栏是液态玻璃材质。四项均已成为真实页面；「我的」是个人工作台，未读数通过
+  `utils/notificationBadge.js` 的 `mineTabBadge` ref 渲染在「我的」tab 上。
 - 管理端另有自己的内页 `AdminTabBar`（工作台 / 项目 / 成员 / 我的），
   不注册进原生 tabBar，详见「管理端」一节。
 
@@ -298,13 +299,18 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
   服务端静态地图拖动 / 缩放、微信原生 `uni.chooseLocation` 与手工坐标。
   静态图来自 `/admin/maps/static` 的 base64 data URL，**小程序端不持有 AMap Key**；
   创建 / 编辑提交可选 `longitude/latitude`，地址改动后不提交旧的地理编码坐标。
+- **项目封面**：同一表单支持上传封面（`POST /admin/projects/cover`，
+  `uni.chooseImage` → `adminUploadFile`，仅图片、≤5MB），拿回绝对 URL 后随表单提交
+  `coverUrl`，空字符串表示清除。项目卡片 `AdminProjectCard` 有封面时铺满缩略图位，
+  没有封面时回落内置楼宇图；C 端首页 / 项目详情优先使用同一封面，未上传时
+  按项目 id 回落 4 张内置实景图。
 - **动画**：管理端沿用 C 端的全局效果 —— 筛选胶囊与底部导航选中态用
   `gc-tab-pop`，列表 / 卡片用 `gc-stagger`（`gc-reveal-up` 依次上浮），
   底部面板沿用 `sheet-rise` 的缓入缓出与弹性回弹；不要再写一套 keyframes。
 - **液态玻璃**：C 端与管理端的卡片、吸顶导航、搜索 / 筛选胶囊与底部面板使用
   `src/uni.scss` 的 `glass-surface` / `glass-sheet` 材质
-  （半透明渐变 + `backdrop-filter` + 内侧高光）。**底部导航保持原样**：C 端用微信
-  原生 tabBar，管理端 `AdminTabBar` 仍是白底通栏；不要给底部导航加模糊或改成浮动坞。
+  （半透明渐变 + `backdrop-filter` + 内侧高光）。**C 端底栏 `ClientTabBar` 也用玻璃**；
+  管理端 `AdminTabBar` 仍是白底通栏，不要给它加模糊或改成浮动坞。
   表单、长文本、地图与签名画布保持不透明底。不支持 `backdrop-filter` 的内核会退化为
   半透明白，文字对比度仍然成立。
 - **工作台**：`pages/admin/workbench/index`。橙色渐变头部展示真实租户与角色；
@@ -418,12 +424,15 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 
 ## 底部导航
 
-C 端底部四项使用 `pages.json` 的原生 `tabBar`，不是每个页面自己画一个：
+C 端底部四项使用自绘的 `components/ClientTabBar.vue`。`pages.json` 设置
+`tabBar.custom = true`：原生栏不再渲染（登录后也不会闪），`tabBar.list` 只用于
+`switchTab`；微信要求配套的 `src/custom-tab-bar/` 空组件占位（原生 WXML，不放逻辑）：
 
-- 原生 tabBar 是全局的，切换 tab 不会 `reLaunch` 重建页面，因此没有白屏闪烁；
+- 底栏是固定定位的液态玻璃（半透明白 + `backdrop-filter`），位置、高度与原生栏一致；
+- 四个 tab 页底部至少预留 `76dp + 安全区`（项目页是 96dp），不要再写 H5 专用 padding 分支；
 - 项目 / 验收 / 记账 / 我的都是真实页面；管理端、消息、订阅、反馈、考察计划、现场签到与考察记录是非 tab 页面；
-- 页面内的筛选、详情、签名等浮层在 H5 下会把 z-index 提到原生 tabBar 之上；
-- 小程序原生 tabBar 在 webview 外，页面内的 `bottom` 定位不需要再额外加菜单高度。
+- 页面内的筛选、详情、签名等浮层遮罩 z-index 高于底栏（900），不会被底栏盖住；
+- 「我的」未读数由 `utils/notificationBadge.js` 的 `mineTabBadge` 驱动，底栏自行渲染红点。
 
 管理端是例外：它的工作台 / 项目 / 成员 / 我的使用内页 `AdminTabBar`，
 只出现在 `pages/admin/**` 的顶层页，不注册进原生 tabBar，也不会出现在 C 端页面。

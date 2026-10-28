@@ -13,7 +13,12 @@
   <view v-else class="project-card" @tap="$emit('select', project)">
     <view class="project-top">
       <view class="project-thumb">
-        <image class="project-thumb-img" src="/static/images/admin-project-building.png" mode="aspectFit" />
+        <image
+          class="project-thumb-img"
+          :class="{ 'project-thumb-img--cover': project.coverUrl }"
+          :src="project.coverUrl || '/static/images/admin-project-building.png'"
+          :mode="project.coverUrl ? 'aspectFill' : 'aspectFit'"
+        />
       </view>
       <view class="project-main">
         <view class="project-title-row">
@@ -94,11 +99,18 @@ const toneClass = computed(() => {
   border-radius: dp(14);
   background: #f6e7db;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .project-thumb-img {
   width: dp(48);
   height: dp(48);
+}
+
+/* 上传的封面按方形裁切铺满缩略图位；没有封面时保留内置楼宇图 */
+.project-thumb-img--cover {
+  width: 100%;
+  height: 100%;
 }
 
 .project-main {

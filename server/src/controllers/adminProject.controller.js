@@ -8,6 +8,9 @@ const { z } = require('zod')
 const { validate } = require('../utils/validate')
 const { parsePaging } = require('../utils/pagination')
 const { coordinateField, refineCoordinatePair } = require('../utils/coordinate')
+const AppError = require('../utils/AppError')
+const { normalizeFiles } = require('../middlewares/upload')
+const storage = require('../storage')
 const money = require('../utils/money')
 const datetime = require('../utils/datetime')
 const projectService = require('../services/project.service')
@@ -33,6 +36,19 @@ const dateField = (label) =>
  */
 const amountField = z.string().refine((value) => money.validate(value).ok, '合同金额必须大于 0 且最多两位小数')
 
+/**
+ * 项目封面地址。
+ *
+ * 只接受上传接口返回的 http(s) 绝对地址；空字符串表示清除封面（落库为 NULL）。
+ * 与汇报照片一致，存的是绝对 URL —— 小程序 `<image src>` 必须能直接访问。
+ */
+const coverUrlField = z
+  .string()
+  .trim()
+  .max(512, '封面地址过长')
+  .refine((value) => value === '' || /^https?:\/\//i.test(value), '封面地址不合法')
+  .transform((value) => (value === '' ? null : value))
+
 const createSchema = refineCoordinatePair(
   z
     .object({
@@ -48,6 +64,7 @@ const createSchema = refineCoordinatePair(
       planEndDate: dateField('计划竣工日期'),
       templateId: z.number().int().positive().optional(),
       remark: z.string().trim().max(500, '备注不超过 500 字').optional(),
+      coverUrl: coverUrlField.optional(),
       // 地图选点结果。与 address 同时存在时，服务层直接用坐标，不再地理编码。
       longitude: coordinateField('经度', -180, 180).optional(),
       latitude: coordinateField('纬度', -90, 90).optional(),
@@ -69,6 +86,8 @@ const updateSchema = refineCoordinatePair(
       startDate: dateField('开工日期').optional(),
       planEndDate: dateField('计划竣工日期').optional(),
       remark: z.string().trim().max(500).optional(),
+      // 传空字符串表示清除封面；不传表示本次不改
+      coverUrl: coverUrlField.optional(),
       // 允许只改坐标（不传 address）；两者必须同时出现或同时省略
       longitude: coordinateField('经度', -180, 180).optional(),
       latitude: coordinateField('纬度', -90, 90).optional(),
@@ -243,7 +262,28 @@ async function unlockPaymentNode(req, res) {
   )
 }
 
+const MAX_COVER_BYTES = 5 * 1024 * 1024
+
+/**
+ * POST /admin/projects/cover —— 上传项目封面 / 缩略图。
+ *
+ * 与建档解耦：先上传拿到绝对 URL，再随创建 / 编辑请求提交 `coverUrl`。
+ * Key 不返回给前端使用，前端只保存 url；换图后旧文件由运维任务清理。
+ */
+async function uploadCover(req, res) {
+  const files = normalizeFiles(req.files || [])
+  const cover = files.find((file) => file.field === 'cover')
+
+  if (!cover) throw AppError.badRequest('请选择要上传的项目封面')
+  if (cover.type !== 'image') throw AppError.badRequest('项目封面必须是 PNG / JPG / WebP 图片')
+  if (cover.sizeBytes > MAX_COVER_BYTES) throw AppError.badRequest('项目封面不得超过 5MB')
+
+  const saved = await storage.save(cover.buffer, { category: 'project-covers', ext: cover.ext })
+  res.ok({ url: saved.url, key: saved.key, sizeBytes: saved.sizeBytes })
+}
+
 module.exports = {
+  uploadCover,
   list,
   stats,
   create,

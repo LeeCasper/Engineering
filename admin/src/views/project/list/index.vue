@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
+import {
+  ElMessage,
+  ElMessageBox,
+  type FormInstance,
+  type UploadRequestOptions
+} from 'element-plus';
 import {
   fetchArchiveProject,
   fetchBatchArchive,
@@ -13,6 +18,7 @@ import {
   fetchProjectDetail,
   fetchProjectList,
   fetchUpdateProject,
+  fetchUploadProjectCover,
   type BatchResult,
   type CoordinateSource,
   type ProjectListItem,
@@ -125,6 +131,7 @@ function isValidCoordinate(value: string, min: number, max: number) {
 const form = reactive({
   name: '',
   address: '',
+  coverUrl: '',
   area: '',
   contractAmount: '',
   startDate: '',
@@ -134,6 +141,46 @@ const form = reactive({
   longitude: '',
   latitude: ''
 });
+
+const coverUploading = ref(false);
+const COVER_MAX_BYTES = 5 * 1024 * 1024;
+const COVER_MIME = ['image/jpeg', 'image/png', 'image/webp'];
+
+/** 封面上传成功只拿到 url；随创建 / 编辑请求一起提交 */
+/** ElUpload 的 onError 只接受 UploadAjaxError；这里只需要让组件结束上传态 */
+type UploadError = Parameters<UploadRequestOptions['onError']>[0];
+
+function rejectUpload(options: UploadRequestOptions, message: string) {
+  options.onError(new Error(message) as unknown as UploadError);
+}
+
+async function uploadCover(options: UploadRequestOptions) {
+  const file = options.file;
+  if (!COVER_MIME.includes(file.type)) {
+    ElMessage.warning('封面仅支持 JPG / PNG / WebP 图片');
+    rejectUpload(options, 'unsupported type');
+    return;
+  }
+  if (file.size > COVER_MAX_BYTES) {
+    ElMessage.warning('封面不得超过 5MB');
+    rejectUpload(options, 'too large');
+    return;
+  }
+
+  coverUploading.value = true;
+  try {
+    const { data, error } = await fetchUploadProjectCover(file);
+    if (error || !data) {
+      rejectUpload(options, error?.message || '上传失败');
+      return;
+    }
+    form.coverUrl = data.url;
+    options.onSuccess(data);
+    ElMessage.success('封面上传成功，保存后生效');
+  } finally {
+    coverUploading.value = false;
+  }
+}
 
 const rules = {
   name: [
@@ -178,6 +225,7 @@ const rules = {
 function resetForm() {
   form.name = '';
   form.address = '';
+  form.coverUrl = '';
   form.area = '';
   form.contractAmount = '';
   form.startDate = '';
@@ -214,6 +262,7 @@ async function openEdit(row: ProjectListItem) {
   if (!error && data) {
     form.name = data.name;
     form.address = data.address;
+    form.coverUrl = data.coverUrl ?? '';
     form.area = data.area ?? '';
     form.contractAmount = data.contractAmount;
     form.startDate = data.startDate;
@@ -286,6 +335,8 @@ async function submitForm() {
     const payload = {
       name: form.name.trim(),
       address: addressText,
+      // 空字符串 = 清除封面（后端转 NULL）；不填也不影响其他字段
+      coverUrl: form.coverUrl,
       area: form.area.trim() || undefined,
       contractAmount: form.contractAmount.trim(),
       startDate: form.startDate,
@@ -595,8 +646,13 @@ onMounted(async () => {
         <ElTableColumn v-if="!readOnly" type="selection" width="42" />
         <ElTableColumn prop="name" label="项目名称" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">
-            <ElButton link type="primary" @click="openDetail(row)">{{ row.name }}</ElButton>
-            <ElTag v-if="row.isOverdue" class="ml-6px" type="danger" size="small">延期</ElTag>
+            <div class="flex items-center gap-2">
+              <img v-if="row.coverUrl" class="table-cover" :src="row.coverUrl" alt="" />
+              <div>
+                <ElButton link type="primary" @click="openDetail(row)">{{ row.name }}</ElButton>
+                <ElTag v-if="row.isOverdue" class="ml-6px" type="danger" size="small">延期</ElTag>
+              </div>
+            </div>
           </template>
         </ElTableColumn>
 
@@ -703,6 +759,41 @@ onMounted(async () => {
       <ElForm ref="formRef" :model="form" :rules="rules" label-width="104px">
         <ElFormItem label="项目名称" prop="name">
           <ElInput v-model="form.name" maxlength="50" show-word-limit placeholder="请输入项目名称" />
+        </ElFormItem>
+
+        <ElFormItem label="项目封面">
+          <div class="cover-field">
+            <div class="cover-preview" :class="{ 'cover-preview--empty': !form.coverUrl }">
+              <img v-if="form.coverUrl" :src="form.coverUrl" class="cover-img" alt="项目封面" />
+              <span v-else class="cover-placeholder">暂无封面</span>
+              <span v-if="coverUploading" class="cover-mask">上传中…</span>
+            </div>
+            <div class="cover-actions">
+              <div class="flex items-center gap-2">
+                <ElUpload
+                  :show-file-list="false"
+                  :http-request="uploadCover"
+                  accept="image/jpeg,image/png,image/webp"
+                  :disabled="readOnly || coverUploading"
+                >
+                  <ElButton size="small" :loading="coverUploading" :disabled="readOnly">
+                    {{ form.coverUrl ? '更换封面' : '上传封面' }}
+                  </ElButton>
+                </ElUpload>
+                <ElButton
+                  v-if="form.coverUrl"
+                  size="small"
+                  text
+                  type="danger"
+                  :disabled="readOnly || coverUploading"
+                  @click="form.coverUrl = ''"
+                >
+                  移除
+                </ElButton>
+              </div>
+              <span class="cover-tip">建议 1:1 正方形图片，≤5MB，支持 JPG / PNG / WebP</span>
+            </div>
+          </div>
         </ElFormItem>
 
         <ElFormItem label="项目地址" prop="address">
@@ -861,5 +952,71 @@ onMounted(async () => {
 
 .action-cell :deep(.el-dropdown .el-button) {
   margin-left: 0;
+}
+
+/* ── 项目封面 ── */
+.cover-field {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cover-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  background: #f7f8fa;
+  flex-shrink: 0;
+}
+
+.cover-preview--empty {
+  border-style: dashed;
+}
+
+.cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover-placeholder {
+  color: #86909c;
+  font-size: 12px;
+}
+
+.cover-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+}
+
+.cover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cover-tip {
+  color: #86909c;
+  font-size: 12px;
+}
+
+.table-cover {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 </style>

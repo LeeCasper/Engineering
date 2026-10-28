@@ -97,6 +97,56 @@ export function adminRequest({ url, method = 'GET', data, auth = true, header = 
   })
 }
 
+/**
+ * 管理端 multipart 上传。
+ *
+ * 与 C 端 `uploadFile` 的区别只有 token 与地址前缀：这里只用 gc_admin_token，
+ * 401 只清管理员会话，绝不触碰 C 端 `gc_token`（CLAUDE.md 第 90 条）。
+ */
+export function adminUploadFile({ url, filePath, name = 'file', formData = {}, auth = true, header = {} }) {
+  return new Promise((resolve, reject) => {
+    const token = getAdminToken()
+    const headers = { ...header }
+    if (auth && token) headers.Authorization = `Bearer ${token}`
+
+    uni.uploadFile({
+      url: `${API_BASE}/admin${url}`,
+      filePath,
+      name,
+      formData,
+      header: headers,
+      success(res) {
+        let body = {}
+        try {
+          body = JSON.parse(res.data || '{}')
+        } catch (err) {
+          reject(new Error('服务端返回了无法解析的数据'))
+          return
+        }
+
+        if (res.statusCode >= 200 && res.statusCode < 300 && body.code === 0) {
+          resolve(body.data)
+          return
+        }
+
+        if (res.statusCode === 401 && auth) {
+          clearAdminSession()
+          redirectToAdminLogin('expired')
+        }
+
+        const error = new Error(body.message || `上传失败（${res.statusCode}）`)
+        error.statusCode = res.statusCode
+        error.code = body.code
+        error.data = body.data
+        reject(error)
+      },
+      fail(err) {
+        reject(new Error(err.errMsg || '上传失败，请稍后重试'))
+      },
+    })
+  })
+}
+
 export function isAdminUnauthorized(err) {
   return Boolean(err && err.statusCode === 401)
 }

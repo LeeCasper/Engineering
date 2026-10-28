@@ -43,7 +43,7 @@
       <!-- 工长 / 监理：考察计划入口（C-6.3，不占 tabBar） -->
       <view v-if="canPlanRoute" class="route-banner" @tap="goRoutePlan">
         <view class="route-banner-icon">
-          <image class="route-banner-icon-img" src="/static/images/icon-navigation-accent.png" mode="aspectFit" />
+          <image class="route-banner-icon-img" src="/static/images/icon-route-plan-accent.png" mode="aspectFit" />
         </view>
         <view class="route-banner-main">
           <view class="route-banner-title-row">
@@ -264,12 +264,14 @@
         </view>
       </view>
     </view>
+    <ClientTabBar active="mine" />
   </view>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
+import ClientTabBar from '../../components/ClientTabBar.vue'
 import {
   getToken,
   getCachedProjects,
@@ -454,6 +456,8 @@ const emptyProjectState = computed(() => {
 })
 
 onLoad(() => {
+  // 底栏是自绘的，原生栏必须尽早隐藏，避免首帧闪一下
+  uni.hideTabBar({ animation: false, fail: () => {} })
   loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
@@ -816,17 +820,11 @@ function closeActiveSheet() {
 .page {
   position: relative;
   min-height: 100vh;
-  padding-bottom: calc(#{dp(28)} + env(safe-area-inset-bottom));
+  /* 自绘底栏固定悬浮，任何平台都要给底部菜单留出空间 */
+  padding-bottom: calc(#{dp(76)} + env(safe-area-inset-bottom));
   background: #faf7f4;
   overflow-x: hidden;
 }
-
-/* H5 的 tabBar 在页面内，给底部菜单留出空间 */
-/* #ifdef H5 */
-.page {
-  padding-bottom: dp(86);
-}
-/* #endif */
 
 /* ── 分层橙色头部：橙色块本身沿一条贯通页面的弧线收口 ── */
 .hero-panel {
@@ -1055,6 +1053,7 @@ function closeActiveSheet() {
   transform: scale(0.99);
 }
 
+/* 图标底座用液态玻璃：与横幅的玻璃材质叠加，但保持不透明度足够看清橙色图标 */
 .route-banner-icon {
   display: flex;
   align-items: center;
@@ -1062,14 +1061,24 @@ function closeActiveSheet() {
   width: dp(38);
   height: dp(38);
   margin-right: dp(11);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: dp(12);
-  background: #fff3e8;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 240, 231, 0.66) 100%
+  );
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  backdrop-filter: blur(12px) saturate(180%);
+  box-shadow:
+    0 dp(2) dp(8) rgba(235, 92, 32, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
   flex-shrink: 0;
 }
 
 .route-banner-icon-img {
-  width: dp(19);
-  height: dp(19);
+  width: dp(21);
+  height: dp(21);
 }
 
 .route-banner-main {

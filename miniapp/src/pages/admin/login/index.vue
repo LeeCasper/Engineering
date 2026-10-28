@@ -11,6 +11,27 @@
         </view>
       </view>
 
+      <!-- dev-only:start 开发环境专用一键登录，正式构建由 vite.config.js 整段删除 -->
+      <view v-if="devAccount" class="dev-login-card">
+        <view class="dev-login-head">
+          <text class="dev-login-title">开发调试</text>
+          <text class="dev-login-tag">DEV</text>
+        </view>
+        <text class="dev-login-sub">
+          使用内置租户管理员账号（{{ devAccount.tenantCode }} / {{ devAccount.username }}）直接登录。
+          仅开发环境显示，正式构建不含此模块。
+        </text>
+        <button
+          class="admin-btn admin-btn--block admin-btn--ghost dev-login-btn"
+          :class="{ 'admin-btn--disabled': devLogging }"
+          :disabled="devLogging"
+          @tap="devQuickLogin"
+        >
+          {{ devLogging ? '登录中…' : '一键登录管理端' }}
+        </button>
+      </view>
+      <!-- dev-only:end -->
+
       <!-- 已绑定微信：免密进入 -->
       <view v-if="bindings.length" class="admin-card">
         <view class="admin-section-head">
@@ -160,6 +181,13 @@ const form = reactive({
   captchaAnswer: '',
 })
 
+/* dev-only:start 开发环境一键登录，正式构建由 vite.config.js 整段删除 */
+const devAccount = import.meta.env.DEV
+  ? { tenantCode: 'default', username: 'admin', password: 'Admin123456' }
+  : null
+const devLogging = ref(false)
+/* dev-only:end */
+
 const captchaId = ref('')
 const captchaImage = ref('')
 const captchaLoading = ref(false)
@@ -246,33 +274,7 @@ async function submitPasswordLogin() {
       captchaId: captchaId.value,
       captchaAnswer: form.captchaAnswer.trim(),
     })
-
-    setLastAdminTenantCode(form.tenantCode.trim())
-    setAdminSession({
-      token: result.token,
-      admin: result.admin,
-      meta: {
-        authMethod: result.authMethod || 'password',
-        issuedAt: result.issuedAt,
-        tenantCode: form.tenantCode.trim(),
-      },
-    })
-
-    const profile = await fetchAdminProfile()
-    if (!profile || profile.role === 'platform' || profile.tenantId == null) {
-      clearAdminSession()
-      throw new Error('该账号不能进入租户管理端')
-    }
-    setAdminUser(profile)
-
-    if (profile.mustChangePassword) {
-      uni.showToast({ title: '请先修改初始密码', icon: 'none' })
-      redirectToAdminChangePassword(true)
-      return
-    }
-
-    await maybeBindWechat(profile)
-    uni.redirectTo({ url: redirect.value })
+    await completeLogin(result, form.tenantCode.trim())
   } catch (err) {
     error.value = err.message || '登录失败'
     form.password = ''
@@ -282,6 +284,67 @@ async function submitPasswordLogin() {
     submitting.value = false
   }
 }
+
+/** 密码登录与开发环境一键登录共用：落会话 → 校验身份 → 跳转 */
+async function completeLogin(result, tenantCode) {
+  setLastAdminTenantCode(tenantCode)
+  setAdminSession({
+    token: result.token,
+    admin: result.admin,
+    meta: {
+      authMethod: result.authMethod || 'password',
+      issuedAt: result.issuedAt,
+      tenantCode,
+    },
+  })
+
+  const profile = await fetchAdminProfile()
+  if (!profile || profile.role === 'platform' || profile.tenantId == null) {
+    clearAdminSession()
+    throw new Error('该账号不能进入租户管理端')
+  }
+  setAdminUser(profile)
+
+  if (profile.mustChangePassword) {
+    uni.showToast({ title: '请先修改初始密码', icon: 'none' })
+    redirectToAdminChangePassword(true)
+    return
+  }
+
+  await maybeBindWechat(profile)
+  uni.redirectTo({ url: redirect.value })
+}
+
+/* dev-only:start */
+/** 仅开发环境存在（按钮与账号常量都在正式构建中被移除） */
+async function devQuickLogin() {
+  if (!devAccount || devLogging.value) return
+
+  devLogging.value = true
+  error.value = ''
+  try {
+    // 验证码一次性有效，这里现取一次；开发环境验证码接口会回显答案
+    const captcha = await fetchAdminCaptchaPng()
+    if (!captcha || !captcha.debugAnswer) {
+      throw new Error('开发环境未返回验证码答案，请确认后端 NODE_ENV=development')
+    }
+
+    const result = await loginAdmin({
+      tenantCode: devAccount.tenantCode,
+      username: devAccount.username,
+      password: devAccount.password,
+      captchaId: captcha.captchaId,
+      captchaAnswer: captcha.debugAnswer,
+    })
+    await completeLogin(result, devAccount.tenantCode)
+  } catch (err) {
+    error.value = err.message || '一键登录失败'
+    await loadCaptcha()
+  } finally {
+    devLogging.value = false
+  }
+}
+/* dev-only:end */
 
 async function maybeBindWechat(profile) {
   if (!getToken() || !isAdminFresh(profile)) return
@@ -397,6 +460,52 @@ async function loginByBinding(binding) {
   font-size: dp(11);
   line-height: 1.5;
 }
+
+/* dev-only:start 开发环境一键登录，正式构建由 vite.config.js 整段删除 */
+/* 虚线边框提示这是调试入口 */
+.dev-login-card {
+  margin-bottom: dp(16);
+  padding: dp(14);
+  border: 1px dashed #f0a37c;
+  border-radius: dp(14);
+  background: #fffaf6;
+}
+
+.dev-login-head {
+  display: flex;
+  align-items: center;
+  gap: dp(8);
+}
+
+.dev-login-title {
+  color: #c44710;
+  font-size: dp(13);
+  font-weight: 700;
+}
+
+.dev-login-tag {
+  padding: 0 dp(6);
+  border-radius: dp(999);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(9);
+  font-weight: 700;
+  letter-spacing: dp(0.5);
+  line-height: dp(18);
+}
+
+.dev-login-sub {
+  display: block;
+  margin-top: dp(8);
+  color: #8b8179;
+  font-size: dp(11);
+  line-height: 1.6;
+}
+
+.dev-login-btn {
+  margin-top: dp(12);
+}
+/* dev-only:end */
 
 .binding-list {
   display: flex;
