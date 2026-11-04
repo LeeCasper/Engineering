@@ -135,6 +135,16 @@
       }
     },
     {
+      "path": "pages/acceptance/reports",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4",
+        "backgroundTextStyle": "dark",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/esign/sign",
       "style": {
         "navigationBarTitleText": "电子签名",

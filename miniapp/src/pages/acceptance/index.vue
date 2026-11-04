@@ -466,13 +466,6 @@ onLoad(() => {
 })
 
 onShow(() => {
-  // 「我的 → 验收报告」用一次性 storage 指定分类，switchTab 无法带 query
-  const focusTab = uni.getStorageSync('gc_acceptance_focus')
-  if (focusTab === 'done') {
-    activeTab.value = 'done'
-    uni.removeStorageSync('gc_acceptance_focus')
-  }
-
   if (!loading.value && getToken()) load()
   measureSearchSticky()
 })

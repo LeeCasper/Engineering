@@ -887,6 +887,23 @@ async function listAcceptances(userId, projectId) {
     hasSignature: Boolean(row.signature_url) || row.esign_status === 'signed',
     esignStatus: row.esign_status || null,
     reportPdfStatus: row.report_pdf_status,
+    // 报告库页面直接在这里拿签名链接，避免为每个已通过验收单再请求一次详情
+    reportPdf:
+      row.status === STATUS.PASSED && row.report_pdf_status === 'success'
+        ? {
+            status: row.report_pdf_status,
+            signedPath: signedUrl.buildPath({
+              resource: 'acceptance-report',
+              id: row.id,
+              path: `/api/v1/acceptances/${row.id}/report.pdf`,
+            }),
+            error: row.report_pdf_error || null,
+          }
+        : {
+            status: row.report_pdf_status,
+            signedPath: null,
+            error: row.report_pdf_error || null,
+          },
     ownerType: viewer.owner_type ?? null,
     isPrimaryOwner: isPrimaryOwner(viewer),
     // 是否为「待我处理」—— 由当前访问者的角色与单子所处环节共同决定

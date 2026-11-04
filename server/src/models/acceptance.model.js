@@ -322,7 +322,8 @@ async function listByProject(projectId) {
   return db.query(
     `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
             a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at, a.resubmit_count,
-            a.finished_at, a.signature_url, a.signature_mode, a.esign_status, a.report_pdf_status, a.created_at,
+            a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
+            a.report_pdf_status, a.report_pdf_error, a.created_at,
             s.name AS stage_name, i.name AS item_name,
             u.nickname AS submitter_nickname,
             (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count

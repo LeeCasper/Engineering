@@ -682,6 +682,19 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
     expect(pdf.length).toBeGreaterThan(5000)
   })
 
+  it('项目验收列表的已完成项直接带报告签名链接', async () => {
+    const ctx = await setup()
+    const id = await passThrough(ctx)
+
+    const list = await mini.authed('get', `/projects/${ctx.projectId}/acceptances`, ctx.owner.token)
+    const done = list.body.data.groups.find((group) => group.key === 'done')
+    const item = done.items.find((row) => row.id === id)
+
+    expect(item.reportPdf.status).toBe('success')
+    expect(item.reportPdf.signedPath).toContain('/api/v1/acceptances/')
+    expect(item.reportPdf.signedPath).toContain('sig=')
+  })
+
   it('AC-A19 PDF 生成失败不阻断验收进入已通过，且提供重试入口', async () => {
     const ctx = await setup()
     const storage = require('../../src/storage')

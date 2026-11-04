@@ -391,6 +391,8 @@ const unreadTotal = ref(0)
 const profileSheetOpen = ref(false)
 const projectSheetOpen = ref(false)
 const switching = ref(false)
+// 「验收报告」入口：没有当前项目时先让用户选项目，选完自动进入报告页
+const pendingAcceptanceReports = ref(false)
 const deactivating = ref(false)
 const avatarError = ref(false)
 // 资料编辑：头像先选临时文件，保存时才上传；昵称直接改
@@ -672,11 +674,17 @@ function openProjectSheet() {
 
 function closeProjectSheet() {
   if (switching.value) return
+  pendingAcceptanceReports.value = false
   projectSheetOpen.value = false
 }
 
 async function selectAllProjects() {
   if (switching.value) return
+  // 验收报告必须落到具体项目；此时不能选「全部项目」
+  if (pendingAcceptanceReports.value) {
+    uni.showToast({ title: '请选择一个具体项目', icon: 'none' })
+    return
+  }
   switching.value = true
   clearCurrentProject()
   currentProject.value = null
@@ -695,9 +703,15 @@ async function selectProject(project) {
   if (switching.value) return
   if (currentProject.value && currentProject.value.id === project.id) {
     projectSheetOpen.value = false
+    if (pendingAcceptanceReports.value) {
+      pendingAcceptanceReports.value = false
+      uni.navigateTo({ url: `/pages/acceptance/reports?projectId=${project.id}` })
+    }
     return
   }
 
+  const openAcceptanceReports = pendingAcceptanceReports.value
+  pendingAcceptanceReports.value = false
   switching.value = true
   setCurrentProject({ ...project, myRole: project.myRole })
   currentProject.value = getCurrentProject()
@@ -705,6 +719,9 @@ async function selectProject(project) {
   try {
     await loadProfileAndRole()
     uni.showToast({ title: '已切换项目', icon: 'success' })
+    if (openAcceptanceReports) {
+      uni.navigateTo({ url: `/pages/acceptance/reports?projectId=${project.id}` })
+    }
   } catch (err) {
     uni.showToast({ title: err.message || '项目切换失败', icon: 'none' })
   } finally {
@@ -836,14 +853,26 @@ function goAcceptance() {
 }
 
 /**
- * 业主的「验收报告」：跳到验收 tab 的「已完成」分类。
+ * 业主的「验收报告」：进入当前项目的验收报告库。
  *
- * `switchTab` 不能带 query，因此用一次性 storage 传递目标分类，
- * 验收页 onShow 读取后立即清除。
+ * 报告按项目归档，因此没有当前项目时先打开项目选择面板；
+ * 选择具体项目后 selectProject 会接着跳到报告页。
  */
 function goAcceptanceReports() {
-  uni.setStorageSync('gc_acceptance_focus', 'done')
-  uni.switchTab({ url: '/pages/acceptance/index' })
+  if (currentProject.value) {
+    uni.navigateTo({
+      url: `/pages/acceptance/reports?projectId=${currentProject.value.id}`,
+    })
+    return
+  }
+
+  if (projects.value.length === 0) {
+    uni.showToast({ title: '还没有加入项目', icon: 'none' })
+    return
+  }
+
+  pendingAcceptanceReports.value = true
+  projectSheetOpen.value = true
 }
 
 function goRoutePlan() {
