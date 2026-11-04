@@ -1,8 +1,7 @@
 <template>
   <view class="page">
-    <!-- 橙色 hero 必须完整包住资料卡：否则卡片会骑在橙白交界上，
-         半透明玻璃会把接缝放大成一条横向色带 -->
-    <view class="hero-panel" :style="{ height: `${safeTop + 218}px` }">
+    <!-- 橙色 hero 恢复到资料卡下方的原始高度；底部只保留白色收口线，不加阴影 -->
+    <view class="hero-panel" :style="{ height: `${safeTop + 175}px` }">
       <image class="hero-bg" src="/static/images/mine-hero-bg.png" mode="scaleToFill" />
       <image class="hero-arch" src="/static/images/mine-hero-arch.png" mode="aspectFit" />
       <view class="hero-glow" />
@@ -1075,11 +1074,9 @@ function closeActiveSheet() {
 .profile-card {
   padding: dp(16);
   @include glass-surface(dp(20), 24px);
-  /* 卡片完整落在橙色 hero 内，降低白底不透明度让暖橙透出来，玻璃才看得见 */
+  /* 卡片允许跨过橙白收口线；不要再加外投影，否则会在橙色左右两侧留下阴影带 */
   background-color: rgba(255, 252, 248, 0.74);
-  box-shadow:
-    0 dp(12) dp(28) rgba(120, 45, 20, 0.13),
-    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 
 .profile-row {

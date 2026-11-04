@@ -1,6 +1,6 @@
 <template>
   <view class="page">
-    <view class="hero" :style="{ height: `${safeTop + 60}px` }" />
+    <view class="hero" :style="{ height: `${safeTop + 64}px` }" />
     <view class="nav" :style="{ paddingTop: `${safeTop + 6}px` }">
       <view class="nav-back" @tap="goBack">
         <text class="nav-back-glyph">‹</text>
@@ -12,7 +12,7 @@
       <view v-else class="nav-switch-placeholder" />
     </view>
 
-    <view class="content">
+    <view class="content gc-stagger">
       <!-- 当前项目 -->
       <view v-if="project" class="project-card">
         <text class="project-eyebrow">当前项目</text>
@@ -453,7 +453,11 @@ function roleLabelOf(role) {
   position: relative;
   min-height: 100vh;
   padding-bottom: calc(#{dp(28)} + env(safe-area-inset-bottom));
-  background: #faf7f4;
+  /* 近白画布上给玻璃一点可折射的暖色光晕 */
+  background:
+    radial-gradient(62% 24% at 94% 15%, rgba(235, 92, 32, 0.12) 0%, rgba(235, 92, 32, 0) 72%),
+    radial-gradient(48% 22% at 2% 34%, rgba(255, 180, 143, 0.16) 0%, rgba(255, 180, 143, 0) 72%),
+    #faf7f4;
   overflow-x: hidden;
 }
 
@@ -518,15 +522,17 @@ function roleLabelOf(role) {
 .content {
   position: relative;
   z-index: 3;
-  padding: dp(12) dp(14) 0;
+  /* 顶部留出呼吸空间：项目卡不再贴着橙色导航底边 */
+  padding: dp(30) dp(14) 0;
 }
 
 .project-card {
   padding: dp(16);
-  border: 1px solid rgba(255, 253, 250, 0.6);
-  border-radius: dp(18);
-  background: #fffdfb;
-  box-shadow: 0 dp(8) dp(24) rgba(94, 52, 25, 0.08);
+  @include glass-surface(dp(18), 24px);
+  background-color: rgba(255, 250, 245, 0.7);
+  box-shadow:
+    0 dp(10) dp(26) rgba(94, 52, 25, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.64);
 }
 
 .project-eyebrow {
@@ -568,6 +574,26 @@ function roleLabelOf(role) {
 .summary-item {
   flex: 1;
   text-align: center;
+  animation: report-stat-in 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.summary-item:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.summary-item:nth-child(3) {
+  animation-delay: 120ms;
+}
+
+@keyframes report-stat-in {
+  from {
+    opacity: 0;
+    transform: translateY(dp(6));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .summary-item + .summary-item {
@@ -605,6 +631,15 @@ function roleLabelOf(role) {
   font-size: dp(11);
   white-space: nowrap;
   flex-shrink: 0;
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    transform 160ms ease;
+}
+
+.filter-chip:active {
+  transform: scale(0.96);
 }
 
 .filter-chip--active {
@@ -641,14 +676,51 @@ function roleLabelOf(role) {
   align-items: center;
   margin-bottom: dp(10);
   padding: dp(13);
+  /* 长列表不用 backdrop-filter：报告数量可能很多，逐卡模糊在低端机上会拖慢滚动 */
   border: 1px solid #f1e9e2;
   border-radius: dp(16);
-  background: #fff;
-  box-shadow: 0 dp(4) dp(14) rgba(94, 52, 25, 0.04);
+  background: linear-gradient(160deg, #fffdfb 0%, #fffaf6 100%);
+  box-shadow:
+    0 dp(4) dp(14) rgba(94, 52, 25, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  animation: report-card-in 420ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  transition:
+    background 200ms ease,
+    box-shadow 200ms ease;
 }
 
 .report-card:active {
-  background: #fffaf6;
+  background: linear-gradient(160deg, #fff8f2 0%, #fff3ea 100%);
+  box-shadow:
+    0 dp(3) dp(10) rgba(94, 52, 25, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+@keyframes report-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(dp(10)) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.stage-group .report-card:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.stage-group .report-card:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.stage-group .report-card:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.stage-group .report-card:nth-child(5) {
+  animation-delay: 160ms;
 }
 
 .report-icon {
@@ -758,6 +830,13 @@ function roleLabelOf(role) {
   font-size: dp(10);
   font-weight: 600;
   line-height: 1;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+.report-btn:active {
+  transform: scale(0.94);
 }
 
 .report-btn::after {

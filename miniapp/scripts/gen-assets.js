@@ -242,7 +242,6 @@ const MINE_HERO_BG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 2
 </linearGradient>
 </defs>
 <path d="M0 0 H390 V225 Q195 255 0 225 Z" fill="url(#mineHeroGrad)"/>
-<path d="M0 225 Q195 255 390 225" fill="none" stroke="#C44710" stroke-opacity="0.22" stroke-width="12" stroke-linecap="round"/>
 <path d="M0 225 Q195 255 390 225" fill="none" stroke="#FFF8F3" stroke-width="5" stroke-linecap="round"/>
 </svg>`
 
