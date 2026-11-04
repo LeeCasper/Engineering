@@ -103,6 +103,70 @@ describe('C-1.1 微信静默登录', () => {
   })
 })
 
+describe('C-1.1 修改昵称与头像', () => {
+  const PNG_1PX = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  )
+
+  it('PUT /auth/profile 更新昵称并去掉首尾空格', async () => {
+    const { token, userId } = await mini.login('code-update-nickname')
+
+    const res = await mini.authed('put', '/auth/profile', token).send({ nickname: '  张师傅  ' })
+    expect(res.status).toBe(200)
+    expect(res.body.data.nickname).toBe('张师傅')
+
+    const row = await db.queryOne('SELECT nickname FROM user WHERE id = ?', [userId])
+    expect(row.nickname).toBe('张师傅')
+  })
+
+  it('昵称为空或超长时返回 400', async () => {
+    const { token } = await mini.login('code-update-nickname-invalid')
+
+    expect((await mini.authed('put', '/auth/profile', token).send({ nickname: '   ' })).status).toBe(400)
+    expect(
+      (await mini.authed('put', '/auth/profile', token).send({ nickname: '名'.repeat(65) })).status
+    ).toBe(400)
+  })
+
+  it('上传头像后资料返回可访问的绝对地址', async () => {
+    const { token, userId } = await mini.login('code-upload-avatar')
+
+    const uploaded = await mini
+      .authed('post', '/auth/avatar', token)
+      .attach('avatar', PNG_1PX, { filename: 'avatar.png', contentType: 'image/png' })
+
+    expect(uploaded.status).toBe(200)
+    expect(uploaded.body.data.avatar).toMatch(/\/uploads\/avatars\//)
+
+    const profile = await mini.authed('get', '/auth/profile', token)
+    expect(profile.body.data.avatar).toBe(uploaded.body.data.avatar)
+
+    const row = await db.queryOne('SELECT avatar FROM user WHERE id = ?', [userId])
+    expect(row.avatar).toBe(uploaded.body.data.avatar)
+  })
+
+  it('头像只接受图片类型', async () => {
+    const { token } = await mini.login('code-upload-avatar-invalid')
+
+    const res = await mini
+      .authed('post', '/auth/avatar', token)
+      .attach('avatar', Buffer.from('not an image'), {
+        filename: 'avatar.txt',
+        contentType: 'text/plain',
+      })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('未登录不能上传头像', async () => {
+    const res = await request
+      .post('/auth/avatar')
+      .attach('avatar', PNG_1PX, { filename: 'avatar.png', contentType: 'image/png' })
+    expect(res.status).toBe(401)
+  })
+})
+
 describe('C-1.1 绑定手机号与脱敏（AC-U02）', () => {
   it('绑定后返回脱敏手机号，接口不做完整回显', async () => {
     const { token } = await mini.login('code-bind')

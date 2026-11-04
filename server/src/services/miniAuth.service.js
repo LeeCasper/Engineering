@@ -8,9 +8,11 @@
  * 那些属于「登录之后引导补全」的步骤（C-1.1 的「首次进入引导绑定手机号」）。
  */
 
+const config = require('../../config')
 const AppError = require('../utils/AppError')
 const logger = require('../utils/logger')
 const jwt = require('../utils/jwt')
+const storage = require('../storage')
 const wx = require('./wx.service')
 const userModel = require('../models/user.model')
 const projectMemberModel = require('../models/projectMember.model')
@@ -209,6 +211,12 @@ async function deactivate(userId, operator) {
 
     return { affected: memberships, promotions: promoted }
   })
+
+  // 头像属于个人数据，账号注销后不再保留文件；外部 URL（微信头像）不动
+  const marker = `${config.upload.publicPath}/`
+  if (user.avatar && String(user.avatar).includes(marker)) {
+    await storage.remove(storage.extractKey(user.avatar))
+  }
 
   // 事务外：通知项目管理员（AC-AD18 的邀请确认走的是另一条路，这里只发提醒）
   for (const member of affected) {

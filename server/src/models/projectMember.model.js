@@ -263,7 +263,7 @@ async function listByProject(projectId) {
   return db.query(
     `SELECT pm.id, pm.user_id, pm.role, pm.status, pm.invited_by, pm.is_primary, pm.owner_type,
             pm.created_at AS invited_at, pm.confirmed_at, pm.left_at,
-            u.nickname, u.phone
+            u.nickname, u.avatar, u.phone
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id
       WHERE pm.project_id = ? AND pm.deleted_at IS NULL
@@ -345,7 +345,7 @@ async function listAcrossProjects(scope, { filters = {}, paging }) {
   const rows = await db.query(
     `SELECT pm.id, pm.project_id, pm.user_id, pm.role, pm.status, pm.is_primary, pm.owner_type,
             pm.created_at AS invited_at, pm.confirmed_at, pm.left_at,
-            u.nickname, u.phone,
+            u.nickname, u.avatar, u.phone,
             p.name AS project_name, p.status AS project_status
        ${clause}
       ORDER BY FIELD(pm.role, 'foreman', 'supervisor', 'owner'),

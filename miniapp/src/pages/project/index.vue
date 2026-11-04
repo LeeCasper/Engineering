@@ -1299,7 +1299,9 @@ function closeActiveSheet() {
   padding-right: dp(14);
   padding-bottom: dp(8);
   padding-left: dp(8);
-  background: rgba(250, 247, 244, 0.86);
+  /* 吸顶导航必须基本不透明：内容滚到下面时半透明底会把卡片顶部透出来，
+     看起来像被裁切；这里保留 3% 的通透感，但不再让内容穿透 */
+  background: rgba(250, 247, 244, 0.97);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   backdrop-filter: blur(22px) saturate(180%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.6);
@@ -1352,7 +1354,8 @@ function closeActiveSheet() {
 /* #endif */
 
 .content {
-  padding: 0 dp(14);
+  /* 吸顶导航与第一张卡片之间要留出呼吸空间；否则卡片会直接贴住导航底边 */
+  padding: dp(12) dp(14) 0;
 }
 
 .card {

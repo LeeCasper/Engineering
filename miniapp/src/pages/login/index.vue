@@ -210,22 +210,10 @@ async function bootstrap() {
     // 登录只解决身份；项目上下文由 /projects 的结果决定。
     // 有待确认邀请先去邀请列表，否则直接进项目列表 —— 不再经过角色选择页。
     // 用 reLaunch 清空页面栈，避免已登录用户还能返回登录页。
-    hideNativeTabBar()
     uni.reLaunch({ url: resolveProjectsLanding(data) })
   } catch (err) {
     // 401 已在请求层清理登录态；其他错误留在登录页，让用户重试
   }
-}
-
-/**
- * 落点可能是 tab 页。提前隐藏原生底栏，避免项目页首帧画出白色原生栏、
- * 随后被 ClientTabBar 隐藏造成的闪烁。
- */
-function hideNativeTabBar() {
-  // 仅 H5 需要（微信端由 custom-tab-bar 原生组件承载）
-  // #ifdef H5
-  uni.hideTabBar({ animation: false, fail: () => {} })
-  // #endif
 }
 
 /** 微信端取 code；H5 / 其他端用固定开发 code（后端 WX_MOCK 派生稳定账号） */
@@ -300,7 +288,6 @@ async function doLogin({ bindPhone: shouldBind }) {
 
     const data = await myProjects()
     setCachedProjects(data)
-    hideNativeTabBar()
     uni.reLaunch({ url: resolveProjectsLanding(data) })
   } catch (err) {
     uni.showToast({ title: err.message || '登录失败', icon: 'none' })

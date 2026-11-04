@@ -94,7 +94,13 @@
                   class="member-row"
                   @tap="goMembers"
                 >
-                  <view class="member-avatar">{{ memberInitial(member) }}</view>
+                  <image
+                    v-if="member.avatar"
+                    class="member-avatar member-avatar--image"
+                    :src="resolveMediaUrl(member.avatar)"
+                    mode="aspectFill"
+                  />
+                  <view v-else class="member-avatar">{{ memberInitial(member) }}</view>
                   <text class="member-name">{{ memberDisplayName(member) }}</text>
                   <text class="member-role">{{ memberRoleText(member) }}</text>
                   <text class="member-status" :class="memberStatusTone(member.status)">
@@ -246,6 +252,7 @@ import { computed, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import AdminNav from '../../../components/admin/AdminNav.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
+import { resolveMediaUrl } from '../../../api/request'
 import {
   fetchAdminProject,
   changeAdminProjectStatus,
@@ -868,6 +875,11 @@ function goStages() {
   font-size: dp(14);
   font-weight: 700;
   flex-shrink: 0;
+}
+
+.member-avatar--image {
+  display: block;
+  object-fit: cover;
 }
 
 .member-name {

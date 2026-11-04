@@ -1,6 +1,13 @@
 <template>
   <view class="member-card" @tap="$emit('select', member)">
-    <view class="member-avatar">{{ initial }}</view>
+    <image
+      v-if="member.avatar && !avatarFailed"
+      class="member-avatar member-avatar--image"
+      :src="resolveMediaUrl(member.avatar)"
+      mode="aspectFill"
+      @error="avatarFailed = true"
+    />
+    <view v-else class="member-avatar">{{ initial }}</view>
 
     <view class="member-main">
       <view class="member-name-row">
@@ -19,7 +26,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { resolveMediaUrl } from '../../api/request'
 import { memberRoleText, memberStatusText } from '../../utils/admin'
 
 defineOptions({ name: 'AdminMemberCard' })
@@ -30,6 +38,15 @@ const props = defineProps({
 })
 
 defineEmits(['select'])
+
+// 头像地址失效时回落首字母，不能让破图占着成员卡片的主视觉
+const avatarFailed = ref(false)
+watch(
+  () => props.member.avatar,
+  () => {
+    avatarFailed.value = false
+  }
+)
 
 const displayName = computed(
   () => props.member.nickname || props.member.phoneMasked || '待确认用户'
@@ -72,6 +89,11 @@ const statusTone = computed(() => {
   font-size: dp(17);
   font-weight: 700;
   flex-shrink: 0;
+}
+
+.member-avatar--image {
+  display: block;
+  object-fit: cover;
 }
 
 .member-main {

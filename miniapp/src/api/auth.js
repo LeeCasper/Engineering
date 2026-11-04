@@ -1,4 +1,4 @@
-import { request } from './request'
+import { request, uploadFile } from './request'
 
 /** 微信静默登录（C-1.1） */
 export function login(data) {
@@ -16,9 +16,19 @@ export function getProfile(projectId) {
   return request({ url: `/auth/profile${query}` })
 }
 
-/** 更新昵称 / 头像。头像仍由微信授权提供，不在本页做本地上传 */
+/** 更新昵称等文字资料 */
 export function updateProfile(data) {
   return request({ url: '/auth/profile', method: 'PUT', data })
+}
+
+/**
+ * 上传头像。
+ *
+ * 微信 `chooseAvatar` 给的是临时文件路径，不能直接存进用户资料——
+ * 下次进入小程序就失效了。必须先 multipart 上传，拿服务端返回的绝对 URL。
+ */
+export function uploadAvatar(filePath) {
+  return uploadFile({ url: '/auth/avatar', filePath, name: 'avatar' })
 }
 
 /** 注销账号（AC-U19）：必须显式确认，成功后 token 立即失效 */

@@ -111,10 +111,9 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 - 设计稿里的「已暂停」在本系统没有对应状态，按后端的 `archived` 显示为「已归档」；
 - 项目新建只对租户管理员开放：C 端项目列表**不展示**「新建项目」FAB；
   管理员从项目列表顶部「管理」进入工作台，再从工作台或项目管理列表头部新建；
-- 底部导航使用自绘的 `components/ClientTabBar.vue`（项目 / 验收 / 记账 / 我的），
-  原生 tabBar 在进入 tab 页时由 `uni.hideTabBar()` 隐藏；位置、高度与原生栏一致，
-  底栏是液态玻璃材质。四项均已成为真实页面；「我的」是个人工作台，未读数通过
-  `utils/notificationBadge.js` 的 `mineTabBadge` ref 渲染在「我的」tab 上。
+- 底部导航使用 `pages.json` 的**原生 tabBar**（项目 / 验收 / 记账 / 我的）。
+  四项均已成为真实页面；「我的」是个人工作台，消息未读数通过
+  `uni.setTabBarBadge({ index: 3 })` 显示在「我的」tab 上。
 - 管理端另有自己的内页 `AdminTabBar`（工作台 / 项目 / 成员 / 我的），
   不注册进原生 tabBar，详见「管理端」一节。
 
@@ -257,10 +256,15 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 `pages/mine/index` 对应 Stitch 的「工程宝小程序 - 我的页面（橙色版）」，
 按品牌主色重新调色后 1:1 还原。头部橙色渐变铺满顶部与左右两侧，
 叠加白色半透明建筑线框；橙色块本身用 `mine-hero-bg.png` 收成一条**贯通页面**的
-向下弧线，并在资料卡中部收口，卡片下沿延伸到橙色块之外；
+向下弧线，并把整张资料卡包在橙色块内（卡片不能骑在橙白交界上，
+否则半透明玻璃会把接缝放大成一条横向色带）；
 建筑线框由 `scripts/gen-assets.js` 生成 `mine-hero-arch.png`。数据全部来自真实接口：
 
 - 资料 / 账号固定角色：`GET /auth/profile?projectId=...`，返回 `accountRole`；
+- 头像与昵称：资料面板用 `button open-type="chooseAvatar"` 与
+  `input type="nickname"` 支持微信快捷设置，也可以手动改昵称；
+  头像先上传 `POST /auth/avatar`（multipart 字段 `avatar`，仅图片、≤5MB）
+  转存为绝对 URL，再 `PUT /auth/profile` 保存昵称。临时文件路径不能直接入库；
 - 当前项目：项目列表点击项目、记账页下拉切换、或「我的」页切换条都会写入
   `gc_current_project`；切换条第一项是「全部项目」，**默认就是全部项目**；
 - 业主联系人：`GET /projects/:id/contacts`，只有业主且已选中项目时展示；
@@ -268,6 +272,10 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
   `GET /projects/my-stats`，汇总全部 active 项目；
 - 消息未读数：`GET /notifications/unread-count`，同时刷新「我的」tab 红点；
 - 工长 / 监理额外显示「考察计划」横幅，进入 `pages/route-plan/index`；
+- 常用功能按角色区分：业主只显示「消息 / 验收报告」（验收报告用
+  `gc_acceptance_focus` 一次性 storage 跳到验收 tab 的「已完成」分类，
+  `switchTab` 不能带 query）；工长 / 监理保留「消息 / 我的项目 / 验收」，
+  工长另有「记账」；
 - 服务入口：订阅消息状态、意见反馈、关于我们 / 用户协议 / 隐私政策、注销账号；
   内容页会带当前项目 `tenantId`，后端按「租户已发布 → 平台基础版本」回退，
   登录前没有项目上下文时读平台版本。
@@ -309,8 +317,8 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
   底部面板沿用 `sheet-rise` 的缓入缓出与弹性回弹；不要再写一套 keyframes。
 - **液态玻璃**：C 端与管理端的卡片、吸顶导航、搜索 / 筛选胶囊与底部面板使用
   `src/uni.scss` 的 `glass-surface` / `glass-sheet` 材质
-  （半透明渐变 + `backdrop-filter` + 内侧高光）。**C 端底栏 `ClientTabBar` 也用玻璃**；
-  管理端 `AdminTabBar` 仍是白底通栏，不要给它加模糊或改成浮动坞。
+  （半透明渐变 + `backdrop-filter` + 内侧高光）。**底部导航保持原样**：C 端用微信
+  原生 tabBar，管理端 `AdminTabBar` 仍是白底通栏；不要给底部导航加模糊或改成浮动坞。
   表单、长文本、地图与签名画布保持不透明底。不支持 `backdrop-filter` 的内核会退化为
   半透明白，文字对比度仍然成立。
 - **工作台**：`pages/admin/workbench/index`。橙色渐变头部展示真实租户与角色；
@@ -424,18 +432,14 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 
 ## 底部导航
 
-C 端底部四项分平台实现，`pages.json` 统一设置 `tabBar.custom = true`，
-`tabBar.list` 只用于 `switchTab` 的路由判定：
+C 端底部四项使用 `pages.json` 的原生 `tabBar`，不是每个页面自己画一个：
 
-- **微信端**：`src/custom-tab-bar/` 原生 WXML 组件（液态玻璃 WXSS）。它由微信渲染在
-  webview 之外，切换 tab 不会随页面重建，因此底栏不闪；选中态按当前路由初始化，
-  页面 `onShow` 通过 `utils/tabBar.js` 同步兜底，不要在 `switchTab` 里重复 setData。
-- **H5**：`components/ClientTabBar.vue`（条件编译只在 H5 渲染），并用
-  `uni.hideTabBar()` 隐藏 H5 的 `uni-tabbar`。
-- 四个 tab 页底部至少预留 `76dp + 安全区`（项目页是 96dp）。
+- 原生 tabBar 是全局的，切换 tab 不会 `reLaunch` 重建页面，因此没有白屏或底栏闪烁；
 - 项目 / 验收 / 记账 / 我的都是真实页面；管理端、消息、订阅、反馈、考察计划、现场签到与考察记录是非 tab 页面；
-- 「我的」未读数由 `utils/notificationBadge.js` 写入 `gc_mine_badge` 并推送给原生底栏；
-  H5 的 `ClientTabBar` 直接读 `mineTabBadge` ref。
+- 页面内的筛选、详情、签名等浮层在 H5 下会把 z-index 提到原生 tabBar 之上；
+- 小程序原生 tabBar 在 webview 外，页面内的 `bottom` 定位不需要再额外加菜单高度。
+- 自绘底栏 / `custom: true` / 隐藏原生栏都验证过：真机切换 tab 时底栏会重绘闪烁，
+  因此保持原生；不要为了玻璃效果再改回自定义 tabBar。
 
 管理端是例外：它的工作台 / 项目 / 成员 / 我的使用内页 `AdminTabBar`，
 只出现在 `pages/admin/**` 的顶层页，不注册进原生 tabBar，也不会出现在 C 端页面。

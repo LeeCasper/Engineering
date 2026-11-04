@@ -935,6 +935,24 @@ describe('AC-AD18~21 / 58 / 59 成员管理', () => {
     expect(JSON.stringify(members.body)).not.toContain('13800001111')
   })
 
+  it('成员列表返回用户自己设置的头像和昵称', async () => {
+    const { token, projectId } = await setup()
+    await request
+      .authed('post', `/admin/projects/${projectId}/members`, token)
+      .send({ phone: '13800003333', role: 'foreman' })
+
+    const user = await db.queryOne('SELECT id FROM user WHERE phone = ?', ['13800003333'])
+    await db.query('UPDATE user SET nickname = ?, avatar = ? WHERE id = ?', [
+      '李师傅',
+      'https://cdn.example.com/avatar.png',
+      user.id,
+    ])
+
+    const members = await request.authed('get', `/admin/projects/${projectId}/members`, token)
+    expect(members.body.data.members[0].nickname).toBe('李师傅')
+    expect(members.body.data.members[0].avatar).toBe('https://cdn.example.com/avatar.png')
+  })
+
   it('账号角色固定：同一用户不能在同一项目或跨项目改成另一个角色', async () => {
     const { token, projectId } = await setup()
     await request

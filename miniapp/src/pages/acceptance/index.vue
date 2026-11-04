@@ -310,19 +310,12 @@
         </view>
       </view>
     </view>
-    <!-- #ifdef H5 -->
-    <ClientTabBar active="acceptance" />
-    <!-- #endif -->
   </view>
 </template>
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { onLoad, onShow, onPageScroll, onPullDownRefresh } from '@dcloudio/uni-app'
-// #ifdef H5
-import ClientTabBar from '../../components/ClientTabBar.vue'
-// #endif
-import { syncCustomTabBar } from '../../utils/tabBar'
 import {
   createAcceptance,
   fetchAcceptanceInbox,
@@ -462,10 +455,6 @@ function tabCount(key) {
 }
 
 onLoad(() => {
-  // #ifdef H5
-  // H5 没有原生 custom-tab-bar，仍需隐藏 uni-tabbar
-  uni.hideTabBar({ animation: false, fail: () => {} })
-  // #endif
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 
@@ -477,8 +466,13 @@ onLoad(() => {
 })
 
 onShow(() => {
-  // 原生自定义底栏不在 Vue 树里，进入页面时同步选中态
-  syncCustomTabBar({ selected: 1 })
+  // 「我的 → 验收报告」用一次性 storage 指定分类，switchTab 无法带 query
+  const focusTab = uni.getStorageSync('gc_acceptance_focus')
+  if (focusTab === 'done') {
+    activeTab.value = 'done'
+    uni.removeStorageSync('gc_acceptance_focus')
+  }
+
   if (!loading.value && getToken()) load()
   measureSearchSticky()
 })
@@ -806,10 +800,16 @@ function closeActiveSheet() {
 .page {
   position: relative;
   min-height: 100vh;
-  /* 自绘底栏固定悬浮，任何平台都要给底部留出与原生 tabBar 一致的高度 */
-  padding-bottom: calc(#{dp(76)} + env(safe-area-inset-bottom));
+  padding-bottom: dp(24);
   background: #faf7f4;
 }
+
+/* H5 的 tabBar 在页面内，列表底部要给它留出空间 */
+/* #ifdef H5 */
+.page {
+  padding-bottom: dp(80);
+}
+/* #endif */
 
 /* ── 顶部 ── */
 .hero {

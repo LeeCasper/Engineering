@@ -478,7 +478,13 @@ async function markAllRead() {
 
 <style scoped lang="scss">
 .workbench-page {
-  background: #f6f7f9;
+  /* 冷灰画布埋几团极淡的暖色光晕：玻璃卡片经过模糊后才有折射可看，
+     否则半透明白压在纯灰上会退化成普通白卡片 */
+  background:
+    radial-gradient(64% 26% at 100% 30%, rgba(235, 92, 32, 0.1) 0%, rgba(235, 92, 32, 0) 72%),
+    radial-gradient(54% 24% at 0% 52%, rgba(255, 180, 143, 0.14) 0%, rgba(255, 180, 143, 0) 72%),
+    radial-gradient(48% 22% at 94% 82%, rgba(235, 92, 32, 0.06) 0%, rgba(235, 92, 32, 0) 72%),
+    #f6f7f9;
 }
 
 .hero {
@@ -508,13 +514,9 @@ async function markAllRead() {
 
 .role-pill {
   padding: dp(7) dp(14);
-  border: 1px solid rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(255, 253, 250, 0.55);
   border-radius: dp(999);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(255, 255, 255, 0.76) 100%
-  );
+  background-color: rgba(255, 251, 247, 0.68);
   -webkit-backdrop-filter: blur(18px) saturate(180%);
   backdrop-filter: blur(18px) saturate(180%);
   color: #eb5c20;
@@ -522,8 +524,8 @@ async function markAllRead() {
   font-weight: 600;
   white-space: nowrap;
   box-shadow:
-    0 dp(4) dp(16) rgba(120, 40, 10, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+    0 dp(4) dp(16) rgba(120, 40, 10, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .hero-greeting {
@@ -546,15 +548,13 @@ async function markAllRead() {
 
 .overview-card {
   padding: dp(16);
-  /* 经营概览是工作台的主视觉卡片：不用半透明白，否则在冷灰画布上几乎看不出边界 */
-  border: 1px solid rgba(235, 92, 32, 0.14);
-  border-top-color: rgba(255, 255, 255, 0.96);
-  border-radius: dp(20);
-  background: linear-gradient(145deg, #fffdfb 0%, #ffffff 46%, #fff6ef 100%);
+  /* 主视觉卡片与其余玻璃卡统一材质，只用更高的暖白不透明度保住数字对比度 */
+  @include glass-surface(dp(20), 22px);
+  background-color: rgba(255, 252, 248, 0.86);
   box-shadow:
-    0 dp(10) dp(28) rgba(29, 33, 41, 0.1),
-    0 dp(2) dp(8) rgba(235, 92, 32, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.98);
+    0 dp(10) dp(28) rgba(94, 52, 25, 0.09),
+    0 dp(2) dp(8) rgba(235, 92, 32, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.66);
 }
 
 .card-head {
@@ -682,7 +682,7 @@ async function markAllRead() {
   display: flex;
   align-items: center;
   padding: dp(12) 0;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid rgba(120, 82, 58, 0.09);
 }
 
 .reminder-row:last-child {
@@ -773,8 +773,10 @@ async function markAllRead() {
   width: dp(44);
   height: dp(44);
   margin-bottom: dp(8);
+  border: 1px solid rgba(255, 253, 250, 0.55);
   border-radius: dp(14);
-  background: #fff2ed;
+  background-color: rgba(255, 247, 241, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .quick-icon-img {
@@ -811,7 +813,7 @@ async function markAllRead() {
   display: flex;
   align-items: center;
   padding: dp(11) 0;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid rgba(120, 82, 58, 0.09);
 }
 
 .sheet-reminder:last-child {

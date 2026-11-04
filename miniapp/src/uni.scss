@@ -54,29 +54,34 @@ $radius-xxl: 20px;
 /**
  * 液态玻璃（Liquid Glass）材质。
  *
- * 半透明白 + 背景模糊 + 内侧高光 + 发丝描边。只用于管理端顶层卡片、
- * 底部导航与底部面板这类「浮在内容之上」的表面；表单、长文本列表仍用
- * 不透明底，避免滚动时文字与背景互相干扰。
+ * 暖白半透明底 + 背景模糊 + 顶部柔光 + 内侧高光 + 单一发丝描边。
+ * 只用于管理端顶层卡片、底部导航与底部面板这类「浮在内容之上」的表面；
+ * 表单、长文本列表仍用不透明底，避免滚动时文字与背景互相干扰。
  *
- * 不支持 backdrop-filter 的旧内核会退化成半透明白，文字对比度仍然成立。
+ * ── 为什么用「暖白 + 两个径向柔光」而不是多段白色线性渐变 ──
+ * 1. 品牌主色是橙色，纯白（0.9 以上）压在橙色 hero 上会形成一条白边，
+ *    再叠加顶部更亮的 border 就是肉眼可见的「分层」；暖白（R>G>B）
+ *    与橙色是同一色相，过渡自然。
+ * 2. 三段线性渐变在 46% 处把不透明度从 0.92 掉到 0.5 再回到 0.72，
+ *    小卡片上会看到明显的明暗带。改用径向柔光后只有平滑衰减，没有色阶。
+ * 3. 边框统一成一个颜色：之前 border-top 0.96 + inset 0.94 会形成双亮线。
+ *
+ * 不支持 backdrop-filter 的旧内核会退化成暖白半透明底，文字对比度仍然成立。
  */
-@mixin glass-surface($radius: dp(20), $blur: 22px) {
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  border-top-color: rgba(255, 255, 255, 0.96);
-  border-left-color: rgba(255, 255, 255, 0.84);
+@mixin glass-surface($radius: dp(20), $blur: 26px) {
+  border: 1px solid rgba(255, 252, 248, 0.62);
   border-radius: $radius;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.92) 0%,
-    rgba(255, 255, 255, 0.5) 46%,
-    rgba(255, 255, 255, 0.72) 100%
-  );
-  -webkit-backdrop-filter: blur($blur) saturate(185%);
-  backdrop-filter: blur($blur) saturate(185%);
+  background-color: rgba(255, 251, 247, 0.72);
+  background-image:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.02) 62%),
+    radial-gradient(90% 70% at 104% 112%, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 58%);
+  -webkit-backdrop-filter: blur($blur) saturate(175%);
+  backdrop-filter: blur($blur) saturate(175%);
   box-shadow:
-    0 dp(8) dp(26) rgba(29, 33, 41, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.26);
+    0 dp(8) dp(26) rgba(94, 52, 25, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    inset 0 0 dp(16) rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.16);
 }
 
 /* 底部面板的玻璃：底色更实，保证表单和长文本在遮罩上仍然清晰。 */

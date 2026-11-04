@@ -143,6 +143,9 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
     <ElTable :data="members" row-key="id" border>
       <ElTableColumn label="成员" min-width="150">
         <template #default="{ row }">
+          <ElAvatar :size="28" :src="row.avatar || undefined" class="mr-6px align-middle">
+            {{ (row.nickname || '用').slice(0, 1) }}
+          </ElAvatar>
           <span>{{ row.nickname || `用户 #${row.userId}` }}</span>
           <ElTag
             v-if="row.isPrimaryForeman && row.status === 'active'"

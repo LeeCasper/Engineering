@@ -5,7 +5,11 @@
  */
 
 const { z } = require('zod')
+const config = require('../../config')
 const { validate } = require('../utils/validate')
+const AppError = require('../utils/AppError')
+const storage = require('../storage')
+const { normalizeFiles } = require('../middlewares/upload')
 const miniAuthService = require('../services/miniAuth.service')
 const profileService = require('../services/profile.service')
 const userModel = require('../models/user.model')
@@ -25,7 +29,15 @@ const bindPhoneSchema = z
   .refine((data) => Boolean(data.code || data.phone), { message: '缺少手机号凭证' })
 
 const updateProfileSchema = z.object({
-  nickname: z.string().trim().max(64).optional(),
+  // 显式传入昵称时不允许空串：空昵称会让「我的」页回落到「微信用户」，
+  // 看起来像保存失败，也让后台成员列表失去可辨识的名字
+  nickname: z
+    .string()
+    .trim()
+    .min(1, '请输入昵称')
+    .max(64, '昵称最多 64 个字符')
+    .optional(),
+  // 头像仍接受外部 URL（登录时微信可能带过来）；小程序端上传走下面的 /avatar
   avatar: z.string().trim().max(512).optional(),
 })
 
@@ -87,6 +99,40 @@ async function updateProfile(req, res) {
 }
 
 /**
+ * POST /auth/avatar —— 上传头像（微信 chooseAvatar 返回的是临时文件）。
+ *
+ * 与 `PUT /auth/profile` 分开：
+ * - 资料接口只接收 JSON，便于同时改昵称；
+ * - 头像是 multipart，必须先落存储再拿到可访问的绝对 URL。
+ *
+ * 每次只保留一张：写入新头像后删掉上一张由本系统上传的旧文件。
+ * 外部 URL（例如登录时微信带过来的头像）不删，避免误删对方域名下的资源。
+ */
+async function uploadAvatar(req, res) {
+  const files = normalizeFiles(req.files)
+  const file = files.find((item) => item.field === 'avatar') || files[0]
+
+  if (!file) throw AppError.badRequest('请选择头像图片')
+  if (file.type !== 'image') throw AppError.badRequest('头像仅支持图片')
+  // 微信 chooseAvatar 返回的是压缩过的头像，5MB 足够且能挡住误传的大图
+  if (file.sizeBytes > 5 * 1024 * 1024) throw AppError.badRequest('头像不得超过 5MB')
+
+  const user = await userModel.findById(req.auth.id)
+  if (!user) throw AppError.notFound('用户不存在')
+
+  const saved = await storage.save(file.buffer, { category: 'avatars', ext: file.ext })
+  await userModel.updateProfile(req.auth.id, { avatar: saved.url })
+
+  // 只清理本系统 uploads 下的旧头像；storage.remove 内部吞掉 ENOENT
+  const marker = `${config.upload.publicPath}/`
+  if (user.avatar && String(user.avatar).includes(marker)) {
+    await storage.remove(storage.extractKey(user.avatar))
+  }
+
+  res.ok(await profileService.getProfile(req.auth.id))
+}
+
+/**
  * POST /auth/deactivate —— 注销账号（C-5.9 / AC-U19 / AC-U20）。
  *
  * 返回体只有一个标志位：注销成功后这个 token 已经失效（`requireMini` 会拒），
@@ -97,4 +143,4 @@ async function deactivate(req, res) {
   res.ok(await miniAuthService.deactivate(req.auth.id, req.auth))
 }
 
-module.exports = { login, bindPhone, profile, updateProfile, deactivate }
+module.exports = { login, bindPhone, profile, updateProfile, uploadAvatar, deactivate }

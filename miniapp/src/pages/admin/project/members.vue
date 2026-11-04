@@ -146,7 +146,13 @@
         </view>
 
         <view v-if="selectedMember" class="member-sheet-card">
-          <view class="member-sheet-avatar">{{ selectedMemberInitial }}</view>
+          <image
+            v-if="selectedMember.avatar"
+            class="member-sheet-avatar member-sheet-avatar--image"
+            :src="resolveMediaUrl(selectedMember.avatar)"
+            mode="aspectFill"
+          />
+          <view v-else class="member-sheet-avatar">{{ selectedMemberInitial }}</view>
           <view class="member-sheet-main">
             <view class="member-sheet-name-row">
               <text class="member-sheet-name">{{ selectedMemberName }}</text>
@@ -246,6 +252,7 @@ import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import AdminRootHeader from '../../../components/admin/AdminRootHeader.vue'
 import AdminMemberCard from '../../../components/admin/AdminMemberCard.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
+import { resolveMediaUrl } from '../../../api/request'
 import {
   fetchAdminProject,
   fetchAdminMembers,
@@ -874,6 +881,11 @@ async function removeMember() {
   font-size: dp(17);
   font-weight: 700;
   flex-shrink: 0;
+}
+
+.member-sheet-avatar--image {
+  display: block;
+  object-fit: cover;
 }
 
 .member-sheet-main {

@@ -895,19 +895,12 @@
         </view>
       </view>
     </view>
-    <!-- #ifdef H5 -->
-    <ClientTabBar active="ledger" />
-    <!-- #endif -->
   </view>
 </template>
 
 <script setup>
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
-// #ifdef H5
-import ClientTabBar from '../../components/ClientTabBar.vue'
-// #endif
-import { syncCustomTabBar } from '../../utils/tabBar'
 import {
   myProjects,
   projectDetail,
@@ -1939,10 +1932,6 @@ function openSettlement() {
 }
 
 onLoad(() => {
-  // #ifdef H5
-  // H5 没有原生 custom-tab-bar，仍需隐藏 uni-tabbar
-  uni.hideTabBar({ animation: false, fail: () => {} })
-  // #endif
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 
@@ -1951,8 +1940,6 @@ onLoad(() => {
 })
 
 onShow(() => {
-  // 原生自定义底栏不在 Vue 树里，进入页面时同步选中态
-  syncCustomTabBar({ selected: 2 })
   if (bootstrapped && !loading.value) load({ silent: true })
 })
 
@@ -1969,8 +1956,7 @@ onPullDownRefresh(async () => {
 <style scoped lang="scss">
 .page {
   min-height: 100vh;
-  /* 自绘底栏固定悬浮，底部留出与原生 tabBar 一致的高度 */
-  padding-bottom: calc(#{dp(76)} + env(safe-area-inset-bottom));
+  padding-bottom: calc(#{dp(24)} + env(safe-area-inset-bottom));
   background: #faf7f4;
 }
 

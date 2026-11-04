@@ -429,17 +429,12 @@ async function logout() {
 .profile-card {
   padding: dp(20);
   @include glass-surface(dp(24), 26px);
-  /* 卡片压在橙色渐变上，底色略提高一档，保证深色文字对比度 */
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.94) 0%,
-    rgba(255, 255, 255, 0.74) 46%,
-    rgba(255, 255, 255, 0.84) 100%
-  );
+  /* 卡片压在橙色渐变上：提高暖白底的不透明度，压住背景接缝 */
+  background-color: rgba(255, 252, 248, 0.86);
   box-shadow:
     0 dp(12) dp(32) rgba(183, 70, 24, 0.12),
     0 dp(2) dp(6) rgba(29, 33, 41, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 
 .profile-card--loading {

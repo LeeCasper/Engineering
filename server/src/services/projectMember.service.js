@@ -450,6 +450,8 @@ function toMemberView(row) {
     status: row.status,
     statusLabel: MEMBER_STATUS_LABELS[row.status] || row.status,
     nickname: row.nickname,
+    // 后台成员列表展示用户自己设置的头像；没有头像时前端回落首字母
+    avatar: row.avatar || null,
     // 手机号脱敏（与 AC-U02 同口径）。成员的完整手机号没有对外暴露的必要，
     // 管理员要联系成员时看的是项目里登记的联系方式，不是这里
     phoneMasked: miniAuthService.maskPhone(row.phone),

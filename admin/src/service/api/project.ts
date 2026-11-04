@@ -85,6 +85,7 @@ export interface ProjectMember {
   status: 'pending' | 'active' | 'removed';
   statusLabel: string;
   nickname: string | null;
+  avatar: string | null;
   phoneMasked: string | null;
   invitedAt: string;
   confirmedAt: string | null;

@@ -1,6 +1,8 @@
 <template>
   <view class="page">
-    <view class="hero-panel" :style="{ height: `${safeTop + 175}px` }">
+    <!-- 橙色 hero 必须完整包住资料卡：否则卡片会骑在橙白交界上，
+         半透明玻璃会把接缝放大成一条横向色带 -->
+    <view class="hero-panel" :style="{ height: `${safeTop + 218}px` }">
       <image class="hero-bg" src="/static/images/mine-hero-bg.png" mode="scaleToFill" />
       <image class="hero-arch" src="/static/images/mine-hero-arch.png" mode="aspectFit" />
       <view class="hero-glow" />
@@ -12,7 +14,7 @@
 
     <view class="content gc-stagger">
       <!-- 用户资料 -->
-      <view class="profile-card" @tap="profileSheetOpen = true">
+      <view class="profile-card" @tap="openProfileSheet">
         <view class="profile-row">
           <view class="avatar-wrap">
             <image class="avatar" :src="avatarSrc" mode="aspectFill" @error="onAvatarError" />
@@ -124,27 +126,40 @@
             <text class="quick-title">消息</text>
             <text class="quick-sub">最新动态</text>
           </view>
-          <view class="quick-card" @tap="goProjects">
-            <view class="quick-icon-wrap">
-              <image class="quick-icon" src="/static/images/icon-quick-project.png" mode="aspectFit" />
-            </view>
-            <text class="quick-title">我的项目</text>
-            <text class="quick-sub">项目管理</text>
-          </view>
-          <view class="quick-card" @tap="goAcceptance">
+
+          <!-- 业主：只保留消息与验收报告；项目 / 验收 / 记账已在底部 tab 里 -->
+          <view v-if="isOwnerRole" class="quick-card" @tap="goAcceptanceReports">
             <view class="quick-icon-wrap">
               <image class="quick-icon" src="/static/images/icon-quick-acceptance.png" mode="aspectFit" />
             </view>
-            <text class="quick-title">验收</text>
-            <text class="quick-sub">在线验收</text>
+            <text class="quick-title">验收报告</text>
+            <text class="quick-sub">查看已完成验收</text>
           </view>
-          <view v-if="canUseLedger" class="quick-card" @tap="goLedger">
-            <view class="quick-icon-wrap">
-              <image class="quick-icon" src="/static/images/icon-quick-ledger.png" mode="aspectFit" />
+
+          <!-- 工长 / 监理：保留项目与验收入口（记账仅业主和工长可见） -->
+          <template v-else>
+            <view class="quick-card" @tap="goProjects">
+              <view class="quick-icon-wrap">
+                <image class="quick-icon" src="/static/images/icon-quick-project.png" mode="aspectFit" />
+              </view>
+              <text class="quick-title">我的项目</text>
+              <text class="quick-sub">项目管理</text>
             </view>
-            <text class="quick-title">记账</text>
-            <text class="quick-sub">收支对账</text>
-          </view>
+            <view class="quick-card" @tap="goAcceptance">
+              <view class="quick-icon-wrap">
+                <image class="quick-icon" src="/static/images/icon-quick-acceptance.png" mode="aspectFit" />
+              </view>
+              <text class="quick-title">验收</text>
+              <text class="quick-sub">在线验收</text>
+            </view>
+            <view v-if="canUseLedger" class="quick-card" @tap="goLedger">
+              <view class="quick-icon-wrap">
+                <image class="quick-icon" src="/static/images/icon-quick-ledger.png" mode="aspectFit" />
+              </view>
+              <text class="quick-title">记账</text>
+              <text class="quick-sub">收支对账</text>
+            </view>
+          </template>
         </view>
       </view>
 
@@ -235,7 +250,7 @@
         <view class="sheet-head" @touchstart="sheetSwipe.onTouchStart" @touchmove.stop.prevent="sheetSwipe.onTouchMove" @touchend="sheetSwipe.onTouchEnd">
           <view>
             <text class="sheet-title">个人资料</text>
-            <text class="sheet-sub">头像与昵称来自微信账号</text>
+            <text class="sheet-sub">可直接使用微信头像与昵称，也可以手动修改</text>
           </view>
           <view class="sheet-close" @tap="profileSheetOpen = false">
             <image class="sheet-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
@@ -243,10 +258,37 @@
         </view>
 
         <view class="profile-detail">
-          <image class="profile-detail-avatar" :src="avatarSrc" mode="aspectFill" />
-          <text class="profile-detail-name">{{ displayName }}</text>
+          <!-- 微信 chooseAvatar 只能在 button 上触发；H5 走 chooseImage 兜底 -->
+          <button
+            class="avatar-picker"
+            open-type="chooseAvatar"
+            @chooseavatar="onChooseAvatar"
+            @tap="onAvatarPickerTap"
+          >
+            <image class="profile-detail-avatar" :src="avatarSrc" mode="aspectFill" />
+            <text class="avatar-edit-badge">更换</text>
+          </button>
+          <text class="profile-edit-tip">点击头像可直接使用微信头像</text>
+
+          <view class="profile-name-field">
+            <text class="profile-name-label">昵称</text>
+            <input
+              v-model="nicknameDraft"
+              class="profile-name-input"
+              type="nickname"
+              maxlength="64"
+              placeholder="请输入昵称"
+              placeholder-class="profile-name-placeholder"
+              @blur="nicknameDraft = nicknameDraft.trim()"
+            />
+          </view>
+          <text class="profile-edit-tip">昵称输入框支持直接选择微信昵称</text>
           <text class="profile-detail-phone">{{ phoneText }}</text>
         </view>
+
+        <button class="profile-save-btn" :disabled="savingProfile" @tap="saveProfile">
+          {{ savingProfile ? '保存中…' : '保存资料' }}
+        </button>
 
         <view class="detail-list">
           <view class="detail-row">
@@ -264,24 +306,19 @@
         </view>
       </view>
     </view>
-    <!-- #ifdef H5 -->
-    <ClientTabBar active="mine" />
-    <!-- #endif -->
   </view>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
-// #ifdef H5
-import ClientTabBar from '../../components/ClientTabBar.vue'
-// #endif
-import { syncCustomTabBar } from '../../utils/tabBar'
 import {
   getToken,
   getCachedProjects,
   setCachedProjects,
   clearSession,
+  getUser,
+  setUser,
 } from '../../store/session'
 import {
   getCurrentProject,
@@ -291,7 +328,8 @@ import {
 } from '../../store/projectContext'
 import { branding, loadBranding } from '../../store/branding'
 import { myProjects, projectContacts, projectMyStats, projectMyStatsAll } from '../../api/project'
-import { deactivateAccount, getProfile } from '../../api/auth'
+import { deactivateAccount, getProfile, updateProfile, uploadAvatar } from '../../api/auth'
+import { resolveMediaUrl } from '../../api/request'
 import { refreshMineTabBadge, setMineTabBadge } from '../../utils/notificationBadge'
 import { useSwipeClose } from '../../composables/useSwipeClose'
 
@@ -355,12 +393,21 @@ const projectSheetOpen = ref(false)
 const switching = ref(false)
 const deactivating = ref(false)
 const avatarError = ref(false)
+// 资料编辑：头像先选临时文件，保存时才上传；昵称直接改
+const savingProfile = ref(false)
+const nicknameDraft = ref('')
+const avatarPreview = ref('')
+const avatarChanged = ref(false)
 const appVersion = APP_VERSION
 
 let bootstrapped = false
 
 const avatarSrc = computed(() => {
-  if (!avatarError.value && profile.value && profile.value.avatar) return profile.value.avatar
+  // 刚选的临时文件优先展示，保存成功后再切回服务端地址
+  if (avatarPreview.value) return avatarPreview.value
+  if (!avatarError.value && profile.value && profile.value.avatar) {
+    return resolveMediaUrl(profile.value.avatar)
+  }
   return DEFAULT_AVATAR
 })
 
@@ -405,6 +452,8 @@ const showStats = computed(() => accountRole.value === 'foreman' && Boolean(stat
 const canUseLedger = computed(
   () => accountRole.value === 'owner' || accountRole.value === 'foreman'
 )
+/** 业主端常用功能只保留消息与验收报告 */
+const isOwnerRole = computed(() => accountRole.value === 'owner')
 // 考察计划只对工长 / 监理开放（AC-N15）。按**所有项目**判断，
 // 因为当前项目可能是业主，但他在另一个项目是工长，仍然需要这个入口。
 const canPlanRoute = computed(
@@ -461,10 +510,6 @@ const emptyProjectState = computed(() => {
 })
 
 onLoad(() => {
-  // #ifdef H5
-  // H5 没有原生 custom-tab-bar，仍需隐藏 uni-tabbar
-  uni.hideTabBar({ animation: false, fail: () => {} })
-  // #endif
   loadBranding()
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
@@ -478,8 +523,6 @@ onLoad(() => {
 })
 
 onShow(() => {
-  // 原生自定义底栏不在 Vue 树里，进入页面时同步选中态
-  syncCustomTabBar({ selected: 3 })
   if (bootstrapped && getToken()) refresh({ silent: true })
 })
 
@@ -678,6 +721,80 @@ function onAvatarError() {
   avatarError.value = true
 }
 
+/** 打开资料面板时同步草稿，避免上次未保存的临时头像残留 */
+function openProfileSheet() {
+  nicknameDraft.value = ((profile.value && profile.value.nickname) || '').trim()
+  avatarPreview.value = ''
+  avatarChanged.value = false
+  avatarError.value = false
+  profileSheetOpen.value = true
+}
+
+/** 微信「选择头像」回调；返回的是临时文件，保存时才上传 */
+function onChooseAvatar(event) {
+  const path = event && event.detail && event.detail.avatarUrl
+  if (!path) return
+  avatarPreview.value = path
+  avatarChanged.value = true
+  avatarError.value = false
+}
+
+/** H5 没有 chooseAvatar，用系统相册 / 相机兜底；小程序端由 open-type 接管 */
+function onAvatarPickerTap() {
+  // #ifndef MP-WEIXIN
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: (res) => {
+      const path = (res.tempFilePaths || [])[0]
+      if (!path) return
+      avatarPreview.value = path
+      avatarChanged.value = true
+      avatarError.value = false
+    },
+  })
+  // #endif
+}
+
+async function saveProfile() {
+  if (savingProfile.value) return
+
+  const nickname = String(nicknameDraft.value || '').trim()
+  if (!nickname) {
+    uni.showToast({ title: '请输入昵称', icon: 'none' })
+    return
+  }
+
+  savingProfile.value = true
+  try {
+    if (avatarChanged.value && avatarPreview.value) {
+      const uploaded = await uploadAvatar(avatarPreview.value)
+      // 上传接口返回的是不带项目上下文的 profile，这里只取头像，
+      // 项目角色仍保留当前值，避免保存头像后「我的」页角色标签消失
+      profile.value = { ...profile.value, avatar: uploaded.avatar }
+      avatarPreview.value = ''
+      avatarChanged.value = false
+      avatarError.value = false
+    }
+
+    const data = await updateProfile({ nickname })
+    // 刷新一次带项目上下文的资料，恢复 role / roleLabel
+    await loadProfileAndRole().catch(() => {})
+    profile.value = { ...(profile.value || data), nickname: data.nickname, avatar: data.avatar }
+
+    const cached = getUser() || {}
+    setUser({ ...cached, nickname: data.nickname, avatar: data.avatar })
+
+    profileSheetOpen.value = false
+    uni.showToast({ title: '资料已更新', icon: 'success' })
+  } catch (err) {
+    uni.showToast({ title: err.message || '保存失败，请稍后重试', icon: 'none' })
+  } finally {
+    savingProfile.value = false
+  }
+}
+
 function roleLabelOf(roleKey) {
   return ROLE_LABELS[roleKey] || roleKey
 }
@@ -715,6 +832,17 @@ function goProjects() {
 }
 
 function goAcceptance() {
+  uni.switchTab({ url: '/pages/acceptance/index' })
+}
+
+/**
+ * 业主的「验收报告」：跳到验收 tab 的「已完成」分类。
+ *
+ * `switchTab` 不能带 query，因此用一次性 storage 传递目标分类，
+ * 验收页 onShow 读取后立即清除。
+ */
+function goAcceptanceReports() {
+  uni.setStorageSync('gc_acceptance_focus', 'done')
   uni.switchTab({ url: '/pages/acceptance/index' })
 }
 
@@ -829,11 +957,23 @@ function closeActiveSheet() {
 .page {
   position: relative;
   min-height: 100vh;
-  /* 自绘底栏固定悬浮，任何平台都要给底部菜单留出空间 */
-  padding-bottom: calc(#{dp(76)} + env(safe-area-inset-bottom));
-  background: #faf7f4;
+  padding-bottom: calc(#{dp(28)} + env(safe-area-inset-bottom));
+  /* 页面底色里埋几团很淡的暖色光晕：玻璃卡片经过模糊后能看到细微折射，
+     在接近白色的画布上才有“玻璃”可读；色值压得很低，不抢内容 */
+  background:
+    radial-gradient(58% 26% at 92% 27%, rgba(235, 92, 32, 0.09) 0%, rgba(235, 92, 32, 0) 72%),
+    radial-gradient(46% 22% at 4% 52%, rgba(255, 180, 143, 0.13) 0%, rgba(255, 180, 143, 0) 72%),
+    radial-gradient(52% 24% at 90% 80%, rgba(235, 92, 32, 0.06) 0%, rgba(235, 92, 32, 0) 72%),
+    #faf7f4;
   overflow-x: hidden;
 }
+
+/* H5 的 tabBar 在页面内，给底部菜单留出空间 */
+/* #ifdef H5 */
+.page {
+  padding-bottom: dp(86);
+}
+/* #endif */
 
 /* ── 分层橙色头部：橙色块本身沿一条贯通页面的弧线收口 ── */
 .hero-panel {
@@ -906,15 +1046,11 @@ function closeActiveSheet() {
 .profile-card {
   padding: dp(16);
   @include glass-surface(dp(20), 24px);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.94) 0%,
-    rgba(255, 255, 255, 0.74) 46%,
-    rgba(255, 255, 255, 0.84) 100%
-  );
+  /* 卡片完整落在橙色 hero 内，降低白底不透明度让暖橙透出来，玻璃才看得见 */
+  background-color: rgba(255, 252, 248, 0.74);
   box-shadow:
-    0 dp(12) dp(28) rgba(120, 45, 20, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+    0 dp(12) dp(28) rgba(120, 45, 20, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 
 .profile-row {
@@ -996,11 +1132,8 @@ function closeActiveSheet() {
   margin-top: dp(14);
   padding: dp(9) dp(11);
   @include glass-surface(dp(12), 14px);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.86) 0%,
-    rgba(248, 244, 239, 0.66) 100%
-  );
+  background-color: rgba(255, 251, 246, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
 .project-switch-main {
@@ -1047,15 +1180,11 @@ function closeActiveSheet() {
   margin-top: dp(18);
   padding: dp(13) dp(14);
   @include glass-surface(dp(16), 18px);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 247, 242, 0.92) 0%,
-    rgba(255, 255, 255, 0.68) 58%,
-    rgba(255, 243, 232, 0.74) 100%
-  );
+  /* 保持品牌暖调，但用单一底色，避免三段渐变在卡片中间形成色带 */
+  background-color: rgba(255, 250, 246, 0.68);
   box-shadow:
-    0 dp(4) dp(16) rgba(235, 92, 32, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+    0 dp(4) dp(16) rgba(235, 92, 32, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.54);
 }
 
 .route-banner:active {
@@ -1070,18 +1199,14 @@ function closeActiveSheet() {
   width: dp(38);
   height: dp(38);
   margin-right: dp(11);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 253, 250, 0.55);
   border-radius: dp(12);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 240, 231, 0.66) 100%
-  );
-  -webkit-backdrop-filter: blur(12px) saturate(180%);
-  backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(255, 251, 247, 0.62);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
   box-shadow:
-    0 dp(2) dp(8) rgba(235, 92, 32, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+    0 dp(2) dp(8) rgba(235, 92, 32, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
   flex-shrink: 0;
 }
 
@@ -1152,7 +1277,7 @@ function closeActiveSheet() {
 }
 
 .contact-row--divided {
-  border-top: 1px solid #f3efea;
+  border-top: 1px solid rgba(120, 82, 58, 0.09);
 }
 
 .contact-avatar {
@@ -1292,7 +1417,7 @@ function closeActiveSheet() {
 }
 
 .stat-item + .stat-item {
-  border-left: 1px solid #f3efea;
+  border-left: 1px solid rgba(120, 82, 58, 0.09);
 }
 
 .stat-value {
@@ -1384,18 +1509,14 @@ function closeActiveSheet() {
   width: dp(40);
   height: dp(40);
   margin-bottom: dp(8);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 253, 250, 0.52);
   border-radius: 50%;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.92) 0%,
-    rgba(255, 255, 255, 0.72) 100%
-  );
-  -webkit-backdrop-filter: blur(10px) saturate(160%);
-  backdrop-filter: blur(10px) saturate(160%);
+  background-color: rgba(255, 251, 247, 0.6);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  backdrop-filter: blur(12px) saturate(180%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.96),
-    0 dp(1) dp(4) rgba(94, 45, 22, 0.05);
+    inset 0 1px 0 rgba(255, 255, 255, 0.52),
+    0 dp(1) dp(4) rgba(94, 45, 22, 0.04);
 }
 
 .quick-icon {
@@ -1450,7 +1571,7 @@ function closeActiveSheet() {
 }
 
 .setting-row--divided {
-  border-top: 1px solid #f3efea;
+  border-top: 1px solid rgba(120, 82, 58, 0.09);
 }
 
 .setting-icon-wrap {
@@ -1665,6 +1786,24 @@ function closeActiveSheet() {
   padding: dp(18) 0 dp(10);
 }
 
+/* 头像选择按钮：微信要求 chooseAvatar 挂在 button 上，重置掉原生按钮样式 */
+.avatar-picker {
+  position: relative;
+  display: block;
+  width: dp(64);
+  height: dp(64);
+  padding: 0;
+  overflow: visible;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  line-height: 1;
+}
+
+.avatar-picker::after {
+  border: none;
+}
+
 .profile-detail-avatar {
   width: dp(64);
   height: dp(64);
@@ -1673,15 +1812,84 @@ function closeActiveSheet() {
   background: #feead8;
 }
 
-.profile-detail-name {
-  margin-top: dp(10);
+.avatar-edit-badge {
+  position: absolute;
+  right: dp(-4);
+  bottom: dp(-2);
+  padding: dp(2) dp(6);
+  border-radius: dp(999);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(9);
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.24);
+}
+
+.profile-edit-tip {
+  margin-top: dp(6);
+  color: #a79c92;
+  font-size: dp(10);
+  line-height: 1.4;
+}
+
+.profile-name-field {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-top: dp(16);
+  padding: dp(8) dp(12);
+  border: 1px solid rgba(120, 82, 58, 0.12);
+  border-radius: dp(12);
+  background: #fdfbf9;
+}
+
+.profile-name-label {
+  margin-right: dp(10);
+  color: #8b8179;
+  font-size: dp(12);
+  flex-shrink: 0;
+}
+
+.profile-name-input {
+  flex: 1;
+  min-width: 0;
+  height: dp(24);
   color: #241c17;
-  font-size: dp(17);
-  font-weight: 700;
+  font-size: dp(15);
+  font-weight: 600;
+  text-align: right;
+}
+
+.profile-name-placeholder {
+  color: #b9afa7;
+  font-weight: 400;
+}
+
+.profile-save-btn {
+  width: 100%;
+  height: dp(42);
+  margin-top: dp(14);
+  border: none;
+  border-radius: dp(999);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(14);
+  font-weight: 600;
+  line-height: dp(42);
+  box-shadow: 0 dp(6) dp(18) rgba(235, 92, 32, 0.22);
+}
+
+.profile-save-btn:active {
+  background: #c44710;
+}
+
+.profile-save-btn[disabled] {
+  opacity: 0.6;
 }
 
 .profile-detail-phone {
-  margin-top: dp(4);
+  margin-top: dp(10);
   color: #8b8179;
   font-size: dp(12);
 }
