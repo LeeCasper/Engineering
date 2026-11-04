@@ -1,11 +1,78 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { ProjectDetail } from '@/service/api/project';
+import { computed, onMounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
+import {
+  fetchGenerateProjectCompletionReport,
+  fetchProjectCompletionReport,
+  type ProjectCompletionReport,
+  type ProjectDetail
+} from '@/service/api/project';
+import { useTenantReadOnly } from '@/hooks/common/tenant';
 import { formatDate, formatMoney, GATE_STATUS_META, PAYMENT_STATUS_META } from '@/utils/format';
 
 defineOptions({ name: 'ProjectOverviewTab' });
 
 const props = defineProps<{ detail: ProjectDetail }>();
+const readOnly = useTenantReadOnly();
+
+const completionReport = ref<ProjectCompletionReport | null>(null);
+const completionLoading = ref(false);
+
+// 总报告包含账务汇总，只在项目完工/归档后提供
+const reportable = computed(() => ['finished', 'archived'].includes(props.detail.status));
+const reportStatus = computed(() => completionReport.value?.status || 'none');
+const reportButtonText = computed(() => {
+  if (completionLoading.value || reportStatus.value === 'pending') return '生成中…';
+  if (reportStatus.value === 'success') return '查看总报告';
+  if (reportStatus.value === 'failed') return '重新生成';
+  return '生成总报告';
+});
+
+async function loadCompletionReport() {
+  if (!reportable.value) return;
+  const { data } = await fetchProjectCompletionReport(props.detail.id);
+  if (data) completionReport.value = data;
+}
+
+onMounted(loadCompletionReport);
+
+async function openCompletionReport(refresh = false) {
+  if (completionLoading.value || reportStatus.value === 'pending') return;
+
+  if (!refresh && completionReport.value?.status === 'success' && completionReport.value.signedPath) {
+    openSignedPath(completionReport.value.signedPath);
+    return;
+  }
+
+  if (readOnly.value) {
+    ElMessage.warning('当前为只读排障窗口，不能生成报告');
+    return;
+  }
+
+  completionLoading.value = true;
+  try {
+    const { data, error } = await fetchGenerateProjectCompletionReport(props.detail.id, { refresh });
+    if (data) {
+      completionReport.value = data;
+      if (data.status === 'success' && data.signedPath) {
+        openSignedPath(data.signedPath);
+      } else if (data.status === 'failed') {
+        ElMessage.error(data.error || '总报告生成失败');
+      }
+    } else if (error) {
+      ElMessage.error(error.message || '总报告生成失败');
+    }
+  } finally {
+    completionLoading.value = false;
+  }
+}
+
+/** 签名链接是相对 /api/v1 的；开发环境需要补上后端 origin */
+function openSignedPath(path: string) {
+  const base = import.meta.env.VITE_SERVICE_BASE_URL || '/api/v1';
+  const origin = base.replace(/\/api\/v1\/?$/, '');
+  window.open(`${origin}${path}`, '_blank');
+}
 
 const itemCount = computed(() => props.detail.stages.reduce((sum, stage) => sum + stage.items.length, 0));
 
@@ -44,6 +111,44 @@ const compositionMissing = computed(() => {
       title="人员尚未配齐，不能流转到「施工中」"
       :description="`缺少：${compositionMissing.join('、')}。pending（待确认）成员不计入任何权限判定。`"
     />
+
+    <div
+      v-if="reportable"
+      class="mb-16px flex items-center justify-between rounded-8px border border-solid border-#ebeef5 bg-white p-16px"
+    >
+      <div>
+        <div class="font-600">项目竣工总报告</div>
+        <div class="mt-4px text-12px text-#86909c">
+          <template v-if="reportStatus === 'success'">
+            已生成{{ completionReport?.generatedAt ? ` · ${formatDate(completionReport.generatedAt)}` : '' }}
+          </template>
+          <template v-else-if="reportStatus === 'pending'">正在生成，请稍候…</template>
+          <template v-else-if="reportStatus === 'failed'">
+            {{ completionReport?.error || '生成失败，可重试' }}
+          </template>
+          <template v-else>汇总各阶段验收、签名与账务，生成后可下载 PDF 归档</template>
+        </div>
+      </div>
+      <div class="flex items-center gap-12px">
+        <ElButton
+          v-if="reportStatus === 'success' && !readOnly"
+          link
+          type="primary"
+          :loading="completionLoading"
+          @click="openCompletionReport(true)"
+        >
+          重新生成
+        </ElButton>
+        <ElButton
+          type="primary"
+          :loading="completionLoading || reportStatus === 'pending'"
+          :disabled="readOnly && reportStatus !== 'success'"
+          @click="openCompletionReport(false)"
+        >
+          {{ reportButtonText }}
+        </ElButton>
+      </div>
+    </div>
 
     <ElDescriptions :column="3" border>
       <ElDescriptionsItem label="项目地址" :span="3">{{ detail.address }}</ElDescriptionsItem>

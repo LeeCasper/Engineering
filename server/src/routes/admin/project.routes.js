@@ -17,6 +17,7 @@ const { uploadAny } = require('../../middlewares/upload')
 const controller = require('../../controllers/adminProject.controller')
 const structure = require('../../controllers/adminStructure.controller')
 const operations = require('../../controllers/adminOperations.controller')
+const completionReport = require('../../controllers/projectCompletionReport.controller')
 
 const router = express.Router()
 
@@ -46,6 +47,10 @@ router.post('/:id/archive', asyncHandler(controller.archive))
 router.post('/:id/restore', asyncHandler(controller.restore))
 // 删除是软删除，仅超级管理员可操作（AC-AD26），角色校验在 service 层
 router.delete('/:id', asyncHandler(controller.remove))
+
+// 竣工总报告：后台可查看/生成，下载使用接口返回的签名链接
+router.get('/:id/completion-report', asyncHandler(completionReport.adminState))
+router.post('/:id/completion-report', asyncHandler(completionReport.adminGenerate))
 
 router.get('/:id/members', asyncHandler(controller.listMembers))
 router.post('/:id/members', asyncHandler(controller.inviteMember))

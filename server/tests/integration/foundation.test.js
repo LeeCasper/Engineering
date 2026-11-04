@@ -153,9 +153,10 @@ describe('基建 · 数据层连接', () => {
     //   admin_wechat_binding（迁移 018，小程序管理员微信免密绑定）
     //   visit_media_staging（迁移 024，现场签到照片逐张暂存）
     //   esign_task、esign_identity、esign_event（迁移 026，可靠电子签名）
+    //   project_completion_report（迁移 028，项目竣工总报告）
     // 这个数字每加一张表就要改一次，是刻意的 —— 它逼着改动者确认
     // 「新表是不是真的该建」，而不是随手加一张
-    expect(names).toHaveLength(44)
+    expect(names).toHaveLength(45)
 
     for (const expected of [
       'user',
@@ -175,6 +176,7 @@ describe('基建 · 数据层连接', () => {
       'esign_task',
       'esign_identity',
       'esign_event',
+      'project_completion_report',
     ]) {
       expect(names).toContain(expected)
     }

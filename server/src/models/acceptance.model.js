@@ -450,8 +450,33 @@ async function listTimeoutCandidates() {
   )
 }
 
+/**
+ * 某项目全部已通过的验收单（竣工总报告用）。
+ *
+ * 只取 passed，不包含草稿与流转中的单子 —— 总报告是归档材料，
+ * 未通过的验收不应被当成「已验收」写进去。
+ * 阶段名 / 工序名一并带出，避免服务层逐条再查。
+ */
+async function listPassedByProject(projectId) {
+  return db.query(
+    `SELECT a.id, a.type, a.project_stage_id, a.project_item_id, a.status,
+            a.resubmit_count, a.submitted_at, a.finished_at,
+            a.signature_mode, a.signature_url, a.esign_status,
+            a.report_pdf_status,
+            s.name AS stage_name, s.seq AS stage_seq,
+            i.name AS item_name
+       FROM acceptance a
+       LEFT JOIN project_stage s ON s.id = a.project_stage_id AND s.deleted_at IS NULL
+       LEFT JOIN project_item i ON i.id = a.project_item_id AND i.deleted_at IS NULL
+      WHERE a.project_id = ? AND a.status = 'passed' AND a.deleted_at IS NULL
+      ORDER BY s.seq, a.finished_at, a.id`,
+    [projectId]
+  )
+}
+
 module.exports = {
   OPEN_STATUSES,
+  listPassedByProject,
   findOpenByStageForUpdate,
   create,
   findById,

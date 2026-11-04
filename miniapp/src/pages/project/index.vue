@@ -78,6 +78,45 @@
           </view>
         </view>
 
+        <!-- 项目竣工总报告：完工 / 归档后对业主、工长开放 -->
+        <view v-if="showCompletionReport" class="card completion-card">
+          <view class="section-head">
+            <view class="task-head-left">
+              <view class="completion-icon">
+                <image
+                  class="completion-icon-img"
+                  src="/static/images/icon-document-amber.png"
+                  mode="aspectFit"
+                />
+              </view>
+              <text class="section-title">项目竣工总报告</text>
+            </view>
+            <text class="completion-state" :class="completionStateClass">
+              {{ completionStateText }}
+            </text>
+          </view>
+          <text class="completion-desc">
+            汇总各阶段验收、签名记录与账目，可作为项目竣工归档材料下载。
+          </text>
+          <text v-if="completionReport && completionReport.error" class="completion-error">
+            {{ completionReport.error }}
+          </text>
+          <button
+            class="completion-btn"
+            :disabled="completionLoading || completionStatus === 'pending'"
+            @tap="openCompletionReport(false)"
+          >
+            {{ completionButtonText }}
+          </button>
+          <text
+            v-if="completionStatus === 'success'"
+            class="completion-refresh"
+            @tap="openCompletionReport(true)"
+          >
+            项目数据有更新？重新生成
+          </text>
+        </view>
+
         <!-- 待我处理 -->
         <view v-if="pendingCount > 0" class="card tasks-card">
           <view class="section-head">
@@ -565,6 +604,8 @@ import {
   projectLedgerSummary,
   projectContacts,
   confirmPaymentNode,
+  fetchProjectCompletionReport,
+  generateProjectCompletionReport,
 } from '../../api/project'
 import { fetchReportComments, addReportComment } from '../../api/report'
 import { fetchProjectVisits } from '../../api/visit'
@@ -600,6 +641,8 @@ const paymentNodes = ref([])
 const ledger = ref(null)
 const contacts = ref([])
 const visits = ref([])
+const completionReport = ref(null)
+const completionLoading = ref(false)
 const dismissedPaymentIds = ref([])
 const expandedStageId = ref(null)
 
@@ -622,6 +665,34 @@ const isOwner = computed(() => detail.value?.myRole === 'owner')
 const isPrimaryOwner = computed(() => Boolean(detail.value && detail.value.isPrimaryOwner))
 const isForeman = computed(() => detail.value?.myRole === 'foreman')
 const isSupervisor = computed(() => detail.value?.myRole === 'supervisor')
+
+// 竣工总报告包含账务汇总：只对业主 / 工长展示，监理在系统里也看不到项目账目
+const showCompletionReport = computed(
+  () =>
+    (isOwner.value || isForeman.value) &&
+    ['finished', 'archived'].includes(detail.value?.status)
+)
+
+const completionStatus = computed(() => completionReport.value?.status || 'none')
+
+const completionStateText = computed(() => {
+  if (completionStatus.value === 'success') return '已生成'
+  if (completionStatus.value === 'pending') return '生成中'
+  if (completionStatus.value === 'failed') return '生成失败'
+  return '待生成'
+})
+
+const completionStateClass = computed(() => ({
+  'completion-state--success': completionStatus.value === 'success',
+  'completion-state--danger': completionStatus.value === 'failed',
+}))
+
+const completionButtonText = computed(() => {
+  if (completionLoading.value || completionStatus.value === 'pending') return '生成中…'
+  if (completionStatus.value === 'success') return '查看总报告'
+  if (completionStatus.value === 'failed') return '重新生成'
+  return '生成总报告'
+})
 
 // 门锁密码对三种项目角色都可见；后台管理员不属于项目成员，不会进到这里
 const isDoorViewer = computed(() => isOwner.value || isForeman.value || isSupervisor.value)
@@ -951,6 +1022,7 @@ async function load(silent = false) {
       ledgerData,
       contactData,
       visitData,
+      completionData,
     ] = await Promise.all([
       projectDetail(id.value),
       projectStages(id.value).catch(() => null),
@@ -961,6 +1033,8 @@ async function load(silent = false) {
       projectContacts(id.value).catch(() => null),
       // 考察记录不是项目详情的主数据；失败时不能把整页拖进错误态
       fetchProjectVisits(id.value, { page: 1, pageSize: 3 }).catch(() => null),
+      // 监理没有查看权限；失败不应影响项目详情本身
+      fetchProjectCompletionReport(id.value).catch(() => null),
     ])
 
     detail.value = project
@@ -971,6 +1045,7 @@ async function load(silent = false) {
     ledger.value = ledgerData || null
     contacts.value = (contactData && contactData.contacts) || []
     visits.value = (visitData && visitData.list) || []
+    completionReport.value = completionData || null
 
     if (!expandedStageId.value) {
       expandedStageId.value = currentStage.value ? currentStage.value.id : null
@@ -1247,6 +1322,59 @@ function callContact(phone) {
 
 function openLedger() {
   uni.switchTab({ url: '/pages/ledger/index' })
+}
+
+/**
+ * 打开 / 生成竣工总报告。
+ *
+ * 已生成 -> 直接打开签名链接；未生成或失败 -> 先 POST 生成，再打开。
+ * 生成失败不改变项目状态，页面只展示失败原因，允许再次点击重试。
+ */
+async function openCompletionReport(refresh = false) {
+  if (completionLoading.value || completionStatus.value === 'pending') return
+
+  if (!refresh && completionStatus.value === 'success' && completionReport.value?.signedPath) {
+    openPdfPath(completionReport.value.signedPath)
+    return
+  }
+
+  completionLoading.value = true
+  try {
+    const data = await generateProjectCompletionReport(id.value, { refresh })
+    completionReport.value = data
+
+    if (data.status === 'success' && data.signedPath) {
+      openPdfPath(data.signedPath)
+    } else if (data.status === 'failed') {
+      uni.showToast({ title: data.error || '总报告生成失败', icon: 'none' })
+    }
+  } catch (err) {
+    uni.showToast({ title: err.message || '总报告生成失败', icon: 'none' })
+  } finally {
+    completionLoading.value = false
+  }
+}
+
+function openPdfPath(path) {
+  const url = resolveMediaUrl(path)
+
+  // #ifdef H5
+  window.open(url, '_blank')
+  // #endif
+  // #ifndef H5
+  uni.showLoading({ title: '下载中…' })
+  uni.downloadFile({
+    url,
+    success: (res) => {
+      uni.hideLoading()
+      uni.openDocument({ filePath: res.tempFilePath, fileType: 'pdf', showMenu: true })
+    },
+    fail: () => {
+      uni.hideLoading()
+      uni.showToast({ title: '总报告下载失败', icon: 'none' })
+    },
+  })
+  // #endif
 }
 
 onLoad((options) => {
@@ -1623,6 +1751,81 @@ function closeActiveSheet() {
 }
 
 /* ── 待我处理 ── */
+/* ── 项目竣工总报告 ── */
+.completion-card {
+  padding: dp(16);
+}
+
+.completion-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(32);
+  height: dp(32);
+  margin-right: dp(8);
+  border-radius: dp(10);
+  background: #fff2e8;
+}
+
+.completion-icon-img {
+  width: dp(18);
+  height: dp(18);
+}
+
+.completion-state {
+  color: #8b8179;
+  font-size: dp(11);
+  flex-shrink: 0;
+}
+
+.completion-state--success {
+  color: #00b42a;
+}
+
+.completion-state--danger {
+  color: #f53f3f;
+}
+
+.completion-desc {
+  display: block;
+  color: #8b8179;
+  font-size: dp(11);
+  line-height: 1.6;
+}
+
+.completion-error {
+  display: block;
+  margin-top: dp(6);
+  color: #f53f3f;
+  font-size: dp(10);
+  line-height: 1.5;
+}
+
+.completion-btn {
+  width: 100%;
+  height: dp(38);
+  margin-top: dp(12);
+  border: none;
+  border-radius: dp(10);
+  background: #eb5c20;
+  color: #fff;
+  font-size: dp(13);
+  font-weight: 600;
+  line-height: dp(38);
+}
+
+.completion-btn[disabled] {
+  opacity: 0.6;
+}
+
+.completion-refresh {
+  display: block;
+  margin-top: dp(9);
+  color: #eb5c20;
+  font-size: dp(10);
+  text-align: center;
+}
+
 .tasks-card {
   padding: dp(14);
 }

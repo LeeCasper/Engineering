@@ -43,6 +43,17 @@ export function projectLedgerSummary(projectId) {
   return request({ url: `/projects/${projectId}/ledger/summary` })
 }
 
+/** 项目竣工总报告状态；仅业主 / 工长可读，监理调用会 403 */
+export function fetchProjectCompletionReport(projectId) {
+  return request({ url: `/projects/${projectId}/completion-report` })
+}
+
+/** 生成 / 重试 / 重新生成项目竣工总报告；项目未完工时返回 409 */
+export function generateProjectCompletionReport(projectId, { refresh = false } = {}) {
+  const query = refresh ? '?refresh=1' : ''
+  return request({ url: `/projects/${projectId}/completion-report${query}`, method: 'POST' })
+}
+
 /** 业主查看工长/监理联系方式（C-5.6 / AC-U15） */
 export function projectContacts(projectId) {
   return request({ url: `/projects/${projectId}/contacts` })

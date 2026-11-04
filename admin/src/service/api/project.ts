@@ -235,6 +235,25 @@ export function fetchProjectDetail(id: number) {
   return request<ProjectDetail>({ url: `/admin/projects/${id}` });
 }
 
+export interface ProjectCompletionReport {
+  available: boolean;
+  status: 'none' | 'pending' | 'success' | 'failed';
+  generatedAt: string | null;
+  error: string | null;
+  signedPath: string | null;
+}
+
+export function fetchProjectCompletionReport(id: number) {
+  return request<ProjectCompletionReport>({ url: `/admin/projects/${id}/completion-report` });
+}
+
+export function fetchGenerateProjectCompletionReport(id: number, { refresh = false } = {}) {
+  return request<ProjectCompletionReport>({
+    url: `/admin/projects/${id}/completion-report${refresh ? '?refresh=1' : ''}`,
+    method: 'post'
+  });
+}
+
 export function fetchCreateProject(data: CreateProjectInput) {
   return request<{ id: number; needsCoordinates: boolean; coordinateSource: CoordinateSource }>({
     url: '/admin/projects',

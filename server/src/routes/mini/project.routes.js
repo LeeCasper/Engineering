@@ -16,6 +16,7 @@ const { tenantWriteGuard } = require('../../middlewares/tenantGuard')
 const controller = require('../../controllers/project.controller')
 const progress = require('../../controllers/progress.controller')
 const profile = require('../../controllers/profile.controller')
+const completionReport = require('../../controllers/projectCompletionReport.controller')
 
 const router = express.Router()
 
@@ -33,6 +34,10 @@ router.get('/:id/location', asyncHandler(controller.location))
 // 但进度页需要单独刷新（提交汇报后只刷时间轴，不重拉整个项目详情）
 router.get('/:id/stages', asyncHandler(progress.stages))
 router.get('/:id/items/:itemId/history', asyncHandler(progress.itemHistory))
+
+// 项目竣工总报告：项目完工后按需生成；下载走 /completion-reports 下的签名链接
+router.get('/:id/completion-report', asyncHandler(completionReport.miniState))
+router.post('/:id/completion-report', asyncHandler(completionReport.miniGenerate))
 
 // 个人中心里与项目相关的两块（C-5.5 工长统计 / C-5.6 业主联系入口）。
 // 单项目统计挂在项目下；未选项目时的跨项目汇总走上面的 `/my-stats`。

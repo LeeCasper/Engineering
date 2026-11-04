@@ -76,6 +76,8 @@ router.use(
 router.use('/reports', reportRoutes.reportRouter)
 router.use('/visits', visitRoutes.visitRouter)
 router.use('/acceptances', acceptanceRoutes.acceptanceRouter)
+// 项目竣工总报告下载：签名 URL，不要求登录态（与验收报告同一套规则）
+router.use('/completion-reports', require('./mini/completionReport.routes'))
 router.use('/reconciliations', reconciliationRoutes.reconciliationRouter)
 // 门锁密码的条目级接口。**只有 C 端有**：§4.8.2 的权限表里，
 // 后台管理员对「新增/修改/失效」与「查看」四栏全是 ❌（AC-K01 / AC-K02）
