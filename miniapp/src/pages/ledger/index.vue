@@ -243,7 +243,7 @@
                   <image class="stage-metric-img" src="/static/images/icon-stage-due.png" mode="aspectFit" />
                 </view>
                 <view class="stage-metric-text">
-                  <text class="stage-metric-label">应收</text>
+                  <text class="stage-metric-label">{{ heroLabels.stageDue }}</text>
                   <text class="stage-metric-value">¥{{ formatMoney(currentStageRow.dueAmount) }}</text>
                 </view>
               </view>
@@ -1135,8 +1135,8 @@ const hasLedgerAccess = computed(() => isOwner.value || isForeman.value)
 
 const heroLabels = computed(() =>
   isOwner.value
-    ? { paid: '已支付', pending: '待支付', stagePaid: '已付' }
-    : { paid: '已收款', pending: '待收', stagePaid: '已收' }
+    ? { paid: '已支付', pending: '待支付', stageDue: '应支付', stagePaid: '已付' }
+    : { paid: '已收款', pending: '待收', stageDue: '应收', stagePaid: '已收' }
 )
 
 const pendingLabel = computed(() => {
@@ -1804,7 +1804,7 @@ function confirmNode(node) {
 
   uni.showModal({
     title: '确认已支付',
-    content: `确认已收到「${node.name}」¥${formatMoney(node.amount)}？系统只记录状态，不进行任何资金划转。`,
+    content: `确认已向「${node.name}」支付 ¥${formatMoney(node.amount)}？系统只记录状态，不进行任何资金划转。`,
     success: async (res) => {
       if (!res.confirm) return
       confirmingNodeId = node.id

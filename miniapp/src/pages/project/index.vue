@@ -1303,8 +1303,8 @@ async function confirmNode(node) {
   }
   uni.showModal({
     title: '确认收款',
-    content: `确认已收到「${node.name}」¥ ${formatMoney(node.amount)}？系统只记录状态，不进行资金划转。`,
-    confirmText: '确认已收到',
+    content: `确认已向「${node.name}」支付 ¥ ${formatMoney(node.amount)}？系统只记录状态，不进行资金划转。`,
+    confirmText: '确认已支付',
     success: async (res) => {
       if (!res.confirm) return
       try {

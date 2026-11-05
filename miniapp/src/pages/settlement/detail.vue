@@ -40,11 +40,11 @@
           <text class="card-title">金额总览</text>
           <view class="amount-grid">
             <view class="amount-item">
-              <text class="amount-label">本阶段应收</text>
+              <text class="amount-label">{{ amountLabels.receivable }}</text>
               <text class="amount-value amount-value--primary">¥ {{ formatMoney(settlement.receivableAmount) }}</text>
             </view>
             <view class="amount-item">
-              <text class="amount-label">已收</text>
+              <text class="amount-label">{{ amountLabels.received }}</text>
               <text class="amount-value">¥ {{ formatMoney(settlement.incomeAmount) }}</text>
             </view>
             <view class="amount-item">
@@ -52,21 +52,19 @@
               <text class="amount-value">¥ {{ formatMoney(settlement.expenseAmount) }}</text>
             </view>
             <view class="amount-item">
-              <text class="amount-label">结余（已收 − 支出）</text>
+              <text class="amount-label">{{ amountLabels.balance }}</text>
               <text class="amount-value" :class="{ 'amount-value--negative': isNegative(settlement.balanceAmount) }">
                 ¥ {{ formatMoney(settlement.balanceAmount) }}
               </text>
             </view>
           </view>
-          <text class="amount-note">
-            应收为关联本阶段的付款节点金额之和；已收与支出来自归属本阶段的流水。系统内不发生任何资金划转。
-          </text>
+          <text class="amount-note">{{ amountNote }}</text>
         </view>
 
         <!-- 应收明细 -->
         <view class="card list-card">
           <view class="card-head">
-            <text class="card-title">本阶段应收（付款节点）</text>
+            <text class="card-title">{{ nodeSectionTitle }}</text>
             <text class="card-count">{{ paymentNodes.length }} 项</text>
           </view>
           <view v-if="!paymentNodes.length" class="empty-text">本阶段没有关联的付款节点</view>
@@ -82,21 +80,21 @@
         <!-- 流水明细 -->
         <view class="card list-card">
           <view class="card-head">
-            <text class="card-title">本阶段流水</text>
+            <text class="card-title">{{ flowSectionTitle }}</text>
             <text class="card-count">{{ details.length }} 条</text>
           </view>
-          <view v-if="!details.length" class="empty-text">本阶段暂未登记收支流水</view>
+          <view v-if="!details.length" class="empty-text">{{ flowEmptyText }}</view>
           <view v-for="detail in details" :key="detail.id" class="detail-row">
             <view class="detail-top">
               <view class="detail-main">
                 <text class="detail-title">
-                  {{ detail.typeLabel }} · {{ categoryLabel(detail.category) }}
+                  {{ detailTypeLabel(detail) }} · {{ categoryLabel(detail.category) }}
                   <text v-if="detail.isReversal" class="reversal-tag">红冲</text>
                 </text>
                 <text class="detail-sub">{{ formatDate(detail.occurredAt) }}<text v-if="detail.remark"> · {{ detail.remark }}</text></text>
               </view>
-              <text class="detail-amount" :class="detail.type === 'income' ? 'detail-amount--income' : 'detail-amount--expense'">
-                {{ detail.type === 'income' ? '+' : '−' }}¥ {{ formatMoney(detail.amount) }}
+              <text class="detail-amount" :class="detailAmountClass(detail)">
+                {{ detailAmountPrefix(detail) }}¥ {{ formatMoney(detail.amount) }}
               </text>
             </view>
 
@@ -228,6 +226,7 @@ const sheetSwipe = useSwipeClose(closeDispute)
 
 let loadedOnce = false
 
+const ownerView = computed(() => settlement.value && settlement.value.myRole === 'owner')
 const paymentNodes = computed(() => (settlement.value && settlement.value.paymentNodes) || [])
 const details = computed(() => (settlement.value && settlement.value.details) || [])
 const myActions = computed(() => (settlement.value && settlement.value.myActions) || [])
@@ -237,6 +236,30 @@ const canDispute = computed(
   () => settlement.value && settlement.value.status === 'pending' && settlement.value.isPrimaryOwner
 )
 const hasFooterActions = computed(() => canSubmit.value || canConfirm.value)
+
+const amountLabels = computed(() =>
+  ownerView.value
+    ? { receivable: '本阶段应支付', received: '已支付', balance: '结余（已支付 − 支出）' }
+    : { receivable: '本阶段应收', received: '已收', balance: '结余（已收 − 支出）' }
+)
+
+const amountNote = computed(() =>
+  ownerView.value
+    ? '应支付为关联本阶段的付款节点金额之和；已支付与支出来自归属本阶段的流水。系统内不发生任何资金划转。'
+    : '应收为关联本阶段的付款节点金额之和；已收与支出来自归属本阶段的流水。系统内不发生任何资金划转。'
+)
+
+const nodeSectionTitle = computed(() =>
+  ownerView.value ? '本阶段应支付（付款节点）' : '本阶段应收（付款节点）'
+)
+
+const flowSectionTitle = computed(() =>
+  ownerView.value ? '本阶段支付与支出' : '本阶段流水'
+)
+
+const flowEmptyText = computed(() =>
+  ownerView.value ? '本阶段暂未登记支付或支出流水' : '本阶段暂未登记收支流水'
+)
 
 const statusTone = computed(() => {
   if (!settlement.value) return 'pending'
@@ -364,6 +387,23 @@ function formatMoney(value) {
 
 function isNegative(value) {
   return Number(value) < 0
+}
+
+function detailTypeLabel(detail) {
+  if (detail.type === 'income') return ownerView.value ? '支付' : '收入'
+  return '支出'
+}
+
+function detailAmountPrefix(detail) {
+  if (detail.type === 'income') return ownerView.value ? '' : '+'
+  return '−'
+}
+
+function detailAmountClass(detail) {
+  if (detail.type === 'income') {
+    return ownerView.value ? 'detail-amount--owner-payment' : 'detail-amount--income'
+  }
+  return 'detail-amount--expense'
 }
 
 function categoryLabel(category) {
@@ -762,6 +802,10 @@ function openPdf() {
 
 .detail-amount--income {
   color: $color-success-ink;
+}
+
+.detail-amount--owner-payment {
+  color: $color-primary;
 }
 
 .detail-amount--expense {
