@@ -10,7 +10,7 @@
     <view
       class="filter-wrap"
       :class="{ 'filter-wrap--stuck': filterStuck }"
-      :style="{ top: `${safeTop}px` }"
+      :style="{ top: `${stickyTop}px` }"
     >
       <view class="tabs">
         <view
@@ -24,7 +24,7 @@
         </view>
       </view>
     </view>
-    <view v-if="filterStuck" class="sticky-status-bg" :style="{ height: `${safeTop}px` }" />
+    <view v-if="filterStuck" class="sticky-status-bg" :style="{ height: `${stickyTop}px` }" />
 
     <view v-if="loading && !messages.length" class="gc-loading-page">
       <gc-skeleton :rows="4" />
@@ -134,6 +134,8 @@ const TYPE_INITIALS = {
 }
 
 const safeTop = ref(0)
+// 吸顶位置：H5 贴状态栏；小程序要让出微信原生胶囊，否则分类 tab 会被胶囊盖住
+const stickyTop = ref(0)
 const filterStuck = ref(false)
 const filterStickyThreshold = ref(0)
 const pageScrollTop = ref(0)
@@ -164,6 +166,22 @@ onLoad(() => {
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 
+  let top = safeTop.value
+  // #ifdef MP-WEIXIN
+  try {
+    const capsule = uni.getMenuButtonBoundingClientRect()
+    if (capsule && capsule.bottom) {
+      // 让分类栏停在胶囊下方，而不是与胶囊同一行
+      top = capsule.bottom + 6
+    } else {
+      top = safeTop.value + 44
+    }
+  } catch (err) {
+    top = safeTop.value + 44
+  }
+  // #endif
+  stickyTop.value = top
+
   if (!getToken()) {
     uni.reLaunch({ url: '/pages/login/index' })
     return
@@ -186,7 +204,7 @@ function measureFilterSticky() {
         // rect.top 是相对视口的位置；加上当前滚动量才是元素在页面中的静态位置
         filterStickyThreshold.value = Math.max(
           0,
-          rect.top + pageScrollTop.value - safeTop.value
+          rect.top + pageScrollTop.value - stickyTop.value
         )
       })
       .exec()
