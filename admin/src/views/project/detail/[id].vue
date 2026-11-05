@@ -15,6 +15,7 @@ import { useTenantReadOnly } from '@/hooks/common/tenant';
 import { formatDate, formatMoney, PROJECT_STATUS_META } from '@/utils/format';
 import OverviewTab from './components/OverviewTab.vue';
 import StructureTab from './components/StructureTab.vue';
+import AcceptanceReportTab from './components/AcceptanceReportTab.vue';
 import MembersTab from './components/MembersTab.vue';
 import PaymentNodesTab from './components/PaymentNodesTab.vue';
 
@@ -270,6 +271,9 @@ onMounted(load);
           </ElTabPane>
           <ElTabPane label="阶段与工序" name="structure">
             <StructureTab :project-id="projectId" :detail="detail" @refresh="load" />
+          </ElTabPane>
+          <ElTabPane label="验收报告" name="acceptances">
+            <AcceptanceReportTab :project-id="projectId" />
           </ElTabPane>
           <ElTabPane label="成员" name="members">
             <MembersTab :project-id="projectId" :detail="detail" @refresh="load" />

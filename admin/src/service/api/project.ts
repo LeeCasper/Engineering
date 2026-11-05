@@ -254,6 +254,46 @@ export function fetchGenerateProjectCompletionReport(id: number, { refresh = fal
   });
 }
 
+export interface AdminAcceptanceReport {
+  id: number;
+  type: 'stage' | 'item';
+  typeLabel: string;
+  stageId: number | null;
+  stageName: string | null;
+  itemId: number | null;
+  itemName: string | null;
+  status: 'draft' | 'pending_supervisor' | 'pending_owner' | 'pending_rectify' | 'passed';
+  statusLabel: string;
+  round: number;
+  resubmitCount: number;
+  rejectCount: number;
+  submitter: string | null;
+  submittedAt: string | null;
+  finishedAt: string | null;
+  hasSignature: boolean;
+  signatureMode: 'legacy' | 'provider';
+  esignStatus: string | null;
+  reportPdf: {
+    status: 'pending' | 'success' | 'failed';
+    error: string | null;
+    signedPath: string | null;
+  };
+}
+
+export interface AdminAcceptanceReportList {
+  items: AdminAcceptanceReport[];
+  summary: {
+    total: number;
+    passed: number;
+    inProgress: number;
+    reportReady: number;
+  };
+}
+
+export function fetchProjectAcceptanceReports(id: number) {
+  return request<AdminAcceptanceReportList>({ url: `/admin/projects/${id}/acceptances` });
+}
+
 export function fetchCreateProject(data: CreateProjectInput) {
   return request<{ id: number; needsCoordinates: boolean; coordinateSource: CoordinateSource }>({
     url: '/admin/projects',

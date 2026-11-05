@@ -8,6 +8,7 @@ import {
   type ProjectDetail
 } from '@/service/api/project';
 import { useTenantReadOnly } from '@/hooks/common/tenant';
+import { openSignedApiPath } from '@/utils/signed-url';
 import { formatDate, formatMoney, GATE_STATUS_META, PAYMENT_STATUS_META } from '@/utils/format';
 
 defineOptions({ name: 'ProjectOverviewTab' });
@@ -40,7 +41,7 @@ async function openCompletionReport(refresh = false) {
   if (completionLoading.value || reportStatus.value === 'pending') return;
 
   if (!refresh && completionReport.value?.status === 'success' && completionReport.value.signedPath) {
-    openSignedPath(completionReport.value.signedPath);
+    openSignedApiPath(completionReport.value.signedPath);
     return;
   }
 
@@ -55,7 +56,7 @@ async function openCompletionReport(refresh = false) {
     if (data) {
       completionReport.value = data;
       if (data.status === 'success' && data.signedPath) {
-        openSignedPath(data.signedPath);
+        openSignedApiPath(data.signedPath);
       } else if (data.status === 'failed') {
         ElMessage.error(data.error || '总报告生成失败');
       }
@@ -67,12 +68,6 @@ async function openCompletionReport(refresh = false) {
   }
 }
 
-/** 签名链接是相对 /api/v1 的；开发环境需要补上后端 origin */
-function openSignedPath(path: string) {
-  const base = import.meta.env.VITE_SERVICE_BASE_URL || '/api/v1';
-  const origin = base.replace(/\/api\/v1\/?$/, '');
-  window.open(`${origin}${path}`, '_blank');
-}
 
 const itemCount = computed(() => props.detail.stages.reduce((sum, stage) => sum + stage.items.length, 0));
 

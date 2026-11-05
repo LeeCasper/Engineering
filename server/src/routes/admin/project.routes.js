@@ -18,6 +18,7 @@ const controller = require('../../controllers/adminProject.controller')
 const structure = require('../../controllers/adminStructure.controller')
 const operations = require('../../controllers/adminOperations.controller')
 const completionReport = require('../../controllers/projectCompletionReport.controller')
+const acceptance = require('../../controllers/adminAcceptance.controller')
 
 const router = express.Router()
 
@@ -51,6 +52,9 @@ router.delete('/:id', asyncHandler(controller.remove))
 // 竣工总报告：后台可查看/生成，下载使用接口返回的签名链接
 router.get('/:id/completion-report', asyncHandler(completionReport.adminState))
 router.post('/:id/completion-report', asyncHandler(completionReport.adminGenerate))
+
+// 验收报告查询：后台只读，数据权限与项目详情一致
+router.get('/:id/acceptances', asyncHandler(acceptance.list))
 
 router.get('/:id/members', asyncHandler(controller.listMembers))
 router.post('/:id/members', asyncHandler(controller.inviteMember))

@@ -695,6 +695,28 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
     expect(item.reportPdf.signedPath).toContain('sig=')
   })
 
+  it('后台按项目查询验收报告，已通过项带签名下载链接', async () => {
+    const ctx = await setup()
+    const id = await passThrough(ctx)
+
+    const res = await request.authed(
+      'get',
+      `/admin/projects/${ctx.projectId}/acceptances`,
+      ctx.admin.token
+    )
+    expect(res.status).toBe(200)
+    expect(res.body.data.summary.total).toBe(1)
+    expect(res.body.data.summary.passed).toBe(1)
+    expect(res.body.data.summary.reportReady).toBe(1)
+
+    const item = res.body.data.items.find((row) => row.id === id)
+    expect(item.status).toBe('passed')
+    expect(item.stageName).toBe('水电工程')
+    expect(item.reportPdf.status).toBe('success')
+    expect(item.reportPdf.signedPath).toContain('/api/v1/acceptances/')
+    expect(item.reportPdf.signedPath).toContain('sig=')
+  })
+
   it('AC-A19 PDF 生成失败不阻断验收进入已通过，且提供重试入口', async () => {
     const ctx = await setup()
     const storage = require('../../src/storage')
