@@ -805,7 +805,7 @@
           </picker>
           <view v-else class="form-picker form-picker--disabled">暂无已解锁的付款节点</view>
           <text class="form-hint">
-            登记收入后，该付款节点会变为「待业主确认」。
+            {{ incomeNodeHint }}
           </text>
         </view>
 
@@ -1206,9 +1206,24 @@ const stageOptions = computed(() => {
   }))
 })
 
+// 阶段型付款节点只能登记到它关联的阶段；未关联阶段的手工节点
+// 由工长选择归属阶段。否则会出现「收入记在水电、节点却属于拆除改造」
+// 的错配，阶段结算的应收与已收对不上。
 const incomeNodes = computed(() =>
-  nodes.value.filter((node) => node.status === 'unlocked')
+  nodes.value.filter((node) => {
+    if (node.status !== 'unlocked') return false
+    if (!node.triggerStageId) return true
+    return String(node.triggerStageId) === String(entryForm.stageId)
+  })
 )
+
+const incomeNodeHint = computed(() => {
+  if (incomeNodes.value.length) {
+    return '登记收入后，该付款节点会变为「待业主确认」。'
+  }
+  const stageName = selectedStageLabel.value
+  return `当前阶段（${stageName}）暂无可关联的已解锁付款节点；该阶段验收通过后，关联它的付款节点才会解锁。`
+})
 
 const incomeNodeLabels = computed(() =>
   incomeNodes.value.map(
@@ -1516,12 +1531,27 @@ function onEntryDate(event) {
 
 function onEntryStage(event) {
   const stage = stageOptions.value[Number(event.detail.value)]
-  if (stage) entryForm.stageId = stage.id
+  if (!stage) return
+  entryForm.stageId = stage.id
+
+  // 切换阶段后，原来选中的节点可能不属于新阶段；自动落到第一个可用节点，
+  // 没有可用节点时清空，让「当前阶段暂无已解锁节点」的提示显示出来。
+  if (entryForm.type === 'income') {
+    const stillEligible = incomeNodes.value.some(
+      (node) => String(node.id) === String(entryForm.paymentNodeId)
+    )
+    if (!stillEligible) {
+      entryForm.paymentNodeId = incomeNodes.value.length ? String(incomeNodes.value[0].id) : ''
+    }
+  }
 }
 
 function onIncomeNode(event) {
   const node = incomeNodes.value[Number(event.detail.value)]
-  if (node) entryForm.paymentNodeId = String(node.id)
+  if (!node) return
+  entryForm.paymentNodeId = String(node.id)
+  // 阶段型节点自带归属阶段，选中后把表单阶段同步过去（与后端校验一致）
+  if (node.triggerStageId) entryForm.stageId = String(node.triggerStageId)
 }
 
 function chooseEntryReceipt() {

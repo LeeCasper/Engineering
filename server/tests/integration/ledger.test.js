@@ -287,6 +287,19 @@ describe('AC-L01 ~ L06 流水记录', () => {
     expect(second.body.data.existingLedgerId).toBe(first.body.data.id)
   })
 
+  it('收入归属阶段必须与阶段型付款节点一致', async () => {
+    const ctx = await setup()
+    await unlockNode(ctx.acceptanceNodeId)
+    const nextStageId = ctx.stages[1].id
+
+    const res = await addIncome(ctx, ctx.foreman.token, { stageId: nextStageId })
+    expect(res.status).toBe(400)
+    expect(res.body.message).toContain('归属阶段必须与付款节点关联阶段一致')
+
+    const ok = await addIncome(ctx, ctx.foreman.token, { stageId: ctx.stageId })
+    expect(ok.status).toBe(200)
+  })
+
   it('AC-L05 数据库层的条件唯一索引兜底：绕过接口直插同样被拒', async () => {
     const ctx = await setup()
     await unlockNode(ctx.acceptanceNodeId)

@@ -394,7 +394,16 @@ async function createIncome(userId, projectId, input, context = {}) {
     throw AppError.conflict(`付款节点「${node.name}」尚未解锁，暂不可登记收款`)
   }
 
-  const stageId = await resolveStageId(projectId, input.stageId ?? node.trigger_stage_id)
+  // 阶段型付款节点已经明确了自己的归属阶段，收入流水必须落在同一个阶段。
+  // 否则会出现「收入记在水电工程、付款节点却属于拆除改造」的错配：
+  // 阶段结算里已收有这笔钱，但应收（付款节点）里没有，两个数字对不上。
+  const nodeStageId = node.trigger_stage_id ? Number(node.trigger_stage_id) : null
+  if (nodeStageId && input.stageId !== undefined && input.stageId !== null && input.stageId !== '') {
+    if (Number(input.stageId) !== nodeStageId) {
+      throw AppError.badRequest('收入归属阶段必须与付款节点关联阶段一致')
+    }
+  }
+  const stageId = await resolveStageId(projectId, nodeStageId || input.stageId)
 
   const existing = await ledgerModel.findIncomeByPaymentNode(input.paymentNodeId)
   if (existing) {
