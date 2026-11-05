@@ -1,30 +1,28 @@
 <template>
   <view class="page">
-    <view class="nav" :style="{ paddingTop: `${safeTop + 6}px` }">
-      <view class="nav-back" @tap="goBack">
-        <image class="nav-back-icon" src="/static/images/icon-back.png" mode="aspectFit" />
+    <!-- 导航 + 分类栏整体吸顶，列表从下方滚动 -->
+    <view class="header">
+      <view class="nav" :style="{ paddingTop: `${safeTop + 6}px` }">
+        <view class="nav-back" @tap="goBack">
+          <image class="nav-back-icon" src="/static/images/icon-back.png" mode="aspectFit" />
+        </view>
+        <text class="nav-title">消息中心</text>
       </view>
-      <text class="nav-title">消息中心</text>
-    </view>
 
-    <view
-      class="filter-wrap"
-      :class="{ 'filter-wrap--stuck': filterStuck }"
-      :style="{ top: `${stickyTop}px` }"
-    >
-      <view class="tabs">
-        <view
-          v-for="filter in FILTERS"
-          :key="filter.key"
-          class="tab"
-          :class="{ 'tab--active': activeType === filter.key }"
-          @tap="changeFilter(filter.key)"
-        >
-          <text class="tab-label">{{ filter.label }}</text>
+      <view class="filter-wrap">
+        <view class="tabs">
+          <view
+            v-for="filter in FILTERS"
+            :key="filter.key"
+            class="tab"
+            :class="{ 'tab--active': activeType === filter.key }"
+            @tap="changeFilter(filter.key)"
+          >
+            <text class="tab-label">{{ filter.label }}</text>
+          </view>
         </view>
       </view>
     </view>
-    <view v-if="filterStuck" class="sticky-status-bg" :style="{ height: `${stickyTop}px` }" />
 
     <view v-if="loading && !messages.length" class="gc-loading-page">
       <gc-skeleton :rows="4" />
@@ -90,14 +88,8 @@
 </template>
 
 <script setup>
-import { nextTick, ref } from 'vue'
-import {
-  onLoad,
-  onPageScroll,
-  onPullDownRefresh,
-  onReachBottom,
-  onShow,
-} from '@dcloudio/uni-app'
+import { ref } from 'vue'
+import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { getToken, getCachedProjects, setCachedProjects } from '../../store/session'
 import { setCurrentProject } from '../../store/projectContext'
 import { myProjects } from '../../api/project'
@@ -134,11 +126,6 @@ const TYPE_INITIALS = {
 }
 
 const safeTop = ref(0)
-// 吸顶位置：H5 贴状态栏；小程序要让出微信原生胶囊，否则分类 tab 会被胶囊盖住
-const stickyTop = ref(0)
-const filterStuck = ref(false)
-const filterStickyThreshold = ref(0)
-const pageScrollTop = ref(0)
 const loading = ref(false)
 const loadingMore = ref(false)
 const markingAll = ref(false)
@@ -152,64 +139,17 @@ const unreadTotal = ref(0)
 
 let loadedOnce = false
 
-onPageScroll((event) => {
-  const top = Number(event && event.scrollTop) || 0
-  pageScrollTop.value = top
-  if (!filterStickyThreshold.value) {
-    filterStuck.value = false
-    return
-  }
-  filterStuck.value = top >= filterStickyThreshold.value
-})
-
 onLoad(() => {
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
-
-  let top = safeTop.value
-  // #ifdef MP-WEIXIN
-  try {
-    const capsule = uni.getMenuButtonBoundingClientRect()
-    if (capsule && capsule.bottom) {
-      // 让分类栏停在胶囊下方，而不是与胶囊同一行
-      top = capsule.bottom + 6
-    } else {
-      top = safeTop.value + 44
-    }
-  } catch (err) {
-    top = safeTop.value + 44
-  }
-  // #endif
-  stickyTop.value = top
 
   if (!getToken()) {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }
 
-  measureFilterSticky()
   load(true)
 })
-
-function measureFilterSticky() {
-  nextTick(() => {
-    uni
-      .createSelectorQuery()
-      .select('.filter-wrap')
-      .boundingClientRect((rect) => {
-        if (!rect) {
-          filterStickyThreshold.value = 0
-          return
-        }
-        // rect.top 是相对视口的位置；加上当前滚动量才是元素在页面中的静态位置
-        filterStickyThreshold.value = Math.max(
-          0,
-          rect.top + pageScrollTop.value - stickyTop.value
-        )
-      })
-      .exec()
-  })
-}
 
 onShow(() => {
   if (loadedOnce && getToken()) load(true, { silent: true })
@@ -443,17 +383,23 @@ function goBack() {
   background: #faf7f4;
 }
 
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(250, 247, 244, 0.9);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.04);
+}
+
 .nav {
   display: flex;
   align-items: center;
   padding-right: dp(14);
   padding-bottom: dp(8);
   padding-left: dp(6);
-  background: rgba(250, 247, 244, 0.86);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.04);
 }
 
 .nav-back {
@@ -486,45 +432,8 @@ function goBack() {
 }
 /* #endif */
 
-/* 与首页搜索栏同一套吸顶效果 */
 .filter-wrap {
-  position: sticky;
-  z-index: 35;
   padding: dp(4) dp(14) dp(10);
-  transition: background-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.filter-wrap--stuck {
-  background: rgba(250, 247, 244, 0.82);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
-  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.05);
-}
-
-/* 吸顶栏底部羽化：避免背景在消息卡片上出现一条硬边 */
-.filter-wrap--stuck::after {
-  position: absolute;
-  right: 0;
-  bottom: dp(-26);
-  left: 0;
-  height: dp(26);
-  background: linear-gradient(
-    180deg,
-    rgba(250, 247, 244, 0.88) 0%,
-    rgba(250, 247, 244, 0.56) 32%,
-    rgba(250, 247, 244, 0) 100%
-  );
-  content: '';
-  pointer-events: none;
-}
-
-.sticky-status-bg {
-  position: fixed;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 34;
-  background: #faf7f4;
 }
 
 .tabs {
