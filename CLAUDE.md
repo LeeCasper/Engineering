@@ -507,6 +507,13 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **构建**：`npm run build:mp-weixin` → `dist/build/mp-weixin`；
   `npm run dev:h5` 可在浏览器里走通登录（固定 dev code，后端 mock 派生稳定账号）。
   微信开发者工具需勾选「不校验合法域名」才能访问 `127.0.0.1`（仅本地）。
+- **主包必须保持在 2MB 以内**：微信上传报 `80051 source size ... exceed max limit 2MB`
+  时，不要删减功能或压糊图片，先看是否把非 tab 页放进了主包。
+  当前 `pages/admin/**` 与 `pages/settlement/**` 走 `subPackages`，tab 页
+  （`pages/projects` / `pages/acceptance` / `pages/ledger` / `pages/mine`）与
+  登录、项目详情等首屏链路留在主包。新增非 tab 页面优先放进分包；
+  分包被打包后路径不变（仍是 `/pages/admin/...`、`/pages/settlement/...`）。
+  `dist/dev/mp-weixin` 比正式包大，**上传发布必须用 `dist/build/mp-weixin`**。
 
 ### 管理后台（`admin/`）
 

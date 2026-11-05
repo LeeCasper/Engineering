@@ -145,135 +145,11 @@
       }
     },
     {
-      "path": "pages/settlement/detail",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4",
-        "backgroundTextStyle": "dark",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
       "path": "pages/esign/sign",
       "style": {
         "navigationBarTitleText": "电子签名",
         "navigationBarTextStyle": "black",
         "backgroundColor": "#FAF7F4"
-      }
-    },
-    {
-      "path": "pages/admin/login/index",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4"
-      }
-    },
-    {
-      "path": "pages/admin/change-password/index",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4"
-      }
-    },
-    {
-      "path": "pages/admin/workbench/index",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "white",
-        "backgroundColor": "#EB5C20",
-        "backgroundTextStyle": "light",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/admin/projects/index",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#F6F7F9",
-        "backgroundTextStyle": "dark",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/admin/members/index",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#F6F7F9",
-        "backgroundTextStyle": "dark",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/admin/profile/index",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "white",
-        "backgroundColor": "#F85A2A",
-        "backgroundTextStyle": "light",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/admin/templates/index",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#FFFFFF",
-        "backgroundTextStyle": "dark",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/admin/project/form",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4"
-      }
-    },
-    {
-      "path": "pages/admin/project/detail",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#F6F7F9",
-        "backgroundTextStyle": "dark",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/admin/project/members",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#F6F7F9",
-        "backgroundTextStyle": "dark",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/admin/project/payments",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4",
-        "backgroundTextStyle": "dark",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/admin/project/stages",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "backgroundColor": "#FAF7F4",
-        "backgroundTextStyle": "dark",
-        "enablePullDownRefresh": true
       }
     },
     {
@@ -329,6 +205,142 @@
         "backgroundTextStyle": "dark",
         "enablePullDownRefresh": true
       }
+    }
+  ],
+  "subPackages": [
+    {
+      "root": "pages/admin",
+      "pages": [
+        {
+          "path": "login/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#FAF7F4"
+          }
+        },
+        {
+          "path": "change-password/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#FAF7F4"
+          }
+        },
+        {
+          "path": "workbench/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "white",
+            "backgroundColor": "#EB5C20",
+            "backgroundTextStyle": "light",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "projects/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#F6F7F9",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "members/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#F6F7F9",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "profile/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "white",
+            "backgroundColor": "#F85A2A",
+            "backgroundTextStyle": "light",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "templates/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#FFFFFF",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "project/form",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#FAF7F4"
+          }
+        },
+        {
+          "path": "project/detail",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#F6F7F9",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "project/members",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#F6F7F9",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "project/payments",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#FAF7F4",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
+          "path": "project/stages",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#FAF7F4",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/settlement",
+      "pages": [
+        {
+          "path": "detail",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#FAF7F4",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        }
+      ]
     }
   ],
   "globalStyle": {
