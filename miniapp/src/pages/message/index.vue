@@ -407,6 +407,14 @@ function goBack() {
   font-weight: 700;
 }
 
+/* 小程序右上角有微信原生胶囊，「全部已读」必须往左让位；
+   H5 没有胶囊，保持原位置。 */
+/* #ifdef MP-WEIXIN */
+.nav {
+  padding-right: dp(96);
+}
+/* #endif */
+
 .nav-action {
   padding: dp(4) dp(2);
   color: #eb5c20;
