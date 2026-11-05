@@ -35,6 +35,8 @@ const reportMediaStagingModel = require('../models/reportMediaStaging.model')
 const ROLE_LABELS = { foreman: '工长', supervisor: '监理', owner: '业主' }
 const projectMemberModel = require('../models/projectMember.model')
 const projectModel = require('../models/project.model')
+// 报告提交是「首次进度汇报自动进入施工中」的触发点（§5.2）
+const projectService = require('./project.service')
 const projectItemModel = require('../models/projectItem.model')
 const projectStageModel = require('../models/projectStage.model')
 
@@ -219,6 +221,10 @@ async function submitReport(userId, projectId, input) {
         },
         tx
       )
+
+      // §5.2：首个进度汇报让项目从「待开工」进入「施工中」。
+      // 与汇报同一事务：状态改成功但汇报失败，或反之，都会留下矛盾数据。
+      await projectService.autoStartProjectIfPending(tx, projectId, userId)
 
       return id
     })

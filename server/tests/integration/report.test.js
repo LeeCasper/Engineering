@@ -339,6 +339,54 @@ describe('AC-P07 附件上限', () => {
   })
 })
 
+describe('§5.2 首次进度汇报自动进入施工中', () => {
+  it('首次提交后项目状态从待开工变为施工中，并写操作日志', async () => {
+    const { projectId, foreman, itemId } = await setup({ status: 'pending' })
+    const owner = await mini.login('code-report-owner')
+    await db.query(
+      `INSERT INTO project_member (project_id, user_id, role, status, owner_type, confirmed_at, joined_at)
+       VALUES (?, ?, 'owner', 'active', 'primary', NOW(), NOW())`,
+      [projectId, owner.userId]
+    )
+
+    const res = await submit(projectId, foreman.token, {
+      itemId: String(itemId),
+      progress: '20',
+      content: '首次汇报',
+      clientRequestId: nextRequestId(),
+    })
+    expect(res.status).toBe(200)
+
+    const project = await db.queryOne('SELECT status FROM project WHERE id = ?', [projectId])
+    expect(project.status).toBe('building')
+
+    const log = await db.queryOne(
+      "SELECT detail FROM operation_log WHERE project_id = ? AND action = 'project.status' ORDER BY id DESC LIMIT 1",
+      [projectId]
+    )
+    const detail = typeof log.detail === 'string' ? JSON.parse(log.detail) : log.detail
+    expect(detail.after.status).toBe('building')
+    expect(detail.auto).toBe(true)
+  })
+
+  it('人员未配齐（缺业主）时拒绝进入施工中，汇报整体回滚', async () => {
+    const { projectId, foreman, itemId } = await setup({ status: 'pending' })
+
+    const res = await submit(projectId, foreman.token, {
+      itemId: String(itemId),
+      progress: '20',
+      content: '首次汇报',
+      clientRequestId: nextRequestId(),
+    })
+    expect(res.status).toBe(409)
+    expect(res.body.message).toContain('无法进入施工中')
+    expect(await db.count('FROM progress_report WHERE project_id = ?', [projectId])).toBe(0)
+
+    const project = await db.queryOne('SELECT status FROM project WHERE id = ?', [projectId])
+    expect(project.status).toBe('pending')
+  })
+})
+
 describe('AC-P11 / AC-P12 / AC-P13 服务端水印', () => {
   it('AC-P12 绕过小程序直接向接口上传原图，返回的图片仍带水印', async () => {
     const { projectId, foreman, itemId } = await setup()

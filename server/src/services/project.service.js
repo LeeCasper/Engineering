@@ -940,6 +940,50 @@ async function assertMemberComposition(projectId) {
 }
 
 /**
+ * 首次提交进度汇报时自动进入「施工中」（§5.2 项目状态机）。
+ *
+ * 状态机明确写着「施工中 = 首次提交进度汇报时自动进入，或管理员手工设置」。
+ * 但项目状态与阶段门禁是两套字段：阶段进度到 100% 并不会自动改项目状态，
+ * 只改 `project_stage` 会让项目一直显示「待开工」。
+ *
+ * 这里必须复用 `assertMemberComposition`（AC-AD58）：自动流转不能成为
+ * 绕开人员配置校验的后门。人员没配齐时拒绝本次汇报，让问题在第一次
+ * 提交时就暴露，而不是留下「有进度但仍是待开工」的矛盾数据。
+ *
+ * 由 report.service 在写汇报的同一事务里调用，状态变更与汇报一起提交。
+ */
+async function autoStartProjectIfPending(tx, projectId, userId) {
+  const project = await tx.queryOne(
+    'SELECT id, status FROM project WHERE id = ? AND deleted_at IS NULL FOR UPDATE',
+    [projectId]
+  )
+  if (!project || project.status !== 'pending') return false
+
+  await assertMemberComposition(projectId)
+  await projectModel.updateStatus(projectId, 'building', tx)
+
+  await operationLog.record(
+    {
+      operatorType: 'user',
+      operatorId: userId,
+      action: operationLog.ACTIONS.PROJECT_STATUS,
+      targetType: 'project',
+      targetId: projectId,
+      projectId,
+      detail: {
+        before: { status: 'pending' },
+        after: { status: 'building' },
+        auto: true,
+        reason: 'first_progress_report',
+      },
+    },
+    tx
+  )
+
+  return true
+}
+
+/**
  * 归档（B-2.11）。归档后全链路只读（AC-AD25 / AC-AD57）。
  * 需二次确认 —— 归档会让 C 端所有人立刻无法提交任何东西。
  */
@@ -1109,6 +1153,7 @@ module.exports = {
   STATUS_ORDER,
   myProjects,
   getProjectForMember,
+  autoStartProjectIfPending,
   isOverdue,
   pickCurrentStage,
   confirmInvitation,
