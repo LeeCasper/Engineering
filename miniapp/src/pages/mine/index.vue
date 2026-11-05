@@ -281,7 +281,10 @@
               @blur="realNameDraft = realNameDraft.trim()"
             />
           </view>
-          <text class="profile-edit-tip">真实姓名会显示在项目参与人、联系人和验收记录中</text>
+          <text class="profile-edit-tip">
+            真实姓名会显示在项目参与人、联系人和验收记录中
+            <text v-if="profile && profile.requiresRealName" class="profile-required">（加入项目后必填）</text>
+          </text>
 
           <view class="profile-name-field">
             <text class="profile-name-label">昵称</text>
@@ -616,6 +619,13 @@ async function loadProfileAndRole() {
   profile.value = data
   avatarError.value = false
 
+  // 被邀请进入项目后必须补真实姓名：打开「我的」直接弹出资料面板，
+  // 不让用户以为这里只是一个可选昵称。
+  if (data.requiresRealName && !profileSheetOpen.value) {
+    openProfileSheet()
+    uni.showToast({ title: '加入项目后请先填写真实姓名', icon: 'none' })
+  }
+
   // 后端的角色是最终事实；把本地项目上下文里的角色同步过去，
   // 避免记账 / 验收页面继续用上一个项目的旧角色。
   if (data.role && currentProject.value) {
@@ -800,6 +810,10 @@ async function saveProfile() {
     return
   }
   const realName = String(realNameDraft.value || '').trim()
+  if (profile.value && profile.value.requiresRealName && !realName) {
+    uni.showToast({ title: '请先填写真实姓名', icon: 'none' })
+    return
+  }
 
   savingProfile.value = true
   try {
@@ -1914,6 +1928,11 @@ function closeActiveSheet() {
 .profile-name-placeholder {
   color: #b9afa7;
   font-weight: 400;
+}
+
+.profile-required {
+  color: #c44710;
+  font-weight: 600;
 }
 
 .profile-save-btn {

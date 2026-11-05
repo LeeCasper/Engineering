@@ -206,6 +206,14 @@ async function confirmInvitation(userId, memberId) {
   const user = await userModel.findById(userId)
   if (!user) throw AppError.notFound('用户不存在')
 
+  // 被邀请之后必须填写真实姓名。放在角色校验之前：这是资料完整性门槛，
+  // 与「你是以什么角色加入」无关，先提示用户去补资料。
+  if (!String(user.real_name || '').trim()) {
+    throw AppError.conflict('请先填写真实姓名后再确认邀请', {
+      detail: { requiresRealName: true },
+    })
+  }
+
   if (!user.role) {
     // 历史数据可能没有 user.role，但已经在别的项目里是另一个角色。
     // 此时不能凭这一条邀请就把账号「选定」成新角色，否则会制造新的不一致。

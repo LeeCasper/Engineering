@@ -97,6 +97,11 @@ async function profile(req, res) {
 async function updateProfile(req, res) {
   const input = validate(updateProfileSchema, req.body)
 
+  // 被邀请进入项目后真实姓名是必填项，不能通过接口把它清空。
+  if (input.realName === null && (await profileService.requiresRealName(req.auth.id))) {
+    throw AppError.badRequest('加入项目后必须填写真实姓名')
+  }
+
   // 改完昵称头像要把带角色的那份资料回给前端，因此这里也走 profileService
   await userModel.updateProfile(req.auth.id, input)
   const query = validate(profileQuerySchema, req.query)

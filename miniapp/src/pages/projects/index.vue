@@ -746,6 +746,21 @@ async function onAccept(inv) {
     uni.showToast({ title: '已加入项目', icon: 'success' })
     await load()
   } catch (err) {
+    // 被邀请后必须先补真实姓名；后端返回 detail.requiresRealName
+    if (err.data && err.data.requiresRealName) {
+      const goFill = await new Promise((resolve) => {
+        uni.showModal({
+          title: '请先填写真实姓名',
+          content: '被邀请加入项目后需要先填写真实姓名，确认邀请后才能成为项目成员。',
+          confirmText: '去填写',
+          cancelText: '稍后',
+          success: (res) => resolve(Boolean(res.confirm)),
+          fail: () => resolve(false),
+        })
+      })
+      if (goFill) uni.switchTab({ url: '/pages/mine/index' })
+      return
+    }
     uni.showToast({ title: err.message || '确认失败', icon: 'none' })
   }
 }
