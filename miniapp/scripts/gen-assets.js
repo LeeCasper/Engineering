@@ -310,6 +310,26 @@ async function renderGrayTabIcon(source, outName, color = '#8B8179', size = 81) 
  * 不用 sharp.tint：它对纯色 PNG 的处理会保留灰度明暗，得不到精确的 #EB5C20。
  * 这里直接改写 RGB、保留 alpha，白色镂空仍保持透明。
  */
+/**
+ * 角色肖像图标：工长 / 监理。
+ *
+ * 来源是设计方提供的 256×256 透明底 PNG（原始 .ico 已转存到 design-refs）。
+ * 这些不是 SVG 图标，不能走 renderIcon；按 144px 输出，够 3x 真机在
+ * 44dp 头像框里清晰显示，又不会把主包撑大。
+ */
+async function renderPortraitIcon(name, sourceName, size = 144) {
+  const source = path.resolve(__dirname, '..', 'design-refs', sourceName)
+  if (!fs.existsSync(source)) {
+    console.warn(`  ! 缺少肖像源文件：${sourceName}，跳过 ${name}`)
+    return
+  }
+  await sharp(source)
+    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png({ compressionLevel: 9 })
+    .toFile(path.join(OUT, name))
+  console.log(`  ✔ ${name}`)
+}
+
 async function renderThemeTabIcon(source, outName, color = { r: 235, g: 92, b: 32 }, size = 81) {
   const trimmed = await trimTransparent(await sharp(source).toBuffer())
   const { data, info } = await sharp(trimmed)
@@ -509,8 +529,8 @@ async function main() {
   await renderIcon('icon-edit-accent.png', '<path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>', { color: '#EB5C20', strokeWidth: 1.8 })
   await renderIcon('icon-info-accent.png', '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 12v4"/>', { color: '#EB5C20', strokeWidth: 1.8 })
   await renderIcon('icon-logout-gray.png', '<path d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>', { color: '#8B8179', strokeWidth: 1.8 })
-  await renderFilledIcon('icon-hardhat-accent.png', '<path d="M12 2a7 7 0 00-7 7v1h14V9a7 7 0 00-7-7z"/><path d="M3 10h18v2H3z"/><circle cx="12" cy="14" r="3"/><path d="M7 21a5 5 0 0110 0H7z"/>', { color: '#EB5C20' })
-  await renderFilledIcon('icon-hardhat-gray.png', '<path d="M12 2a7 7 0 00-7 7v1h14V9a7 7 0 00-7-7z"/><path d="M3 10h18v2H3z"/><circle cx="12" cy="14" r="3"/><path d="M7 21a5 5 0 0110 0H7z"/>', { color: '#8B8179' })
+  await renderPortraitIcon('icon-foreman-portrait.png', 'role-foreman-portrait.png')
+  await renderPortraitIcon('icon-supervisor-portrait.png', 'role-supervisor-portrait.png')
   await renderSvg('icon-wallet-fill-accent.png', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="11" fill="#EB5C20"/><path d="M7.5 7l4.5 5 4.5-5M12 12v7M8.5 13h7M8.5 15.5h7" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round"/></svg>`, 216)
 
   const acceptanceHeader = path.resolve(__dirname, '..', 'design-refs', 'acceptance-header.jpg')

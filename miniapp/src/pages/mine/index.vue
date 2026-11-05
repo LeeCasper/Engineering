@@ -830,8 +830,8 @@ function contactAvatarClass(contact) {
 
 function contactIcon(contact) {
   return contact.role === 'supervisor'
-    ? '/static/images/icon-hardhat-gray.png'
-    : '/static/images/icon-hardhat-accent.png'
+    ? '/static/images/icon-supervisor-portrait.png'
+    : '/static/images/icon-foreman-portrait.png'
 }
 
 function callContact(phone) {
@@ -1326,8 +1326,8 @@ function closeActiveSheet() {
 }
 
 .contact-avatar-icon {
-  width: dp(24);
-  height: dp(24);
+  width: dp(32);
+  height: dp(32);
 }
 
 .contact-main {
