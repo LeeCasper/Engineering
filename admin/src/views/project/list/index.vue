@@ -535,10 +535,13 @@ async function submitBatchAssign() {
 // ── 导出 ──
 
 async function exportExcel() {
+  // 勾选了项目就只导出选中项；没勾选才按当前筛选条件导出全部。
+  // 这与按钮旁的「已选 N 个项目」保持一致，否则用户会以为导出的是选中项。
   const { data, error, response } = await fetchExportProjects({
-    name: query.name.trim() || undefined,
-    address: query.address.trim() || undefined,
-    status: query.status || undefined
+    name: selectedIds.value.length ? undefined : query.name.trim() || undefined,
+    address: selectedIds.value.length ? undefined : query.address.trim() || undefined,
+    status: selectedIds.value.length ? undefined : query.status || undefined,
+    ids: selectedIds.value.length ? selectedIds.value : undefined
   });
 
   if (error || !data) return;
@@ -635,7 +638,9 @@ onMounted(async () => {
                   批量分配工长
                 </ElButton>
               </template>
-              <ElButton size="small" @click="exportExcel">导出 Excel</ElButton>
+              <ElButton size="small" @click="exportExcel">
+                {{ selectedIds.length ? `导出选中 (${selectedIds.length})` : '导出 Excel' }}
+              </ElButton>
               <ElButton size="small" @click="router.push('/export-task')">我的导出</ElButton>
             </div>
           </div>

@@ -195,6 +195,13 @@ function buildProjectQuery(scope, filters = {}) {
     where.push('p.status = ?')
     params.push(filters.status)
   }
+  // 勾选导出：只导出选中的项目，且仍然叠加数据权限（scope）——
+  // 不能因为前端传了 id 就绕过 projectAccess/dataScope。
+  if (Array.isArray(filters.ids) && filters.ids.length > 0) {
+    const placeholders = filters.ids.map(() => '?').join(', ')
+    where.push(`p.id IN (${placeholders})`)
+    params.push(...filters.ids)
+  }
   if (filters.foremanId) {
     where.push(`EXISTS (
       SELECT 1 FROM project_member pm

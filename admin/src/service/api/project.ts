@@ -18,6 +18,8 @@ export interface ProjectListParams {
   address?: string;
   status?: ProjectStatus;
   foremanId?: number;
+  /** 勾选导出：只导出这些项目；为空时按筛选条件导出全部 */
+  ids?: number[];
   templateId?: number;
   sortField?: string;
   sortDirection?: 'asc' | 'desc';
@@ -389,7 +391,8 @@ export function fetchExportProjects(params: ProjectListParams) {
       name: params.name,
       address: params.address,
       status: params.status,
-      foremanId: params.foremanId
+      foremanId: params.foremanId,
+      ids: params.ids && params.ids.length ? params.ids.join(',') : undefined
     },
     responseType: 'blob'
   });

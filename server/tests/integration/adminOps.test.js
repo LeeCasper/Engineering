@@ -210,6 +210,24 @@ describe('AC-AD61 导出', () => {
     expect(res.buffer.subarray(0, 2).toString()).toBe('PK')
   })
 
+  it('勾选导出只包含选中的项目', async () => {
+    const { token, admin, projectIds } = await setupProjects(3)
+    const picked = [projectIds[0], projectIds[2]]
+    const operator = { id: admin.id, type: 'admin', role: 'owner', tenantId: 1 }
+
+    const plan = await projectBatch.planExport(operator, { ids: picked })
+    expect(plan.total).toBe(2)
+
+    const rows = await projectBatch.fetchExportRows(operator, { ids: picked }, { limit: 100 })
+    expect(rows.map((row) => row.id).sort((a, b) => a - b)).toEqual(
+      [...picked].sort((a, b) => a - b)
+    )
+
+    const res = await request.binary('get', `/admin/projects/export?ids=${picked.join(',')}`, { token })
+    expect(res.status).toBe(200)
+    expect(res.buffer.subarray(0, 2).toString()).toBe('PK')
+  })
+
   it('后台导出遵守数据权限：只导出自己可见的项目', async () => {
     const superUser = await setupProjects(3)
     const pm = await auth.createAndLogin({ username: 'pm-export', role: 'admin' })

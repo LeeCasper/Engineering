@@ -31,6 +31,14 @@ const exportQuerySchema = z.object({
   address: z.string().trim().max(200).optional(),
   status: z.enum(['pending', 'building', 'finished', 'archived']).optional(),
   foremanId: z.coerce.number().int().positive().optional(),
+  // 勾选导出：逗号分隔的项目 id。不传表示按当前筛选条件导出全部。
+  ids: z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim()
+        ? value.split(',').map((item) => Number(item.trim()))
+        : undefined,
+    z.array(z.number().int().positive()).max(500, '单次最多导出 500 个项目').optional()
+  ),
 })
 
 const notificationQuerySchema = z.object({
