@@ -5,26 +5,26 @@
         <image class="nav-back-icon" src="/static/images/icon-back.png" mode="aspectFit" />
       </view>
       <text class="nav-title">消息中心</text>
-      <text
-        class="nav-action"
-        :class="{ 'nav-action--disabled': unreadTotal === 0 || markingAll }"
-        @tap="markAllRead"
-      >
-        {{ markingAll ? '处理中' : '全部已读' }}
-      </text>
     </view>
 
-    <view class="filter-row">
-      <view
-        v-for="filter in FILTERS"
-        :key="filter.key"
-        class="filter-chip"
-        :class="{ 'filter-chip--active': activeType === filter.key }"
-        @tap="changeFilter(filter.key)"
-      >
-        {{ filter.label }}
+    <view
+      class="filter-wrap"
+      :class="{ 'filter-wrap--stuck': filterStuck }"
+      :style="{ top: `${safeTop}px` }"
+    >
+      <view class="tabs">
+        <view
+          v-for="filter in FILTERS"
+          :key="filter.key"
+          class="tab"
+          :class="{ 'tab--active': activeType === filter.key }"
+          @tap="changeFilter(filter.key)"
+        >
+          <text class="tab-label">{{ filter.label }}</text>
+        </view>
       </view>
     </view>
+    <view v-if="filterStuck" class="sticky-status-bg" :style="{ height: `${safeTop}px` }" />
 
     <view v-if="loading && !messages.length" class="gc-loading-page">
       <gc-skeleton :rows="4" />
@@ -61,7 +61,9 @@
           </view>
           <text v-if="message.content" class="message-content">{{ message.content }}</text>
           <view class="message-foot">
-            <text class="message-type">{{ typeLabel(message.type) }}</text>
+            <text class="message-type" :class="`message-type--${message.type}`">
+              {{ typeLabel(message.type) }}
+            </text>
             <text v-if="!message.isRead" class="unread-dot">未读</text>
           </view>
         </view>
@@ -73,12 +75,29 @@
       </view>
       <view v-else class="list-end">— 没有更多消息了 —</view>
     </view>
+
+    <!-- 全部已读：悬浮在右下角，避免占用自定义导航右侧的胶囊区域 -->
+    <view
+      v-if="unreadTotal > 0"
+      class="mark-all-fab"
+      :class="{ 'mark-all-fab--disabled': markingAll }"
+      @tap="markAllRead"
+    >
+      <text class="mark-all-fab-check">✓</text>
+      <text>{{ markingAll ? '处理中…' : '全部已读' }}</text>
+    </view>
   </view>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
+import { nextTick, ref } from 'vue'
+import {
+  onLoad,
+  onPageScroll,
+  onPullDownRefresh,
+  onReachBottom,
+  onShow,
+} from '@dcloudio/uni-app'
 import { getToken, getCachedProjects, setCachedProjects } from '../../store/session'
 import { setCurrentProject } from '../../store/projectContext'
 import { myProjects } from '../../api/project'
@@ -115,6 +134,9 @@ const TYPE_INITIALS = {
 }
 
 const safeTop = ref(0)
+const filterStuck = ref(false)
+const filterStickyThreshold = ref(0)
+const pageScrollTop = ref(0)
 const loading = ref(false)
 const loadingMore = ref(false)
 const markingAll = ref(false)
@@ -128,6 +150,16 @@ const unreadTotal = ref(0)
 
 let loadedOnce = false
 
+onPageScroll((event) => {
+  const top = Number(event && event.scrollTop) || 0
+  pageScrollTop.value = top
+  if (!filterStickyThreshold.value) {
+    filterStuck.value = false
+    return
+  }
+  filterStuck.value = top >= filterStickyThreshold.value
+})
+
 onLoad(() => {
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
@@ -137,8 +169,29 @@ onLoad(() => {
     return
   }
 
+  measureFilterSticky()
   load(true)
 })
+
+function measureFilterSticky() {
+  nextTick(() => {
+    uni
+      .createSelectorQuery()
+      .select('.filter-wrap')
+      .boundingClientRect((rect) => {
+        if (!rect) {
+          filterStickyThreshold.value = 0
+          return
+        }
+        // rect.top 是相对视口的位置；加上当前滚动量才是元素在页面中的静态位置
+        filterStickyThreshold.value = Math.max(
+          0,
+          rect.top + pageScrollTop.value - safeTop.value
+        )
+      })
+      .exec()
+  })
+}
 
 onShow(() => {
   if (loadedOnce && getToken()) load(true, { silent: true })
@@ -368,7 +421,7 @@ function goBack() {
 <style scoped lang="scss">
 .page {
   min-height: 100vh;
-  padding-bottom: calc(#{dp(24)} + env(safe-area-inset-bottom));
+  padding-bottom: calc(#{dp(86)} + env(safe-area-inset-bottom));
   background: #faf7f4;
 }
 
@@ -415,55 +468,86 @@ function goBack() {
 }
 /* #endif */
 
-.nav-action {
-  padding: dp(4) dp(2);
-  color: #eb5c20;
-  font-size: dp(12);
-  font-weight: 500;
-  white-space: nowrap;
+/* 与首页搜索栏同一套吸顶效果 */
+.filter-wrap {
+  position: sticky;
+  z-index: 35;
+  padding: dp(4) dp(14) dp(10);
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.nav-action--disabled {
-  opacity: 0.35;
+.filter-wrap--stuck {
+  background: rgba(250, 247, 244, 0.82);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: 0 dp(6) dp(18) rgba(94, 45, 22, 0.05);
 }
 
-.filter-row {
+/* 吸顶栏底部羽化：避免背景在消息卡片上出现一条硬边 */
+.filter-wrap--stuck::after {
+  position: absolute;
+  right: 0;
+  bottom: dp(-26);
+  left: 0;
+  height: dp(26);
+  background: linear-gradient(
+    180deg,
+    rgba(250, 247, 244, 0.88) 0%,
+    rgba(250, 247, 244, 0.56) 32%,
+    rgba(250, 247, 244, 0) 100%
+  );
+  content: '';
+  pointer-events: none;
+}
+
+.sticky-status-bg {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 34;
+  background: #faf7f4;
+}
+
+.tabs {
   display: flex;
+  align-items: center;
   gap: dp(6);
-  padding: dp(4) dp(14) dp(8);
 }
 
-.filter-chip {
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 1;
-  min-width: 0;
-  padding: dp(6) dp(2);
+  height: dp(32);
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: dp(999);
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 255, 255, 0.66) 100%
+    rgba(255, 247, 242, 0.62) 100%
   );
   -webkit-backdrop-filter: blur(14px) saturate(170%);
   backdrop-filter: blur(14px) saturate(170%);
-  color: #6d6259;
+  color: #5a4638;
   font-size: dp(12);
-  line-height: 1.2;
-  white-space: nowrap;
-  text-align: center;
+  font-weight: 500;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease,
-    box-shadow 160ms ease;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
-.filter-chip--active {
-  border-color: #eb5c20;
+.tab--active {
   background: #eb5c20;
   color: #fff;
-  font-weight: 600;
   box-shadow: 0 dp(2) dp(6) rgba(235, 92, 32, 0.22);
   transform-origin: center;
   animation: gc-tab-pop 420ms cubic-bezier(0.2, 1.35, 0.35, 1) both;
+}
+
+.tab-label {
+  line-height: 1;
 }
 
 .list {
@@ -516,8 +600,8 @@ function goBack() {
 }
 
 .type-icon--comment {
-  background: #f3efea;
-  color: #8b8179;
+  background: #eef4ff;
+  color: #2f6fb0;
 }
 
 .type-icon--system {
@@ -580,11 +664,35 @@ function goBack() {
 }
 
 .message-type {
-  padding: dp(1) dp(5);
+  padding: dp(1) dp(6);
   border-radius: dp(4);
-  background: #f8f4ef;
-  color: #8b8179;
   font-size: dp(9);
+  font-weight: 500;
+}
+
+.message-type--acceptance {
+  background: #fdebe4;
+  color: #c44710;
+}
+
+.message-type--progress {
+  background: #e8f8f0;
+  color: #087a1e;
+}
+
+.message-type--payment {
+  background: #fff7e8;
+  color: #a85400;
+}
+
+.message-type--comment {
+  background: #eef4ff;
+  color: #2f6fb0;
+}
+
+.message-type--system {
+  background: #f3efea;
+  color: #615850;
 }
 
 .unread-dot {
@@ -599,6 +707,43 @@ function goBack() {
   color: #a79c92;
   font-size: dp(10);
   text-align: center;
+}
+
+.mark-all-fab {
+  position: fixed;
+  right: dp(16);
+  bottom: calc(#{dp(24)} + env(safe-area-inset-bottom));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: dp(40);
+  padding: 0 dp(16);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: dp(999);
+  background: rgba(255, 251, 247, 0.94);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  color: #c44710;
+  font-size: dp(13);
+  font-weight: 600;
+  box-shadow: 0 dp(8) dp(24) rgba(94, 45, 22, 0.18);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.mark-all-fab:active {
+  transform: scale(0.96);
+}
+
+.mark-all-fab--disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.mark-all-fab-check {
+  margin-right: dp(5);
+  font-size: dp(14);
+  font-weight: 700;
 }
 
 .state {
