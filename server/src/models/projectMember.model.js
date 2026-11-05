@@ -106,7 +106,7 @@ async function invite({ projectId, userId, role, invitedBy, isPrimary = false, o
 /** 当前主工长（仅 active，pending 不计入权限判定 —— AC-AD18） */
 async function findPrimaryForeman(projectId) {
   return db.queryOne(
-    `SELECT pm.id, pm.user_id, u.nickname, u.openid
+    `SELECT pm.id, pm.user_id, u.nickname, u.real_name, u.openid
        FROM project_member pm JOIN user u ON u.id = pm.user_id
       WHERE pm.project_id = ? AND pm.role = 'foreman' AND pm.is_primary = 1
         AND pm.status = 'active' AND pm.deleted_at IS NULL`,
@@ -117,7 +117,7 @@ async function findPrimaryForeman(projectId) {
 /** 已确认的主业主（active）；重要决策判定的数据来源 */
 async function findPrimaryOwner(projectId) {
   return db.queryOne(
-    `SELECT pm.id, pm.user_id, u.nickname, u.openid
+    `SELECT pm.id, pm.user_id, u.nickname, u.real_name, u.openid
        FROM project_member pm JOIN user u ON u.id = pm.user_id
       WHERE pm.project_id = ? AND pm.role = 'owner' AND pm.owner_type = 'primary'
         AND pm.status = 'active' AND pm.deleted_at IS NULL`,
@@ -133,7 +133,7 @@ async function findPrimaryOwner(projectId) {
  */
 async function findPrimaryOwnerSlot(projectId) {
   return db.queryOne(
-    `SELECT pm.id, pm.user_id, pm.status, pm.owner_type, u.nickname
+    `SELECT pm.id, pm.user_id, pm.status, pm.owner_type, u.nickname, u.real_name
        FROM project_member pm JOIN user u ON u.id = pm.user_id
       WHERE pm.project_id = ? AND pm.role = 'owner' AND pm.owner_type = 'primary'
         AND pm.status IN ('pending', 'active') AND pm.deleted_at IS NULL`,
@@ -265,7 +265,7 @@ async function listByProject(projectId) {
   return db.query(
     `SELECT pm.id, pm.user_id, pm.role, pm.status, pm.invited_by, pm.is_primary, pm.owner_type,
             pm.created_at AS invited_at, pm.confirmed_at, pm.left_at,
-            u.nickname, u.avatar, u.phone
+            u.nickname, u.real_name, u.avatar, u.phone
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id
       WHERE pm.project_id = ? AND pm.deleted_at IS NULL
@@ -316,11 +316,11 @@ function buildDirectoryWhere(scope, { keyword, role, projectId } = {}) {
     const roleKey = ROLE_KEYWORDS[keyword]
     if (roleKey) {
       // 搜索框占位写的是「姓名 / 手机号 / 角色」，角色词要真的能搜到
-      where.push('(u.nickname LIKE ? OR u.phone LIKE ? OR p.name LIKE ? OR pm.role = ?)')
-      params.push(like, like, like, roleKey)
+      where.push('(u.real_name LIKE ? OR u.nickname LIKE ? OR u.phone LIKE ? OR p.name LIKE ? OR pm.role = ?)')
+      params.push(like, like, like, like, roleKey)
     } else {
-      where.push('(u.nickname LIKE ? OR u.phone LIKE ? OR p.name LIKE ?)')
-      params.push(like, like, like)
+      where.push('(u.real_name LIKE ? OR u.nickname LIKE ? OR u.phone LIKE ? OR p.name LIKE ?)')
+      params.push(like, like, like, like)
     }
   }
 
@@ -347,7 +347,7 @@ async function listAcrossProjects(scope, { filters = {}, paging }) {
   const rows = await db.query(
     `SELECT pm.id, pm.project_id, pm.user_id, pm.role, pm.status, pm.is_primary, pm.owner_type,
             pm.created_at AS invited_at, pm.confirmed_at, pm.left_at,
-            u.nickname, u.avatar, u.phone,
+            u.nickname, u.real_name, u.avatar, u.phone,
             p.name AS project_name, p.status AS project_status
        ${clause}
       ORDER BY FIELD(pm.role, 'foreman', 'supervisor', 'owner'),
@@ -449,7 +449,7 @@ async function listKeyMembersOfProjects(projectIds) {
   const placeholders = projectIds.map(() => '?').join(', ')
   return db.query(
     `SELECT pm.project_id, pm.role, pm.is_primary, pm.owner_type,
-            u.nickname, u.phone
+            u.nickname, u.real_name, u.phone
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id
       WHERE pm.project_id IN (${placeholders})

@@ -247,7 +247,7 @@ async function listForemenOfProjects(projectIds) {
   const placeholders = projectIds.map(() => '?').join(', ')
   return db.query(
     `SELECT pm.project_id, pm.role, pm.status, pm.is_primary, pm.owner_type,
-            u.id AS user_id, u.nickname, u.phone
+            u.id AS user_id, u.nickname, u.real_name, u.phone
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id AND u.deleted_at IS NULL
       WHERE pm.project_id IN (${placeholders}) AND pm.deleted_at IS NULL

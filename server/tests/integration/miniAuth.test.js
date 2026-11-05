@@ -120,6 +120,21 @@ describe('C-1.1 修改昵称与头像', () => {
     expect(row.nickname).toBe('张师傅')
   })
 
+  it('PUT /auth/profile 更新真实姓名，并允许显式清空', async () => {
+    const { token, userId } = await mini.login('code-update-real-name')
+
+    const res = await mini.authed('put', '/auth/profile', token).send({ realName: '  张建国  ' })
+    expect(res.status).toBe(200)
+    expect(res.body.data.realName).toBe('张建国')
+
+    const row = await db.queryOne('SELECT real_name FROM user WHERE id = ?', [userId])
+    expect(row.real_name).toBe('张建国')
+
+    const cleared = await mini.authed('put', '/auth/profile', token).send({ realName: null })
+    expect(cleared.status).toBe(200)
+    expect(cleared.body.data.realName).toBeNull()
+  })
+
   it('昵称为空或超长时返回 400', async () => {
     const { token } = await mini.login('code-update-nickname-invalid')
 
@@ -396,8 +411,8 @@ describe('C-1.2 我的项目列表按角色分组', () => {
 
     const ownerId = await mini.createWechatUser('owner-home-card')
     const foremanId = await mini.createWechatUser('foreman-home-card')
-    await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['张先生', ownerId])
-    await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['李师傅', foremanId])
+    await db.query('UPDATE user SET nickname = ?, real_name = ? WHERE id = ?', ['张先生', '张建国', ownerId])
+    await db.query('UPDATE user SET nickname = ?, real_name = ? WHERE id = ?', ['李师傅', '李强', foremanId])
 
     // 当前用户是监理，避免和业主/工长抢展示位
     await mini.addMember({ projectId, userId, role: 'supervisor' })
@@ -429,8 +444,9 @@ describe('C-1.2 我的项目列表按角色分组', () => {
     const res = await mini.authed('get', '/projects?tenantId=1', token)
     const item = res.body.data.groups.find((g) => g.key === 'participating').items[0]
 
-    expect(item.ownerName).toBe('张先生')
-    expect(item.foremanName).toBe('李师傅')
+    // 真实姓名优先于微信昵称
+    expect(item.ownerName).toBe('张建国')
+    expect(item.foremanName).toBe('李强')
     expect(item.stages.map((s) => s.name)).toEqual(['水电工程', '泥瓦工程'])
     expect(item.stages[0]).toMatchObject({ progress: '60.00', gateStatus: 'active' })
   })

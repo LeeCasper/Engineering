@@ -454,6 +454,7 @@ function toMemberView(row) {
     status: row.status,
     statusLabel: MEMBER_STATUS_LABELS[row.status] || row.status,
     nickname: row.nickname,
+    realName: row.real_name || null,
     // 后台成员列表展示用户自己设置的头像；没有头像时前端回落首字母
     avatar: row.avatar || null,
     // 手机号脱敏（与 AC-U02 同口径）。成员的完整手机号没有对外暴露的必要，
@@ -488,9 +489,9 @@ async function listMembers(operator, projectId) {
       foremanCount: activeForemen.length,
       ownerCount: activeOwners.length,
       primaryForemanUserId: primary ? primary.userId : null,
-      primaryForemanName: primary ? primary.nickname : null,
+      primaryForemanName: primary ? primary.realName || primary.nickname : null,
       primaryOwnerUserId: primaryOwnerSlot ? primaryOwnerSlot.userId : null,
-      primaryOwnerName: primaryOwnerSlot ? primaryOwnerSlot.nickname : null,
+      primaryOwnerName: primaryOwnerSlot ? primaryOwnerSlot.realName || primaryOwnerSlot.nickname : null,
       primaryOwnerActive: Boolean(primaryOwnerSlot && primaryOwnerSlot.status === 'active'),
       temporaryOwnerCount: activeOwners.filter((m) => m.ownerType === OWNER_TYPE.TEMPORARY).length,
     },

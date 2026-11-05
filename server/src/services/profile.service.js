@@ -38,6 +38,7 @@ async function getProfile(userId, { projectId } = {}) {
   const profile = {
     id: user.id,
     nickname: user.nickname,
+    realName: user.real_name,
     avatar: user.avatar,
     // AC-U02：只回脱敏手机号，接口不做完整回显
     phoneMasked: miniAuthService.maskPhone(user.phone),
@@ -216,7 +217,7 @@ async function getContacts(userId, projectId) {
   }
 
   const rows = await db.query(
-    `SELECT pm.role, pm.is_primary, u.nickname, u.phone
+    `SELECT pm.role, pm.is_primary, u.nickname, u.real_name, u.phone
        FROM project_member pm
        JOIN user u ON u.id = pm.user_id AND u.deleted_at IS NULL AND u.status = 'active'
       WHERE pm.project_id = ?
@@ -236,7 +237,7 @@ async function getContacts(userId, projectId) {
     .map((r) => ({
       role: r.role,
       roleLabel: ROLE_LABELS[r.role],
-      name: r.nickname || r.roleLabel,
+      name: r.real_name || r.nickname || r.roleLabel,
       phone: r.phone,
       isPrimaryForeman: r.is_primary === 1,
     }))

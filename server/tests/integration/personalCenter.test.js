@@ -319,8 +319,14 @@ describe('AC-U15 业主一键联系工长 / 监理', () => {
     const owner = await setupMember('owner')
     const foremanId = await mini.createWechatUser(`foreman-${(seq += 1)}`)
     const supervisorId = await mini.createWechatUser(`supervisor-${(seq += 1)}`)
-    await db.query("UPDATE user SET nickname = '王工', phone = '13900001111' WHERE id = ?", [foremanId])
-    await db.query("UPDATE user SET nickname = '李监理', phone = '13700002222' WHERE id = ?", [supervisorId])
+    await db.query(
+      "UPDATE user SET nickname = '网名王工', real_name = '王建国', phone = '13900001111' WHERE id = ?",
+      [foremanId]
+    )
+    await db.query(
+      "UPDATE user SET nickname = '网名李监理', real_name = '李质量', phone = '13700002222' WHERE id = ?",
+      [supervisorId]
+    )
     await mini.addMember({ projectId: owner.projectId, userId: foremanId, role: 'foreman' })
     await db.query('UPDATE project_member SET is_primary = 1 WHERE project_id = ? AND user_id = ?', [
       owner.projectId,
@@ -335,7 +341,7 @@ describe('AC-U15 业主一键联系工长 / 监理', () => {
     // AC-U15：拨号需要完整号码，脱敏的号码拨不出去。可见范围由「仅业主可调」守住
     expect(res.body.data.contacts[0]).toMatchObject({
       role: 'foreman',
-      name: '王工',
+      name: '王建国',
       phone: '13900001111',
       isPrimaryForeman: true,
     })

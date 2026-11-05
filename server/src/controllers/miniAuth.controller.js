@@ -37,6 +37,11 @@ const updateProfileSchema = z.object({
     .min(1, '请输入昵称')
     .max(64, '昵称最多 64 个字符')
     .optional(),
+  // 真实姓名允许显式清空（null）；空字符串按 null 处理，避免库里出现空串
+  realName: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+    z.union([z.string().trim().max(50, '真实姓名最多 50 个字符'), z.null()]).optional()
+  ),
   // 头像仍接受外部 URL（登录时微信可能带过来）；小程序端上传走下面的 /avatar
   avatar: z.string().trim().max(512).optional(),
 })

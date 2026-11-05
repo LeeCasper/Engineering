@@ -41,7 +41,7 @@ export interface ProjectListItem {
   templateId: number;
   progress: number;
   currentStageName: string | null;
-  foreman: { userId: number; nickname: string | null } | null;
+  foreman: { userId: number; nickname: string | null; realName?: string | null } | null;
   isOverdue: boolean;
   archivedAt: string | null;
   createdAt: string;
@@ -87,6 +87,7 @@ export interface ProjectMember {
   status: 'pending' | 'active' | 'removed';
   statusLabel: string;
   nickname: string | null;
+  realName?: string | null;
   avatar: string | null;
   phoneMasked: string | null;
   invitedAt: string;

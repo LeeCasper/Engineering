@@ -342,6 +342,7 @@ const filteredMembers = computed(() => {
     if (role.value && member.role !== role.value) return false
     if (!q) return true
     const haystack = [
+      member.realName,
       member.nickname,
       member.phoneMasked,
       memberRoleText(member),
@@ -388,7 +389,7 @@ const compositionHint = computed(() => {
 const selectedMemberName = computed(() => {
   const member = selectedMember.value
   if (!member) return ''
-  return member.nickname || member.phoneMasked || '待确认用户'
+  return member.realName || member.nickname || member.phoneMasked || '待确认用户'
 })
 
 const selectedMemberInitial = computed(() => selectedMemberName.value.slice(0, 1) || '成')

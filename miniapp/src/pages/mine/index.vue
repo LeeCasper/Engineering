@@ -270,6 +270,20 @@
           <text class="profile-edit-tip">点击头像可直接使用微信头像</text>
 
           <view class="profile-name-field">
+            <text class="profile-name-label">真实姓名</text>
+            <input
+              v-model="realNameDraft"
+              class="profile-name-input"
+              type="text"
+              maxlength="50"
+              placeholder="请输入真实姓名"
+              placeholder-class="profile-name-placeholder"
+              @blur="realNameDraft = realNameDraft.trim()"
+            />
+          </view>
+          <text class="profile-edit-tip">真实姓名会显示在项目参与人、联系人和验收记录中</text>
+
+          <view class="profile-name-field">
             <text class="profile-name-label">昵称</text>
             <input
               v-model="nicknameDraft"
@@ -397,6 +411,7 @@ const avatarError = ref(false)
 // 资料编辑：头像先选临时文件，保存时才上传；昵称直接改
 const savingProfile = ref(false)
 const nicknameDraft = ref('')
+const realNameDraft = ref('')
 const avatarPreview = ref('')
 const avatarChanged = ref(false)
 const appVersion = APP_VERSION
@@ -413,6 +428,8 @@ const avatarSrc = computed(() => {
 })
 
 const displayName = computed(() => {
+  const realName = (profile.value && profile.value.realName) || ''
+  if (realName.trim()) return realName.trim()
   const nickname = (profile.value && profile.value.nickname) || ''
   return nickname.trim() || '微信用户'
 })
@@ -739,6 +756,7 @@ function onAvatarError() {
 
 /** 打开资料面板时同步草稿，避免上次未保存的临时头像残留 */
 function openProfileSheet() {
+  realNameDraft.value = ((profile.value && profile.value.realName) || '').trim()
   nicknameDraft.value = ((profile.value && profile.value.nickname) || '').trim()
   avatarPreview.value = ''
   avatarChanged.value = false
@@ -781,6 +799,7 @@ async function saveProfile() {
     uni.showToast({ title: '请输入昵称', icon: 'none' })
     return
   }
+  const realName = String(realNameDraft.value || '').trim()
 
   savingProfile.value = true
   try {
@@ -794,13 +813,18 @@ async function saveProfile() {
       avatarError.value = false
     }
 
-    const data = await updateProfile({ nickname })
+    const data = await updateProfile({ nickname, realName: realName || null })
     // 刷新一次带项目上下文的资料，恢复 role / roleLabel
     await loadProfileAndRole().catch(() => {})
-    profile.value = { ...(profile.value || data), nickname: data.nickname, avatar: data.avatar }
+    profile.value = {
+      ...(profile.value || data),
+      nickname: data.nickname,
+      realName: data.realName,
+      avatar: data.avatar,
+    }
 
     const cached = getUser() || {}
-    setUser({ ...cached, nickname: data.nickname, avatar: data.avatar })
+    setUser({ ...cached, nickname: data.nickname, realName: data.realName, avatar: data.avatar })
 
     profileSheetOpen.value = false
     uni.showToast({ title: '资料已更新', icon: 'success' })

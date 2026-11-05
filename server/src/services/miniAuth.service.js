@@ -61,6 +61,7 @@ async function login({ code, nickname, avatar }) {
     user: {
       id: user.id,
       nickname: user.nickname,
+      realName: user.real_name,
       avatar: user.avatar,
       // AC-U02：手机号脱敏，且**接口不做完整回显**
       phoneMasked: maskPhone(user.phone),

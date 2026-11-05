@@ -164,6 +164,9 @@ function toProjectSummary(row, stages, members = []) {
  */
 function memberDisplayName(member, fallback) {
   if (!member) return fallback
+  // 真实姓名优先：项目列表 / 项目详情里业主和工长的名字是协作识别用的，
+  // 微信昵称经常是网名，不能作为首选展示名。
+  if (member.real_name) return member.real_name
   if (member.nickname) return member.nickname
   return member.phone ? maskPhone(member.phone) : fallback
 }
@@ -433,7 +436,9 @@ async function listProjects(operator, query) {
       templateId: row.template_id,
       progress: progress.projectProgress(stageRows.map((s) => ({ progress: s.progress, weight: s.weight }))),
       currentStageName: (pickCurrentStage(stageRows) || {}).name || null,
-      foreman: foreman ? { userId: foreman.user_id, nickname: foreman.nickname } : null,
+      foreman: foreman
+        ? { userId: foreman.user_id, nickname: foreman.nickname, realName: foreman.real_name }
+        : null,
       foremanName: memberDisplayName(foreman, '待分配'),
       ownerName: memberDisplayName(owner, '待分配'),
       isOverdue: isOverdue(row),
@@ -540,10 +545,10 @@ async function getProjectDetail(operator, projectId) {
       foremanCount: activeForemen.length,
       ownerCount,
       primaryForemanUserId: primary ? primary.user_id : null,
-      primaryForemanName: primary ? primary.nickname : null,
+      primaryForemanName: primary ? primary.real_name || primary.nickname : null,
       // 主业主名额包含 pending：管理员邀请下一位业主时要据此判断是否为临时业主
       primaryOwnerUserId: primaryOwnerSlot ? primaryOwnerSlot.user_id : null,
-      primaryOwnerName: primaryOwnerSlot ? primaryOwnerSlot.nickname : null,
+      primaryOwnerName: primaryOwnerSlot ? primaryOwnerSlot.real_name || primaryOwnerSlot.nickname : null,
       primaryOwnerActive: Boolean(primaryOwnerSlot && primaryOwnerSlot.status === 'active'),
       temporaryOwnerCount: activeOwners.filter((m) => m.owner_type === OWNER_TYPE.TEMPORARY).length,
       // 与 assertMemberComposition 的口径一致：至少 1 名工长且有主工长、至少 1 名业主且有主业主。

@@ -20,6 +20,11 @@ const emit = defineEmits<{ refresh: [] }>();
 const readOnly = useTenantReadOnly();
 const composition = computed(() => props.detail.memberComposition);
 const members = computed(() => props.detail.members);
+
+/** 展示名优先级：真实姓名 → 微信昵称 → 用户编号 */
+function memberName(member: ProjectMember) {
+  return member.realName || member.nickname || `用户 #${member.userId}`;
+}
 // 含 pending：一个还没确认的主业主邀请同样占着名额，下一位业主只能作为临时业主
 const hasPrimaryOwnerSlot = computed(() =>
   members.value.some((m) => m.role === 'owner' && m.ownerType === 'primary' && m.status !== 'removed')
@@ -80,7 +85,7 @@ async function submitInvite() {
 async function setPrimary(member: ProjectMember) {
   try {
     await ElMessageBox.confirm(
-      `将「${member.nickname || `用户 #${member.userId}`}」指定为主工长？改指立即生效，原主工长降为普通工长。`,
+      `将「${memberName(member)}」指定为主工长？改指立即生效，原主工长降为普通工长。`,
       '指定主工长',
       { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
     );
@@ -99,7 +104,7 @@ async function setPrimary(member: ProjectMember) {
 async function remove(member: ProjectMember) {
   try {
     await ElMessageBox.confirm(
-      `确认解除「${member.nickname || `用户 #${member.userId}`}」与本项目的成员关系？历史汇报与操作记录会保留。`,
+      `确认解除「${memberName(member)}」与本项目的成员关系？历史汇报与操作记录会保留。`,
       '解除成员',
       { type: 'warning', confirmButtonText: '确认解除', cancelButtonText: '取消' }
     );
@@ -144,9 +149,9 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
       <ElTableColumn label="成员" min-width="150">
         <template #default="{ row }">
           <ElAvatar :size="28" :src="row.avatar || undefined" class="mr-6px align-middle">
-            {{ (row.nickname || '用').slice(0, 1) }}
+            {{ memberName(row).slice(0, 1) }}
           </ElAvatar>
-          <span>{{ row.nickname || `用户 #${row.userId}` }}</span>
+          <span>{{ memberName(row) }}</span>
           <ElTag
             v-if="row.isPrimaryForeman && row.status === 'active'"
             class="ml-6px"

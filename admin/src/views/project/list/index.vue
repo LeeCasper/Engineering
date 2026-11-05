@@ -673,7 +673,7 @@ onMounted(async () => {
 
         <ElTableColumn label="工长" width="90">
           <template #default="{ row }">
-            <span v-if="row.foreman">{{ row.foreman.nickname || `用户 #${row.foreman.userId}` }}</span>
+            <span v-if="row.foreman">{{ row.foreman.realName || row.foreman.nickname || `用户 #${row.foreman.userId}` }}</span>
             <span v-else class="text-#c0c4cc">未分配</span>
           </template>
         </ElTableColumn>

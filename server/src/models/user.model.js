@@ -12,7 +12,7 @@ const db = require('../db/pool')
 
 async function findById(id) {
   return db.queryOne(
-    `SELECT id, openid, unionid, phone, nickname, avatar, status, role, anonymized_at, last_login_at, created_at
+    `SELECT id, openid, unionid, phone, nickname, real_name, avatar, status, role, anonymized_at, last_login_at, created_at
        FROM user WHERE id = ? AND deleted_at IS NULL`,
     [id]
   )
@@ -21,7 +21,7 @@ async function findById(id) {
 async function findByOpenid(openid) {
   if (!openid) return null
   return db.queryOne(
-    `SELECT id, openid, unionid, phone, nickname, avatar, status, role, anonymized_at, last_login_at
+    `SELECT id, openid, unionid, phone, nickname, real_name, avatar, status, role, anonymized_at, last_login_at
        FROM user WHERE openid = ? AND deleted_at IS NULL`,
     [openid]
   )
@@ -29,7 +29,7 @@ async function findByOpenid(openid) {
 
 async function findByUnionid(unionid) {
   if (!unionid) return null
-  return db.queryOne('SELECT id, phone, nickname, avatar, status, role FROM user WHERE unionid = ? AND deleted_at IS NULL', [
+  return db.queryOne('SELECT id, phone, nickname, real_name, avatar, status, role FROM user WHERE unionid = ? AND deleted_at IS NULL', [
     unionid,
   ])
 }
@@ -147,7 +147,7 @@ async function bindPhone(userId, phone) {
       return { ok: false, reason: '该手机号已被其他账号绑定' }
     }
 
-    const current = await tx.queryOne('SELECT id, openid, nickname, avatar, role FROM user WHERE id = ?', [userId])
+    const current = await tx.queryOne('SELECT id, openid, nickname, real_name, avatar, role FROM user WHERE id = ?', [userId])
 
     // ── 固定角色不能因手机号合并而改变 ──
     // 占位账号通常是管理员按手机号邀请时创建的，角色已经确定；
@@ -166,10 +166,10 @@ async function bindPhone(userId, phone) {
 
     await tx.query(
       `UPDATE user
-          SET openid = ?, nickname = COALESCE(nickname, ?), avatar = COALESCE(avatar, ?),
-              role = COALESCE(role, ?), last_login_at = NOW()
+          SET openid = ?, nickname = COALESCE(nickname, ?), real_name = COALESCE(real_name, ?),
+              avatar = COALESCE(avatar, ?), role = COALESCE(role, ?), last_login_at = NOW()
         WHERE id = ?`,
-      [current.openid, current.nickname, current.avatar, mergedRole, existing.id]
+      [current.openid, current.nickname, current.real_name, current.avatar, mergedRole, existing.id]
     )
 
     await tx.query('UPDATE user SET deleted_at = NOW() WHERE id = ?', [userId])
@@ -187,12 +187,16 @@ async function bindPhone(userId, phone) {
   })
 }
 
-async function updateProfile(id, { nickname, avatar }) {
+async function updateProfile(id, { nickname, realName, avatar }) {
   const fields = []
   const params = []
   if (nickname !== undefined) {
     fields.push('nickname = ?')
     params.push(nickname)
+  }
+  if (realName !== undefined) {
+    fields.push('real_name = ?')
+    params.push(realName)
   }
   if (avatar !== undefined) {
     fields.push('avatar = ?')
@@ -243,6 +247,7 @@ async function anonymize(userId, tx = db) {
             openid        = NULL,
             unionid       = NULL,
             nickname      = '已注销用户',
+            real_name     = NULL,
             avatar        = NULL
       WHERE id = ? AND anonymized_at IS NULL`,
     [userId]

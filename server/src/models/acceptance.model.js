@@ -278,7 +278,7 @@ async function listPostPassPending(limit = 100) {
 async function listFlow(acceptanceId) {
   return db.query(
     `SELECT f.id, f.round, f.step, f.operator_id, f.action, f.reason, f.images, f.esign_task_id,
-            f.operated_at, u.nickname
+            f.operated_at, u.nickname, u.real_name
        FROM acceptance_flow f
        LEFT JOIN user u ON u.id = f.operator_id
       WHERE f.acceptance_id = ?
@@ -325,7 +325,7 @@ async function listByProject(projectId) {
             a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
             a.report_pdf_status, a.report_pdf_error, a.created_at,
             s.name AS stage_name, i.name AS item_name,
-            u.nickname AS submitter_nickname,
+            u.nickname AS submitter_nickname, u.real_name AS submitter_real_name,
             (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count
        FROM acceptance a
        LEFT JOIN project_stage s ON s.id = a.project_stage_id
@@ -358,8 +358,8 @@ async function listInboxForUser(userId) {
             s.name AS stage_name, s.seq AS stage_seq, s.progress AS stage_progress,
             s.gate_status AS stage_gate_status,
             i.name AS item_name,
-            u.nickname AS submitter_nickname,
-            fu.nickname AS foreman_nickname, fu.phone AS foreman_phone,
+            u.nickname AS submitter_nickname, u.real_name AS submitter_real_name,
+            fu.nickname AS foreman_nickname, fu.real_name AS foreman_real_name, fu.phone AS foreman_phone,
             pm.role AS my_role, pm.is_primary AS my_primary, pm.owner_type AS my_owner_type,
             (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count
        FROM acceptance a
@@ -394,7 +394,7 @@ async function listInitiablesForUser(userId) {
             ps.progress AS stage_progress, ps.gate_status AS stage_gate_status,
             p.tenant_id, t.name AS tenant_name,
             p.name AS project_name, p.address AS project_address, p.status AS project_status,
-            u.nickname AS foreman_nickname, u.phone AS foreman_phone
+            u.nickname AS foreman_nickname, u.real_name AS foreman_real_name, u.phone AS foreman_phone
        FROM project_stage ps
        JOIN project p ON p.id = ps.project_id AND p.deleted_at IS NULL
        JOIN tenant t ON t.id = p.tenant_id AND t.deleted_at IS NULL

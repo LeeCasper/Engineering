@@ -227,7 +227,7 @@ const emptyText = computed(() => {
 const selectedMemberName = computed(() => {
   const member = selectedMember.value
   if (!member) return ''
-  return member.nickname || member.phoneMasked || '待确认用户'
+  return member.realName || member.nickname || member.phoneMasked || '待确认用户'
 })
 
 const memberInitial = computed(() => selectedMemberName.value.slice(0, 1) || '成')
