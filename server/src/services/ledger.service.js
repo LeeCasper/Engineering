@@ -687,28 +687,39 @@ async function payPaymentNode(userId, projectId, nodeId, context = {}) {
   const project = await loadProject(projectId)
   assertCanWriteLedger(viewer, project)
 
-  return db.withTransaction(async (tx) => {
-    const node = await paymentNodeModel.lockById(tx, nodeId)
-    if (!node || Number(node.project_id) !== Number(projectId)) throw AppError.notFound('付款节点不存在')
-
+  const node = await paymentNodeModel.findById(nodeId)
+  if (!node || Number(node.project_id) !== Number(projectId)) throw AppError.notFound('付款节点不存在')
+  if (node.status === NODE_STATUS.NOT_STARTED) {
+    throw AppError.conflict(`付款节点「${node.name}」尚未解锁，暂不可登记收款`)
+  }
+  if (node.status !== NODE_STATUS.UNLOCKED) {
     assertNodeTransition(node.status, 'pay')
+  }
 
-    await paymentNodeModel.updateStatus(nodeId, NODE_STATUS.PAID, tx)
+  // 一键登记收款 = 自动生成一条收入流水。
+  // 不能让节点只改状态而没有账目 —— 阶段结算的「已收」来自流水，
+  // 只推进节点会得到「节点已付款、账面已收为 0」的矛盾数据。
+  let stageId = node.trigger_stage_id
+  if (!stageId) {
+    const currentStage = await projectStageModel.findCurrentStage(projectId)
+    if (!currentStage) throw AppError.conflict('项目还没有可归属的阶段，无法登记收款')
+    stageId = currentStage.id
+  }
 
-    await operationLog.record(
-      {
-        ...context,
-        action: operationLog.ACTIONS.PAYMENT_NODE_PAY,
-        targetType: 'payment_node',
-        targetId: nodeId,
-        projectId,
-        detail: { before: { status: node.status }, after: { status: NODE_STATUS.PAID } },
-      },
-      tx
-    )
+  const income = await createIncome(
+    userId,
+    projectId,
+    {
+      amount: node.amount,
+      occurredAt: datetime.formatDate(),
+      stageId,
+      paymentNodeId: node.id,
+      remark: `一键登记收款：${node.name}`,
+    },
+    context
+  )
 
-    return { id: nodeId, status: NODE_STATUS.PAID }
-  })
+  return { id: nodeId, status: NODE_STATUS.PAID, ledgerId: income.id }
 }
 
 /** 业主确认付款（AC-L13 的最后一步：paid → confirmed） */

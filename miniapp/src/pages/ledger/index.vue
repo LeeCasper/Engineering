@@ -214,6 +214,13 @@
                   {{ nodeBadge(node) }}
                 </text>
                 <view
+                  v-if="isForeman && node.status === 'unlocked'"
+                  class="confirm-btn"
+                  @tap.stop="collectNode(node)"
+                >
+                  确认收款
+                </view>
+                <view
                   v-if="isPrimaryOwner && node.status === 'paid'"
                   class="confirm-btn"
                   @tap.stop="confirmNode(node)"
@@ -536,6 +543,13 @@
               <text class="node-sheet-meta">¥{{ formatMoney(node.amount) }} · {{ nodeTriggerLabel(node) }}</text>
             </view>
             <view
+              v-if="isForeman && node.status === 'unlocked'"
+              class="confirm-btn"
+              @tap.stop="collectNode(node)"
+            >
+              确认收款
+            </view>
+            <view
               v-if="isPrimaryOwner && node.status === 'paid'"
               class="confirm-btn"
               @tap.stop="confirmNode(node)"
@@ -546,7 +560,7 @@
         </view>
 
         <view class="sheet-note">
-          「已付款」只代表工长登记了线下收款，系统内不发生任何资金划转。
+          工长确认收款后会自动生成一笔收入流水；主业主确认后节点完成。系统内不发生任何资金划转。
         </view>
       </view>
     </view>
@@ -905,6 +919,7 @@ import {
   myProjects,
   projectDetail,
   projectPaymentNodes,
+  payPaymentNode,
   confirmPaymentNode,
 } from '../../api/project'
 import {
@@ -1117,6 +1132,7 @@ const EXPENSE_CATEGORY_OPTIONS = [
 
 let bootstrapped = false
 let confirmingNodeId = null
+let collectingNodeId = null
 let entriesSeq = 0
 
 const headerTitle = computed(() => (detail.value && detail.value.name) || (current.value && current.value.name) || '记账')
@@ -1793,6 +1809,32 @@ function previewReceipt(entry, index) {
   const urls = (entry.receiptImages || []).map((image) => resolveMediaUrl(image.url)).filter(Boolean)
   if (!urls.length) return
   uni.previewImage({ urls, current: urls[index] || urls[0] })
+}
+
+function collectNode(node) {
+  if (collectingNodeId) return
+  if (!isForeman.value) {
+    uni.showToast({ title: '仅工长可登记收款', icon: 'none' })
+    return
+  }
+
+  uni.showModal({
+    title: '确认已收到工款',
+    content: `确认已收到「${node.name}」¥${formatMoney(node.amount)}？系统会自动生成一笔收入流水，并等待主业主确认。`,
+    success: async (res) => {
+      if (!res.confirm) return
+      collectingNodeId = node.id
+      try {
+        await payPaymentNode(detail.value.id, node.id)
+        uni.showToast({ title: '已登记收款，等待主业主确认', icon: 'success' })
+        await load({ silent: true })
+      } catch (err) {
+        uni.showToast({ title: err.message || '登记收款失败', icon: 'none' })
+      } finally {
+        collectingNodeId = null
+      }
+    },
+  })
 }
 
 function confirmNode(node) {

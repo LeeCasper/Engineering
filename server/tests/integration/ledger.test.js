@@ -588,6 +588,37 @@ describe('AC-L13 ~ L18 付款节点', () => {
     expect(again.status).toBe(409)
   })
 
+  it('工长一键确认收款会自动生成收入流水，重复确认被阻止', async () => {
+    const ctx = await setup()
+    await unlockNode(ctx.manualNodeId)
+    const node = await db.queryOne('SELECT amount FROM payment_node WHERE id = ?', [ctx.manualNodeId])
+
+    const paid = await mini.authed(
+      'post',
+      `/projects/${ctx.projectId}/payment-nodes/${ctx.manualNodeId}/pay`,
+      ctx.foreman.token
+    )
+    expect(paid.status).toBe(200)
+    expect(paid.body.data.status).toBe('paid')
+    expect(paid.body.data.ledgerId).toBeTruthy()
+
+    const ledger = await db.queryOne(
+      "SELECT amount, project_stage_id, type FROM ledger WHERE payment_node_id = ? AND deleted_at IS NULL",
+      [ctx.manualNodeId]
+    )
+    expect(ledger).toBeTruthy()
+    expect(ledger.type).toBe('income')
+    expect(ledger.amount).toBe(node.amount)
+    expect(Number(ledger.project_stage_id)).toBe(Number(ctx.stageId))
+
+    const again = await mini.authed(
+      'post',
+      `/projects/${ctx.projectId}/payment-nodes/${ctx.manualNodeId}/pay`,
+      ctx.foreman.token
+    )
+    expect(again.status).toBe(409)
+  })
+
   it('AC-L15 管理员可手工解锁手动触发型节点，并写入操作日志', async () => {
     const ctx = await setup()
 

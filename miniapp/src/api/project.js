@@ -70,6 +70,14 @@ export function projectMyStatsAll() {
 }
 
 /** 业主确认付款（AC-L13：paid → confirmed） */
+/** 工长确认已收到付款节点对应的线下工款（会自动生成收入流水） */
+export function payPaymentNode(projectId, nodeId) {
+  return request({
+    url: `/projects/${projectId}/payment-nodes/${nodeId}/pay`,
+    method: 'POST',
+  })
+}
+
 export function confirmPaymentNode(projectId, nodeId) {
   return request({
     url: `/projects/${projectId}/payment-nodes/${nodeId}/confirm`,
