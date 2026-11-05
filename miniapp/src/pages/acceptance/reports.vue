@@ -15,9 +15,20 @@
     <view class="content gc-stagger">
       <!-- 当前项目 -->
       <view v-if="project" class="project-card">
-        <text class="project-eyebrow">当前项目</text>
-        <text class="project-name">{{ project.name }}</text>
-        <text class="project-address">{{ project.address || '未填写地址' }}</text>
+        <view class="project-card-head">
+          <view class="project-card-head-text">
+            <text class="project-eyebrow">当前项目</text>
+            <text class="project-name">{{ project.name }}</text>
+            <text class="project-address">{{ project.address || '未填写地址' }}</text>
+          </view>
+          <view
+            v-if="allProjects.length > 1"
+            class="project-switch-btn"
+            @tap.stop="openProjectSheet"
+          >
+            切换
+          </view>
+        </view>
 
         <view class="summary-row">
           <view class="summary-item">
@@ -479,6 +490,13 @@ function roleLabelOf(role) {
   padding-left: dp(8);
 }
 
+/* 小程序右上角有微信原生胶囊，导航右侧的「切换项目」往左让位 */
+/* #ifdef MP-WEIXIN */
+.nav {
+  padding-right: dp(96);
+}
+/* #endif */
+
 .nav-back {
   display: flex;
   align-items: center;
@@ -524,6 +542,31 @@ function roleLabelOf(role) {
   z-index: 3;
   /* 顶部留出呼吸空间：项目卡不再贴着橙色导航底边 */
   padding: dp(30) dp(14) 0;
+}
+
+.project-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: dp(8);
+}
+
+.project-card-head-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-switch-btn {
+  flex-shrink: 0;
+  padding: dp(5) dp(12);
+  border: 1px solid rgba(235, 92, 32, 0.24);
+  border-radius: dp(999);
+  background: rgba(255, 255, 255, 0.66);
+  color: #c44710;
+  font-size: dp(11);
+  font-weight: 600;
 }
 
 .project-card {
