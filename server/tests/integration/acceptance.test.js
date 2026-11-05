@@ -639,6 +639,14 @@ describe('AC-A21 验收通过与付款节点联动', () => {
     expect(stage.gate_status).toBe('accepted')
     // 展示状态派生出「已验收」（AC-P02）
     expect(stage.status).toBe('accepted')
+
+    // C-7.5：验收通过后自动生成阶段结算草稿，等待主工长提交
+    const settlement = await db.queryOne(
+      "SELECT id, status FROM reconciliation WHERE project_id = ? AND project_stage_id = ? AND scope_type = 'stage'",
+      [ctx.projectId, ctx.stageId]
+    )
+    expect(settlement).toBeTruthy()
+    expect(settlement.status).toBe('draft')
   })
 
   it('重复触达解锁不会把已解锁的节点退回', async () => {

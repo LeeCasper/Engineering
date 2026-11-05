@@ -395,7 +395,7 @@
             v-for="rec in reconciliations"
             :key="rec.id"
             class="rec-card"
-            @tap="openReconciliation(rec.id)"
+            @tap="openReconciliation(rec)"
           >
             <view class="rec-top">
               <text class="rec-period">{{ recPeriodLabel(rec) }}</text>
@@ -1312,6 +1312,7 @@ function formatDateTime(value) {
 }
 
 function recTitle(rec) {
+  if (rec && rec.scopeType === 'stage') return `${rec.stageName || '阶段'}结算`
   const start = formatDate(rec && rec.periodStart)
   const month = start ? Number(start.slice(5, 7)) : 0
   return month ? `${month} 月对账单` : '对账单'
@@ -1319,6 +1320,9 @@ function recTitle(rec) {
 
 function recPeriodLabel(rec) {
   if (!rec) return '对账周期'
+  if (rec.scopeType === 'stage') {
+    return rec.stageName ? `${rec.stageName} · 阶段结算` : '阶段结算'
+  }
   const start = formatDate(rec.periodStart)
   const end = formatDate(rec.periodEnd)
   if (start && end) return `${start} ~ ${end}`
@@ -1798,10 +1802,21 @@ function onPendingTap(item) {
     confirmNode(item.node)
     return
   }
-  openReconciliation(item.reconciliation.id)
+  openReconciliation(item.reconciliation)
 }
 
-async function openReconciliation(id) {
+async function openReconciliation(rec) {
+  const id = rec && typeof rec === 'object' ? rec.id : rec
+
+  // 阶段结算单有独立页面（应收、异议、结清下一阶段），不要塞进周期对账的详情面板
+  if (rec && typeof rec === 'object' && rec.scopeType === 'stage') {
+    uni.navigateTo({
+      url: `/pages/settlement/detail?id=${id}`,
+      fail: () => uni.showToast({ title: '阶段结算暂不可用', icon: 'none' }),
+    })
+    return
+  }
+
   recSheetOpen.value = true
   recLoading.value = true
   recError.value = ''

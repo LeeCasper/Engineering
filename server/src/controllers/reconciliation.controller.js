@@ -10,6 +10,7 @@ const AppError = require('../utils/AppError')
 const signedUrl = require('../utils/signedUrl')
 const storage = require('../storage')
 const reconciliationService = require('../services/reconciliation.service')
+const stageSettlementService = require('../services/stageSettlement.service')
 const reconciliationModel = require('../models/reconciliation.model')
 const operationLog = require('../services/operationLog.service')
 
@@ -35,6 +36,10 @@ const disputeSchema = z.object({
   remark: z.string().trim().min(1, '异议说明必填').max(500, '异议说明不超过 500 字'),
 })
 
+const stageSubmitSchema = z.object({
+  remark: z.string().trim().max(500, '备注不超过 500 字').optional(),
+})
+
 /** POST /projects/:id/reconciliations —— 发起对账（AC-L19） */
 async function initiate(req, res) {
   const input = validate(initiateSchema, req.body)
@@ -48,6 +53,31 @@ async function list(req, res) {
   res.ok(await reconciliationService.list(req.auth.id, Number(req.params.id)))
 }
 
+/** GET /projects/:id/stages/:stageId/settlement —— 阶段结算单（不存在时自动生成草稿） */
+async function stageSettlement(req, res) {
+  res.ok(
+    await stageSettlementService.getForStage(
+      req.auth.id,
+      Number(req.params.id),
+      Number(req.params.stageId)
+    )
+  )
+}
+
+/** POST /projects/:id/stages/:stageId/settlement/submit —— 主工长提交阶段结算单 */
+async function submitStageSettlement(req, res) {
+  const input = validate(stageSubmitSchema, req.body || {})
+  res.ok(
+    await stageSettlementService.submit(
+      req.auth.id,
+      Number(req.params.id),
+      Number(req.params.stageId),
+      input,
+      operationLog.contextFrom(req)
+    )
+  )
+}
+
 /**
  * GET /reconciliations/:id —— 对账单详情。
  *
@@ -58,6 +88,13 @@ async function list(req, res) {
 async function detail(req, res) {
   const reconciliation = await reconciliationModel.findById(Number(req.params.id))
   if (!reconciliation) throw AppError.notFound('对账单不存在')
+
+  // 阶段结算单与周期对账单共用一张表，但详情字段不同：
+  // 阶段单要带应收（付款节点）、明细与阶段名，不能按周期口径返回。
+  if (reconciliation.scope_type === 'stage') {
+    res.ok(await stageSettlementService.getByReconciliationId(req.auth.id, Number(req.params.id)))
+    return
+  }
 
   res.ok(await reconciliationService.getDetail(req.auth.id, reconciliation.project_id, Number(req.params.id)))
 }
@@ -109,4 +146,13 @@ async function downloadSettlement(req, res) {
   res.send(buffer)
 }
 
-module.exports = { initiate, list, detail, confirm, dispute, downloadSettlement }
+module.exports = {
+  initiate,
+  list,
+  stageSettlement,
+  submitStageSettlement,
+  detail,
+  confirm,
+  dispute,
+  downloadSettlement,
+}

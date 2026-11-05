@@ -69,9 +69,23 @@ export function fetchStageLedger(projectId) {
   return request({ url: `/projects/${projectId}/stages/ledger` })
 }
 
-/** 对账单列表（AC-L22） */
+/** 对账单列表（AC-L22）：同时返回阶段结算单与周期对账单 */
 export function fetchReconciliations(projectId) {
   return request({ url: `/projects/${projectId}/reconciliations` })
+}
+
+/** 阶段结算单（C-7.5，不存在时后端自动生成草稿） */
+export function fetchStageSettlement(projectId, stageId) {
+  return request({ url: `/projects/${projectId}/stages/${stageId}/settlement` })
+}
+
+/** 主工长提交阶段结算单（C-7.6） */
+export function submitStageSettlement(projectId, stageId, { remark } = {}) {
+  return request({
+    url: `/projects/${projectId}/stages/${stageId}/settlement/submit`,
+    method: 'POST',
+    data: { remark: remark || undefined },
+  })
 }
 
 /** 对账单详情：明细、异议与结算单下载路径 */

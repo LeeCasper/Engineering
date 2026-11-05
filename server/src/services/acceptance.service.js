@@ -39,6 +39,7 @@ const projectModel = require('../models/project.model')
 const projectStageModel = require('../models/projectStage.model')
 const projectItemModel = require('../models/projectItem.model')
 const projectMemberModel = require('../models/projectMember.model')
+const reconciliationModel = require('../models/reconciliation.model')
 
 const STATUS = {
   DRAFT: 'draft',
@@ -56,6 +57,14 @@ const STATUS_LABELS = {
   pending_owner: '待业主确认',
   pending_rectify: '待整改',
   passed: '已通过',
+}
+
+/** 阶段结算单状态 → 用户可读文案（§4.7.1） */
+const SETTLEMENT_STATUS_LABELS = {
+  draft: '待工长提交',
+  pending: '待主业主确认',
+  disputed: '结算有异议',
+  confirmed: '已结清',
 }
 
 const STEP_LABELS = { self_check: '自检', supervisor: '监理审核', owner: '业主确认' }
@@ -716,13 +725,16 @@ async function notifyRectify(acceptance, reason) {
 async function getDetail(userId, acceptanceId) {
   const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
 
-  const [items, flow, stage, item, project, supervisorCount] = await Promise.all([
+  const [items, flow, stage, item, project, supervisorCount, settlement] = await Promise.all([
     acceptanceModel.listItems(acceptanceId),
     acceptanceModel.listFlow(acceptanceId),
     acceptance.project_stage_id ? projectStageModel.findById(acceptance.project_stage_id) : null,
     acceptance.project_item_id ? projectItemModel.findById(acceptance.project_item_id) : null,
     projectModel.findByIdUnscoped(acceptance.project_id),
     projectMemberModel.countByRole(acceptance.project_id, 'supervisor'),
+    acceptance.project_stage_id
+      ? reconciliationModel.findByStage(acceptance.project_id, acceptance.project_stage_id)
+      : null,
   ])
 
   const photos = parseJson(acceptance.photos) || []
@@ -744,6 +756,14 @@ async function getDetail(userId, acceptanceId) {
     stageProgress: stage ? stage.progress : null,
     stageGateStatus: stage ? stage.gate_status : null,
     stageStatus: stage ? stage.status : null,
+    // 阶段结算单可能尚未生成（历史数据）；前端据此决定是否显示「去结算」
+    stageSettlement: settlement
+      ? {
+          id: settlement.id,
+          status: settlement.status,
+          statusLabel: SETTLEMENT_STATUS_LABELS[settlement.status] || settlement.status,
+        }
+      : null,
     itemId: acceptance.project_item_id,
     itemName: item ? item.name : null,
     // 无监理时前端要把「监理审核」显示为「已跳过」，不能画成一个真实环节

@@ -24,6 +24,7 @@ const projectMemberModel = require('../models/projectMember.model')
 const userModel = require('../models/user.model')
 const stageTemplateModel = require('../models/stageTemplate.model')
 const paymentNodeModel = require('../models/paymentNode.model')
+const reconciliationModel = require('../models/reconciliation.model')
 const sysConfigService = require('./sysConfig.service')
 // 单向依赖：projectMember.service 不反向引用本模块，因此不会形成循环
 const projectMemberService = require('./projectMember.service')
@@ -272,11 +273,12 @@ async function getProjectForMember(userId, projectId) {
 
   // 详情页头部要展示「业主 / 主工长」，与首页卡片保持同一套脱敏规则。
   // 成员数量与「是否有监理」供快捷入口展示，避免前端为两个数字再发两次请求。
-  const [tree, keyMembers, memberCount, supervisorCount] = await Promise.all([
+  const [tree, keyMembers, memberCount, supervisorCount, settlementRows] = await Promise.all([
     projectStageModel.findTreeByProject(projectId),
     projectMemberModel.listKeyMembersOfProjects([projectId]),
     projectMemberModel.countByRole(projectId),
     projectMemberModel.countByRole(projectId, 'supervisor'),
+    reconciliationModel.listByProject(projectId, { scopeType: 'stage' }),
   ])
 
   const owner =
@@ -286,6 +288,34 @@ async function getProjectForMember(userId, projectId) {
     keyMembers.find((m) => m.role === 'foreman' && Number(m.is_primary) === 1) ||
     keyMembers.find((m) => m.role === 'foreman')
   const currentStage = pickCurrentStage(tree)
+
+  // 阶段结算待办：把「谁能做什么」直接算好给前端。
+  // 草稿只对主工长有动作（提交），待确认只对主业主有动作（确认/异议）。
+  const stageNameById = new Map(tree.map((stage) => [Number(stage.id), stage.name]))
+  const stageSettlements = settlementRows
+    .filter((row) => row.status !== 'confirmed')
+    .map((row) => {
+      const canSubmit =
+        role.role === 'foreman' &&
+        Number(role.is_primary) === 1 &&
+        (row.status === 'draft' || row.status === 'disputed')
+      const canConfirm = isPrimaryOwner(role) && row.status === 'pending'
+      return {
+        id: row.id,
+        stageId: row.project_stage_id,
+        stageName: stageNameById.get(Number(row.project_stage_id)) || row.stage_name || '阶段',
+        status: row.status,
+        statusLabel:
+          { draft: '待工长提交', pending: '待主业主确认', disputed: '结算有异议' }[row.status] || row.status,
+        receivableAmount: row.total_amount,
+        incomeAmount: row.income_amount,
+        expenseAmount: row.expense_amount,
+        disputeCount: Number(row.dispute_count) || 0,
+        submittedAt: row.submitted_at,
+        canSubmit,
+        canConfirm,
+      }
+    })
 
   return {
     id: project.id,
@@ -319,6 +349,7 @@ async function getProjectForMember(userId, projectId) {
     currentStageGateStatus: currentStage ? currentStage.gate_status : null,
     currentStageProgress: currentStage ? currentStage.progress : null,
     isOverdue: isOverdue(project),
+    stageSettlements,
     stages: tree.map((stage) => ({
       id: stage.id,
       name: stage.name,

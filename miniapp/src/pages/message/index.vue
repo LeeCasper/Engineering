@@ -262,6 +262,14 @@ async function navigateForMessage(message) {
     return
   }
 
+  if (message.refType === 'stage_settlement' && message.refId) {
+    uni.navigateTo({
+      url: `/pages/settlement/detail?id=${message.refId}`,
+      fail: () => uni.showToast({ title: '阶段结算单已不可用', icon: 'none' }),
+    })
+    return
+  }
+
   if ((message.refType === 'ledger' || message.refType === 'reconciliation') && projectId) {
     await ensureCurrentProject(projectId)
     uni.switchTab({ url: '/pages/ledger/index' })

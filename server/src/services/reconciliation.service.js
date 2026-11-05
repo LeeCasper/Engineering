@@ -31,6 +31,7 @@ const ledgerModel = require('../models/ledger.model')
 const reconciliationModel = require('../models/reconciliation.model')
 const projectMemberModel = require('../models/projectMember.model')
 const projectModel = require('../models/project.model')
+const stageSettlementService = require('./stageSettlement.service')
 
 const STATUS = {
   DRAFT: 'draft',
@@ -188,14 +189,26 @@ async function confirm(userId, reconciliationId, context = {}) {
       throw AppError.conflict(`还有 ${disputes} 条明细存在异议，请工长处理后再确认`)
     }
 
-    const ledgerIds = await reconciliationModel.listLedgerIds(reconciliationId, tx)
-    const lockedCount = await ledgerModel.lockMany(ledgerIds, tx)
+    const isStage = locked.scope_type === 'stage'
+
+    // 阶段结算单确认前必须复核快照：提交之后流水 / 付款节点若被改动，
+    // 业主看到的页面已经不是待确认的那一份，应退回重提而不是确认一个过时数字。
+    const snapshot = isStage
+      ? await stageSettlementService.verifySnapshot(tx, locked)
+      : { ledgerIds: await reconciliationModel.listLedgerIds(reconciliationId, tx) }
+
+    const lockedCount = await ledgerModel.lockMany(snapshot.ledgerIds, tx)
 
     await reconciliationModel.updateStatus(
       reconciliationId,
       { status: STATUS.CONFIRMED, confirmedBy: userId, confirmedAt: datetime.format() },
       tx
     )
+
+    // AC-S08：当前阶段 settled 与下一阶段 active 必须在**同一事务**内完成
+    const stageResult = isStage
+      ? await stageSettlementService.settleStageInTransaction(tx, locked)
+      : null
 
     await operationLog.record(
       {
@@ -206,15 +219,43 @@ async function confirm(userId, reconciliationId, context = {}) {
         projectId: reconciliation.project_id,
         detail: {
           before: { status: locked.status },
-          after: { status: STATUS.CONFIRMED, lockedLedgerCount: lockedCount },
+          after: {
+            status: STATUS.CONFIRMED,
+            lockedLedgerCount: lockedCount,
+            ...(stageResult
+              ? {
+                  scopeType: 'stage',
+                  stageId: stageResult.stageId,
+                  nextStageId: stageResult.nextStageId,
+                  nextStageUnlocked: stageResult.nextStageUnlocked,
+                }
+              : {}),
+          },
         },
       },
       tx
     )
 
-    return { id: reconciliationId, status: STATUS.CONFIRMED, lockedLedgerCount: lockedCount }
+    return {
+      id: reconciliationId,
+      status: STATUS.CONFIRMED,
+      lockedLedgerCount: lockedCount,
+      ...(stageResult ? { stageSettlement: stageResult } : {}),
+    }
   }).then(async (result) => {
-    await notifyForeman(reconciliation.project_id, reconciliationId, '对账已确认', '业主已确认对账，相关流水已锁定')
+    if (reconciliation.scope_type === 'stage' && result.stageSettlement) {
+      const nextText = result.stageSettlement.nextStageName
+        ? `，下一阶段「${result.stageSettlement.nextStageName}」已解锁`
+        : ''
+      await notifyForeman(
+        reconciliation.project_id,
+        reconciliationId,
+        '阶段已结清',
+        `本阶段结算已确认${nextText}`
+      )
+    } else {
+      await notifyForeman(reconciliation.project_id, reconciliationId, '对账已确认', '业主已确认对账，相关流水已锁定')
+    }
 
     // AC-L24：确认后生成结算单 PDF。与验收报告同理（AC-A19），
     // **生成失败不阻断对账确认** —— 对账确认是既成事实，PDF 只是归档产物。
@@ -258,6 +299,12 @@ async function dispute(userId, reconciliationId, { detailId, remark }, context =
       await reconciliationModel.updateStatus(reconciliationId, { status: STATUS.DISPUTED }, tx)
     }
 
+    // C-7.8 / AC-S06：阶段结算有异议时，阶段门禁同步进入 disputed，
+    // 页面与阶段列表才能显示「结算有异议」，且下一阶段继续锁定。
+    if (reconciliation.scope_type === 'stage') {
+      await stageSettlementService.markDisputedInTransaction(tx, reconciliation)
+    }
+
     await operationLog.record(
       {
         ...context,
@@ -273,7 +320,12 @@ async function dispute(userId, reconciliationId, { detailId, remark }, context =
     const disputeCount = await reconciliationModel.countDisputes(reconciliationId, tx)
     return { id: reconciliationId, status: STATUS.DISPUTED, disputeCount }
   }).then(async (result) => {
-    await notifyForeman(reconciliation.project_id, reconciliationId, '对账有异议', text.slice(0, 100))
+    await notifyForeman(
+      reconciliation.project_id,
+      reconciliationId,
+      reconciliation.scope_type === 'stage' ? '阶段结算有异议' : '对账有异议',
+      text.slice(0, 100)
+    )
     return result
   })
 }
@@ -341,7 +393,9 @@ async function list(userId, projectId) {
   const viewer = await resolveViewer(userId, projectId)
   await loadProject(projectId)
 
-  const rows = await reconciliationModel.listByProject(projectId, { scopeType: 'period' })
+  // 阶段结算单与周期对账单并存（AC-S15）。列表把两种单据一起返回，
+  // 前端按 scopeType 分别展示：阶段单显示阶段名，周期单显示对账周期。
+  const rows = await reconciliationModel.listByProject(projectId)
 
   const submitters = await loadUserNames(rows.map((r) => r.submitted_by))
   const confirmers = await loadUserNames(rows.map((r) => r.confirmed_by))
@@ -350,10 +404,16 @@ async function list(userId, projectId) {
     list: rows.map((row) => ({
       id: row.id,
       scopeType: row.scope_type,
+      stageId: row.project_stage_id,
+      stageName: row.stage_name || null,
+      stageSeq: row.stage_seq || null,
       periodStart: row.period_start,
       periodEnd: row.period_end,
       status: row.status,
-      statusLabel: STATUS_LABELS[row.status],
+      statusLabel:
+        row.scope_type === 'stage'
+          ? stageSettlementService.STATUS_LABELS[row.status] || row.status
+          : STATUS_LABELS[row.status],
       totalAmount: row.total_amount,
       incomeAmount: row.income_amount,
       expenseAmount: row.expense_amount,

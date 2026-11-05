@@ -31,6 +31,7 @@ const ACTIONS = {
   LEDGER_DELETE: 'ledger.delete',
   LEDGER_REVERSE: 'ledger.reverse',
   RECONCILIATION_CREATE: 'reconciliation.create',
+  RECONCILIATION_SUBMIT: 'reconciliation.submit',
   RECONCILIATION_CONFIRM: 'reconciliation.confirm',
   RECONCILIATION_DISPUTE: 'reconciliation.dispute',
   PAYMENT_NODE_UNLOCK: 'payment_node.unlock',

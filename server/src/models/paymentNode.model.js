@@ -20,6 +20,23 @@ async function listByProject(projectId) {
   )
 }
 
+/**
+ * 某阶段的付款节点（阶段结算单的「应收」来源，AC-S02）。
+ *
+ * 不限定 trigger_type：只要节点明确关联了这个阶段，就属于本阶段应收。
+ * 手工触发的节点在创建时也被禁止填 trigger_stage_id（管理端校验），
+ * 因此这里按阶段过滤不会把无关节点算进来。
+ */
+async function listByStage(projectId, stageId, tx = db) {
+  return tx.query(
+    `SELECT id, project_id, seq, name, amount, trigger_type, trigger_stage_id, status, unlocked_at
+       FROM payment_node
+      WHERE project_id = ? AND trigger_stage_id = ? AND deleted_at IS NULL
+      ORDER BY seq`,
+    [projectId, stageId]
+  )
+}
+
 async function findById(id) {
   return db.queryOne(
     `SELECT id, project_id, seq, name, amount, trigger_type, trigger_stage_id, status
@@ -144,6 +161,7 @@ async function sumAmounts(projectId) {
 
 module.exports = {
   listByProject,
+  listByStage,
   findById,
   lockById,
   updateStatus,

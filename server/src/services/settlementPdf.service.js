@@ -30,6 +30,8 @@ const logger = require('../utils/logger')
 const storage = require('../storage')
 const reconciliationModel = require('../models/reconciliation.model')
 const projectModel = require('../models/project.model')
+const projectStageModel = require('../models/projectStage.model')
+const paymentNodeModel = require('../models/paymentNode.model')
 
 const MARGIN = 50
 const CONTENT_WIDTH = 595.28 - MARGIN * 2
@@ -70,7 +72,16 @@ async function generate(reconciliationId) {
     projectModel.findByIdUnscoped(reconciliation.project_id),
   ])
 
-  const buffer = await render({ reconciliation, details, project })
+  // 阶段结算单多两组内容：阶段名与「应收（付款节点）」
+  const isStage = reconciliation.scope_type === 'stage'
+  const [stage, paymentNodes] = isStage
+    ? await Promise.all([
+        projectStageModel.findById(reconciliation.project_stage_id),
+        paymentNodeModel.listByStage(reconciliation.project_id, reconciliation.project_stage_id),
+      ])
+    : [null, []]
+
+  const buffer = await render({ reconciliation, details, project, stage, paymentNodes })
   const saved = await storage.saveGenerated(buffer, { category: 'settlements', ext: 'pdf' })
 
   await reconciliationModel.updatePdf(reconciliationId, { url: saved.url, generatedAt: datetime.format() })
@@ -79,7 +90,8 @@ async function generate(reconciliationId) {
   return saved
 }
 
-function render({ reconciliation, details, project }) {
+function render({ reconciliation, details, project, stage, paymentNodes }) {
+  const isStage = reconciliation.scope_type === 'stage'
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true })
     const chunks = []
@@ -92,12 +104,14 @@ function render({ reconciliation, details, project }) {
       doc.registerFont('cn', config.acceptancePdf.fontPath, config.acceptancePdf.fontName)
       doc.font('cn')
 
-      doc.fontSize(20).text('对账结算单', { align: 'center' })
+      doc.fontSize(20).text(isStage ? '阶段结算单' : '对账结算单', { align: 'center' })
       doc.moveDown(0.3)
       doc
         .fontSize(9)
         .fillColor('#888888')
-        .text(`单据编号：ST-${String(reconciliation.id).padStart(6, '0')}　生成时间：${datetime.format()}`, {
+        .text(
+          `单据编号：${isStage ? 'SS' : 'ST'}-${String(reconciliation.id).padStart(6, '0')}　生成时间：${datetime.format()}`,
+          {
           align: 'center',
         })
       doc.fillColor('#000000').moveDown(1.2)
@@ -106,13 +120,29 @@ function render({ reconciliation, details, project }) {
       sectionTitle(doc, '基本信息')
       kv(doc, '项目名称', project ? project.name : '—')
       kv(doc, '项目地址', project ? project.address : '—')
-      kv(doc, '对账周期', `${reconciliation.period_start} 至 ${reconciliation.period_end}`)
+      if (isStage) {
+        kv(doc, '结算阶段', stage ? stage.name : '—')
+        kv(doc, '阶段应收', `${reconciliation.total_amount} 元`)
+      } else {
+        kv(doc, '对账周期', `${reconciliation.period_start} 至 ${reconciliation.period_end}`)
+      }
       kv(doc, '合同总额', `${project ? project.contract_amount : '—'} 元`)
       kv(doc, '状态', '已确认')
 
+      if (isStage) {
+        // AC-S02：应收金额必须能逐项对应到付款节点，不能只给一个合计数
+        doc.moveDown(0.8)
+        sectionTitle(doc, `本阶段应收（付款节点，共 ${paymentNodes.length} 个）`)
+        if (paymentNodes.length === 0) {
+          doc.fontSize(10).text('本阶段没有关联的付款节点。')
+        } else {
+          renderReceivableTable(doc, paymentNodes)
+        }
+      }
+
       // ── 明细 ──
       doc.moveDown(0.8)
-      sectionTitle(doc, `收支明细（共 ${details.length} 条）`)
+      sectionTitle(doc, `${isStage ? '阶段' : '本期'}收支明细（共 ${details.length} 条）`)
 
       if (details.length === 0) {
         doc.fontSize(10).text('本周期无收支记录。')
@@ -125,10 +155,17 @@ function render({ reconciliation, details, project }) {
       sectionTitle(doc, '合计')
       const totals = computeTotals(details)
 
-      kv(doc, '收入合计', `${totals.income} 元`)
-      kv(doc, '支出合计', `${totals.expense} 元`)
-      // 结余 = 收入 − 支出，与页面用同一个 money.subtract
-      kv(doc, '本期结余', `${money.subtract(totals.income, totals.expense)} 元`)
+      if (isStage) {
+        kv(doc, '本阶段应收', `${reconciliation.total_amount} 元`)
+        kv(doc, '已收合计', `${totals.income} 元`)
+        kv(doc, '支出合计', `${totals.expense} 元`)
+        kv(doc, '阶段结余（已收 − 支出）', `${money.subtract(totals.income, totals.expense)} 元`)
+      } else {
+        kv(doc, '收入合计', `${totals.income} 元`)
+        kv(doc, '支出合计', `${totals.expense} 元`)
+        // 结余 = 收入 − 支出，与页面用同一个 money.subtract
+        kv(doc, '本期结余', `${money.subtract(totals.income, totals.expense)} 元`)
+      }
 
       // 与对账单表头存的金额比对一次：不一致说明有数据在确认后被改动过，
       // 那本身就是需要被发现的异常（AC-L20 的锁定就是为了防止这件事）
@@ -170,7 +207,7 @@ function render({ reconciliation, details, project }) {
           .fontSize(8)
           .fillColor('#999999')
           .text(
-            `第 ${i - range.start + 1} / ${range.count} 页　工程宝 · 对账结算单`,
+            `第 ${i - range.start + 1} / ${range.count} 页　工程宝 · ${isStage ? '阶段结算单' : '对账结算单'}`,
             MARGIN,
             doc.page.height - MARGIN / 2,
             { align: 'center', width: CONTENT_WIDTH }
@@ -182,6 +219,41 @@ function render({ reconciliation, details, project }) {
       reject(err)
     }
   })
+}
+
+/** 应收表格：付款节点、状态、金额 */
+function renderReceivableTable(doc, nodes) {
+  const columns = [
+    { title: '节点', width: 220 },
+    { title: '状态', width: 110 },
+    { title: '金额(元)', width: CONTENT_WIDTH - 330, align: 'right' },
+  ]
+
+  let x = MARGIN
+  const headerY = doc.y
+  doc.fontSize(9).fillColor('#333333')
+  for (const col of columns) {
+    doc.text(col.title, x, headerY, { width: col.width, align: col.align || 'left' })
+    x += col.width
+  }
+
+  const lineY = headerY + 14
+  doc.moveTo(MARGIN, lineY).lineTo(MARGIN + CONTENT_WIDTH, lineY).lineWidth(0.5).strokeColor('#cccccc').stroke()
+  doc.y = lineY + 4
+  doc.fillColor('#000000')
+
+  const labels = { not_started: '未开始', unlocked: '已解锁', paid: '已付款', confirmed: '已确认' }
+  for (const node of nodes) {
+    const y = doc.y
+    if (y > doc.page.height - MARGIN - 60) doc.addPage()
+    const rowY = doc.y
+    doc.fontSize(9)
+    doc.text(node.name, MARGIN, rowY, { width: 220 })
+    doc.text(labels[node.status] || node.status, MARGIN + 220, rowY, { width: 110 })
+    doc.text(node.amount, MARGIN + 330, rowY, { width: CONTENT_WIDTH - 330, align: 'right' })
+    doc.y = rowY + 15
+  }
+  doc.moveDown(0.3)
 }
 
 /** 明细表格。四列：日期、类型/分类、金额、备注 */

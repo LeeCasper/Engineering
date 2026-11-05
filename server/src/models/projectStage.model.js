@@ -145,6 +145,89 @@ async function lockGate(tx, stageId) {
   return rows.length > 0 ? rows[0] : null
 }
 
+/** 加锁读取阶段（阶段结算确认时要用它同时改当前阶段与下一阶段） */
+async function lockById(tx, projectId, stageId) {
+  const rows = await tx.query(
+    `SELECT id, project_id, name, seq, gate_status, progress, status
+       FROM project_stage
+      WHERE id = ? AND project_id = ? AND deleted_at IS NULL
+      FOR UPDATE`,
+    [stageId, projectId]
+  )
+  return rows.length > 0 ? rows[0] : null
+}
+
+/** 下一阶段（按 seq 递增）。只有它还是 locked 时才会被解锁。 */
+async function findNextStage(projectId, seq, tx = db, { forUpdate = false } = {}) {
+  const rows = await tx.query(
+    `SELECT id, name, seq, gate_status
+       FROM project_stage
+      WHERE project_id = ? AND seq > ? AND deleted_at IS NULL
+      ORDER BY seq ASC LIMIT 1 ${forUpdate ? 'FOR UPDATE' : ''}`,
+    [projectId, seq]
+  )
+  return rows.length > 0 ? rows[0] : null
+}
+
+/**
+ * 工长重新提交阶段结算后，阶段从「有异议」回到「已验收待结算」。
+ * 此时下一阶段仍然锁定，必须等主业主确认后才解锁。
+ */
+async function markAcceptedPendingSettlement(tx, projectId, stageId) {
+  const result = await tx.query(
+    `UPDATE project_stage
+        SET gate_status = 'accepted'
+      WHERE id = ? AND project_id = ? AND deleted_at IS NULL
+        AND gate_status = 'disputed'`,
+    [stageId, projectId]
+  )
+  return result.affectedRows > 0
+}
+
+async function markDisputed(tx, projectId, stageId) {
+  const result = await tx.query(
+    `UPDATE project_stage
+        SET gate_status = 'disputed'
+      WHERE id = ? AND project_id = ? AND deleted_at IS NULL
+        AND gate_status IN ('accepted', 'disputed')`,
+    [stageId, projectId]
+  )
+  return result.affectedRows > 0
+}
+
+/**
+ * 阶段结清（AC-S08）。
+ *
+ * `status` 列没有 settled 枚举值：它是展示状态，由 progress.service 按
+ * gate_status 派生；这里只把门禁的单一事实来源推进到终态，并记录时间。
+ */
+async function markSettled(tx, projectId, stageId) {
+  const result = await tx.query(
+    `UPDATE project_stage
+        SET gate_status = 'settled', settled_at = COALESCE(settled_at, NOW())
+      WHERE id = ? AND project_id = ? AND deleted_at IS NULL
+        AND gate_status IN ('accepted', 'disputed')`,
+    [stageId, projectId]
+  )
+  return result.affectedRows > 0
+}
+
+/**
+ * 解锁下一阶段（C-7.1）。
+ *
+ * 只在 gate_status='locked' 时生效：若下一阶段已经因为别的原因激活
+ * （例如历史数据或管理员调整），不能把它降级或重复写 unlocked_at。
+ */
+async function unlockStage(tx, projectId, stageId) {
+  const result = await tx.query(
+    `UPDATE project_stage
+        SET gate_status = 'active', unlocked_at = COALESCE(unlocked_at, NOW())
+      WHERE id = ? AND project_id = ? AND deleted_at IS NULL AND gate_status = 'locked'`,
+    [stageId, projectId]
+  )
+  return result.affectedRows > 0
+}
+
 /** 取某项目当前未结清的首个阶段（阶段推进的「当前阶段」） */
 async function findCurrentStage(projectId) {
   return db.queryOne(
@@ -244,6 +327,12 @@ module.exports = {
   findTreeByProject,
   findById,
   lockGate,
+  lockById,
+  findNextStage,
+  markAcceptedPendingSettlement,
+  markDisputed,
+  markSettled,
+  unlockStage,
   findCurrentStage,
   create,
   update,

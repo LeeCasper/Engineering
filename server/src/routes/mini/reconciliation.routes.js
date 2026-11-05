@@ -20,6 +20,11 @@ projectRouter.use('/:id', tenantWriteGuard({ resource: 'project' }))
 projectRouter.post('/:id/reconciliations', asyncHandler(controller.initiate))
 projectRouter.get('/:id/reconciliations', asyncHandler(controller.list))
 
+// 阶段结算（§4.7 / §7.3）：验收通过后自动生成草稿，主工长提交。
+// 确认仍走顶层的 `/reconciliations/:id/confirm`，与周期对账同一入口。
+projectRouter.get('/:id/stages/:stageId/settlement', asyncHandler(controller.stageSettlement))
+projectRouter.post('/:id/stages/:stageId/settlement/submit', asyncHandler(controller.submitStageSettlement))
+
 const reconciliationRouter = express.Router()
 
 // 结算单下载放在鉴权之前：AC-L24 要求双方均可下载，且与 AC-A20 同口径 ——

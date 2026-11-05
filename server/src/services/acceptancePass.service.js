@@ -22,6 +22,15 @@ const projectStageModel = require('../models/projectStage.model')
 async function finalizeAfterPass(acceptance, operatorId, { generatePdf = true } = {}) {
   try {
     await unlockPaymentNodes(acceptance)
+    // C-7.5：验收通过后系统自动生成阶段结算单草稿。
+    // 生成失败会被 post_pass_status 记为 failed 并由重试任务补 ——
+    // 付款节点已解锁这个事实不会因此回滚。
+    if (acceptance.type === 'stage' && acceptance.project_stage_id) {
+      await require('./stageSettlement.service').ensureDraftForStage(
+        acceptance.project_id,
+        acceptance.project_stage_id
+      )
+    }
     await notifyPassed(acceptance)
 
     if (generatePdf) {

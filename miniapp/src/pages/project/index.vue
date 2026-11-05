@@ -153,6 +153,37 @@
               <text class="task-note">{{ acceptanceNote(task) }}</text>
             </view>
 
+            <!-- 阶段结算待办 -->
+            <view
+              v-for="item in pendingSettlements"
+              :key="`settlement-${item.id}`"
+              class="task-card task-card--settlement"
+            >
+              <view class="task-top">
+                <view class="task-doc-icon">
+                  <image class="task-doc-image" src="/static/images/icon-document-amber.png" mode="aspectFit" />
+                </view>
+                <view class="task-main">
+                  <text class="task-title">{{ item.stageName }}阶段结算{{ item.canConfirm ? '待确认' : '待提交' }}</text>
+                  <view class="task-meta">
+                    <text>{{ item.statusLabel }} · 应收 ¥ {{ formatMoney(item.receivableAmount) }}</text>
+                  </view>
+                </view>
+                <view class="task-primary" @tap="goStageSettlement(item)">
+                  {{ item.canConfirm ? '去确认' : '去提交' }}
+                </view>
+              </view>
+              <text class="task-note">
+                {{
+                  item.canConfirm
+                    ? '核对结算金额与流水；确认无异议后本阶段结清，下一阶段解锁。'
+                    : item.status === 'disputed'
+                      ? '主业主已提出异议，请核对后重新提交。'
+                      : '系统已生成本阶段结算单，请核对后提交主业主。'
+                }}
+              </text>
+            </view>
+
             <!-- 付款待办 -->
             <view
               v-for="node in pendingPayments"
@@ -255,6 +286,19 @@
                 <view class="lock-note-left">
                   <image class="lock-note-icon" src="/static/images/icon-lock-gray.png" mode="aspectFit" />
                   <text>{{ stage.visual.lockText }}</text>
+                </view>
+                <image class="lock-note-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
+              </view>
+
+              <!-- 已验收阶段：阶段结算是解锁下一阶段的唯一入口 -->
+              <view
+                v-if="canOpenStageSettlement(stage)"
+                class="lock-note settlement-link"
+                @tap.stop="goStageSettlementForStage(stage)"
+              >
+                <view class="lock-note-left">
+                  <image class="lock-note-icon" src="/static/images/icon-document-amber.png" mode="aspectFit" />
+                  <text>{{ stageSettlementLabel(stage) }}</text>
                 </view>
                 <image class="lock-note-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
               </view>
@@ -738,7 +782,23 @@ const pendingPayments = computed(() => {
   )
 })
 
-const pendingCount = computed(() => pendingAcceptances.value.length + pendingPayments.value.length)
+// 阶段结算待办：后端已按当前访问者算好 canSubmit / canConfirm，
+// 前端不按角色再猜一遍（临时业主与主业主的能力不同）。
+const pendingSettlements = computed(() =>
+  (detail.value?.stageSettlements || []).filter((item) => item.canSubmit || item.canConfirm)
+)
+
+const stageSettlementByStage = computed(() => {
+  const map = new Map()
+  for (const item of detail.value?.stageSettlements || []) {
+    map.set(Number(item.stageId), item)
+  }
+  return map
+})
+
+const pendingCount = computed(
+  () => pendingAcceptances.value.length + pendingPayments.value.length + pendingSettlements.value.length
+)
 
 const pendingAcceptanceByStage = computed(() => {
   const map = new Map()
@@ -839,6 +899,44 @@ const nextNode = computed(() => {
 
 function roleLabel(role) {
   return { foreman: '工长', supervisor: '监理', owner: '业主' }[role] || '项目成员'
+}
+
+function canOpenStageSettlement(stage) {
+  if (!(isOwner.value || isForeman.value)) return false
+  return stage.gateStatus === 'accepted' || stage.gateStatus === 'disputed'
+}
+
+function stageSettlementLabel(stage) {
+  const settlement = stageSettlementByStage.value.get(Number(stage.id))
+  if (!settlement) return '阶段已验收，去完成阶段结算'
+  if (settlement.status === 'draft') return '阶段结算待主工长提交'
+  if (settlement.status === 'pending') return '阶段结算待主业主确认'
+  if (settlement.status === 'disputed') return '阶段结算有异议，去处理'
+  return '阶段已结清'
+}
+
+function goStageSettlement(item) {
+  if (!item) return
+  const query = item.id
+    ? `id=${item.id}`
+    : `projectId=${detail.value?.id || currentProjectId()}&stageId=${item.stageId}`
+  uni.navigateTo({
+    url: `/pages/settlement/detail?${query}`,
+    fail: () => uni.showToast({ title: '阶段结算暂不可用', icon: 'none' }),
+  })
+}
+
+function goStageSettlementForStage(stage) {
+  const settlement = stageSettlementByStage.value.get(Number(stage.id))
+  goStageSettlement(
+    settlement || {
+      stageId: stage.id,
+    }
+  )
+}
+
+function currentProjectId() {
+  return detail.value?.id || 0
 }
 
 function withVisual(stage) {
@@ -2295,6 +2393,19 @@ function closeActiveSheet() {
   width: dp(9);
   height: dp(9);
   opacity: 0.55;
+}
+
+.settlement-link {
+  background: $color-primary-wash;
+}
+
+.settlement-link .lock-note-left {
+  color: $color-primary-pressed;
+  font-weight: 500;
+}
+
+.task-card--settlement {
+  border-left: 3px solid $color-primary;
 }
 
 /* ── 工程动态 ── */

@@ -287,6 +287,9 @@
         <button v-if="canSubmit || canResubmit" class="action-primary" :disabled="submitting" @tap="submitCheck">
           {{ canResubmit ? '重新提交' : '提交自检' }}
         </button>
+        <button v-if="canOpenSettlement" class="action-primary" @tap="goSettlement">
+          {{ detail.stageGateStatus === 'disputed' ? '处理阶段结算' : '去阶段结算' }}
+        </button>
       </view>
     </template>
 
@@ -493,6 +496,17 @@ const isEsignSigned = computed(() => Boolean(esign.value && esign.value.status =
 const isArchived = computed(
   () => Boolean(detail.value && detail.value.projectStatus === 'archived')
 )
+// 验收通过后进入阶段结算：这是解锁下一阶段的唯一入口（C-7.5 ~ C-7.9）。
+// 只要阶段还没结清，就给业主 / 工长一个明确的「去结算」按钮。
+const canOpenSettlement = computed(
+  () =>
+    Boolean(detail.value) &&
+    !isArchived.value &&
+    detail.value.status === 'passed' &&
+    detail.value.stageId &&
+    detail.value.stageGateStatus !== 'settled' &&
+    (detail.value.myRole === 'owner' || detail.value.myRole === 'foreman')
+)
 const hasActions = computed(
   () =>
     !isArchived.value &&
@@ -502,7 +516,8 @@ const hasActions = computed(
       canResubmit.value ||
       canSaveDraft.value ||
       canEsign.value ||
-      esignActive.value)
+      esignActive.value ||
+      canOpenSettlement.value)
 )
 
 const approveLabel = computed(() => {
@@ -657,6 +672,15 @@ async function load() {
 function goBack() {
   uni.navigateBack({
     fail: () => uni.reLaunch({ url: '/pages/acceptance/index' }),
+  })
+}
+
+function goSettlement() {
+  if (!detail.value || !detail.value.stageId) return
+  const query = `projectId=${detail.value.projectId}&stageId=${detail.value.stageId}`
+  uni.navigateTo({
+    url: `/pages/settlement/detail?${query}`,
+    fail: () => uni.showToast({ title: '阶段结算暂不可用', icon: 'none' }),
   })
 }
 
