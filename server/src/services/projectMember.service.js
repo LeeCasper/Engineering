@@ -189,6 +189,10 @@ async function invite(operator, projectId, input) {
       'SELECT id, role, status, is_primary, owner_type FROM project_member WHERE project_id = ? AND user_id = ?',
       [projectId, user.id]
     )
+    // 唯一键冲突时 ON DUPLICATE KEY UPDATE 可能更新到另一条行（历史上主工长
+    // 唯一位被 removed 行占用时就出现过），事务内读不到本次要写入的成员关系。
+    // 这里给出可读的冲突提示，而不是让下面 member.id 抛 500。
+    if (!member) throw AppError.conflict('成员关系写入冲突，请刷新后重试')
 
     // 邀请留痕（AC-AD09 / AC-AD18）。手机号**不进日志明文** ——
     // operation_log 面向全体有权限的后台人员，而手机号是受保护的个人信息

@@ -1071,6 +1071,31 @@ describe('AC-AD18~21 / 58 / 59 成员管理', () => {
     expect(primaries).toHaveLength(1)
   })
 
+  it('已移除的主工长不占用主工长唯一位，新工长仍可自动成为主工长', async () => {
+    const { token, projectId } = await setup()
+
+    const first = await request
+      .authed('post', `/admin/projects/${projectId}/members`, token)
+      .send({ phone: '13800003333', role: 'foreman' })
+    // 模拟历史脏数据：状态已移除，但 is_primary 仍为 1
+    await db.query("UPDATE project_member SET status = 'removed' WHERE id = ?", [
+      first.body.data.memberId,
+    ])
+
+    const second = await request
+      .authed('post', `/admin/projects/${projectId}/members`, token)
+      .send({ phone: '13800004444', role: 'foreman' })
+
+    expect(second.status).toBe(200)
+    expect(second.body.data.isPrimaryForeman).toBe(true)
+
+    const stale = await db.queryOne(
+      'SELECT status, is_primary FROM project_member WHERE id = ?',
+      [first.body.data.memberId]
+    )
+    expect(stale.status).toBe('removed')
+  })
+
   it('监理与业主不会被自动设为主工长', async () => {
     const { token, projectId } = await setup()
 

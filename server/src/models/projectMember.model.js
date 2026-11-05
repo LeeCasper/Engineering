@@ -52,8 +52,8 @@ async function listUserTenants(userId) {
 }
 
 /** 查某人在某项目中的成员记录（含 pending），用于判断「是否已被邀请」 */
-async function findAny(projectId, userId) {
-  return db.queryOne(
+async function findAny(projectId, userId, tx = db) {
+  return tx.queryOne(
     'SELECT id, role, status, owner_type FROM project_member WHERE project_id = ? AND user_id = ?',
     [projectId, userId]
   )
@@ -100,7 +100,7 @@ async function invite({ projectId, userId, role, invitedBy, isPrimary = false, o
     [projectId, userId, role, invitedBy ?? null, isPrimary ? 1 : 0, ownerType ?? null]
   )
 
-  return findAny(projectId, userId)
+  return findAny(projectId, userId, tx)
 }
 
 /** 当前主工长（仅 active，pending 不计入权限判定 —— AC-AD18） */
@@ -244,8 +244,10 @@ async function reject(projectId, userId) {
 /** 解除成员关系（AC-AD21：立即失去访问权限，但历史记录保留） */
 async function remove(projectId, userId) {
   const result = await db.query(
+    // 同时清掉 is_primary：即使历史上出现过「移除但主工长标记残留」，
+    // 也不该继续占用 uk_pm_primary_foreman（见迁移 029）
     `UPDATE project_member
-        SET status = 'removed', left_at = NOW(), owner_type = NULL
+        SET status = 'removed', left_at = NOW(), is_primary = 0, owner_type = NULL
       WHERE project_id = ? AND user_id = ? AND status <> 'removed' AND deleted_at IS NULL`,
     [projectId, userId]
   )
