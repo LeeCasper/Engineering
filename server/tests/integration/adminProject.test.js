@@ -1520,6 +1520,36 @@ describe('AC-AD22 / AC-L18 付款节点配置', () => {
     expect(list.body.data.nodes.map((n) => n.name)).toEqual(['定金', '开工款', '尾款'])
     expect(list.body.data.nodes.map((n) => n.seq)).toEqual([1, 2, 3])
   })
+
+  it('可以重复保存付款节点配置，软删的历史节点不占用唯一键', async () => {
+    const { token, projectId } = await setup()
+    const first = await request
+      .authed('put', `/admin/projects/${projectId}/payment-nodes`, token)
+      .send({
+        nodes: [
+          { name: '定金', amount: '10000.00', triggerType: 'manual' },
+          { name: '尾款', amount: '30000.00', triggerType: 'manual' },
+        ],
+      })
+    expect(first.status).toBe(200)
+
+    // 第二次保存会先软删上面两行，再按 seq=1..N 插入；
+    // 旧唯一键 (project_id, seq) 不排除软删行，会在这里撞 409。
+    const second = await request
+      .authed('put', `/admin/projects/${projectId}/payment-nodes`, token)
+      .send({
+        nodes: [
+          { name: '开工款', amount: '20000.00', triggerType: 'manual' },
+          { name: '中期款', amount: '25000.00', triggerType: 'manual' },
+          { name: '竣工款', amount: '30000.00', triggerType: 'manual' },
+        ],
+      })
+    expect(second.status).toBe(200)
+
+    const list = await request.authed('get', `/admin/projects/${projectId}/payment-nodes`, token)
+    expect(list.body.data.nodes.map((n) => n.name)).toEqual(['开工款', '中期款', '竣工款'])
+    expect(list.body.data.nodes.map((n) => n.seq)).toEqual([1, 2, 3])
+  })
 })
 
 describe('C 端项目详情与可见性（AC-P26）', () => {
