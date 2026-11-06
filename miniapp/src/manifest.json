@@ -15,6 +15,7 @@
       "postcss": true
     },
     "usingComponents": true,
+    "lazyCodeLoading": "requiredComponents",
     "permission": {
       "scope.userLocation": {
         "desc": "用于规划考察路线、从当前位置出发以及到达工地后的现场签到"
