@@ -212,6 +212,7 @@ function goBack() {
   width: dp(44);
   height: dp(44);
   border-radius: dp(12);
+  overflow: hidden;
   margin-right: dp(12);
   box-shadow: 0 dp(4) dp(12) rgba(235, 92, 32, 0.18);
 }

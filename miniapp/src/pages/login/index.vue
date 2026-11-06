@@ -476,6 +476,7 @@ function openLegal(key) {
   width: dp(52);
   height: dp(52);
   border-radius: dp(14);
+  overflow: hidden;
   margin-right: dp(14);
   box-shadow: 0 dp(4) dp(12) rgba(235, 92, 32, 0.18);
 }
@@ -977,6 +978,7 @@ function openLegal(key) {
   width: dp(74);
   height: dp(74);
   border-radius: dp(20);
+  overflow: hidden;
   background: #fff;
   box-shadow:
     0 dp(12) dp(34) rgba(235, 92, 32, 0.22),
@@ -1130,6 +1132,7 @@ function openLegal(key) {
   width: dp(88);
   height: dp(88);
   border-radius: dp(24);
+  overflow: hidden;
   background: #fff;
   box-shadow:
     0 dp(16) dp(40) rgba(235, 92, 32, 0.22),

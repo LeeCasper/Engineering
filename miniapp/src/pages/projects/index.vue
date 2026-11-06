@@ -961,6 +961,7 @@ function closeActiveSheet() {
   height: dp(48);
   margin-right: dp(12);
   border-radius: dp(16);
+  overflow: hidden;
   box-shadow: 0 dp(4) dp(12) rgba(94, 45, 22, 0.12);
   flex-shrink: 0;
 }
@@ -1653,6 +1654,7 @@ function closeActiveSheet() {
   width: dp(56);
   height: dp(56);
   border-radius: dp(15);
+  overflow: hidden;
   opacity: 0.55;
 }
 

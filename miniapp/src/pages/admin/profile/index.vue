@@ -935,6 +935,7 @@ async function logout() {
   width: dp(56);
   height: dp(56);
   border-radius: dp(16);
+  overflow: hidden;
   background: #fff;
   opacity: 0.92;
   box-shadow:

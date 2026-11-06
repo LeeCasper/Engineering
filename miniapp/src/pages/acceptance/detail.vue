@@ -1462,6 +1462,7 @@ function closeActiveSheet() {
   height: dp(48);
   margin-right: dp(12);
   border-radius: dp(12);
+  overflow: hidden;
   flex-shrink: 0;
 }
 

@@ -495,6 +495,7 @@ async function loginByBinding(binding) {
   height: dp(48);
   margin-right: dp(12);
   border-radius: dp(14);
+  overflow: hidden;
   box-shadow: 0 dp(4) dp(12) rgba(235, 92, 32, 0.18);
   flex-shrink: 0;
 }
@@ -800,6 +801,7 @@ async function loginByBinding(binding) {
   width: dp(74);
   height: dp(74);
   border-radius: dp(20);
+  overflow: hidden;
   background: #fff;
   box-shadow:
     0 dp(12) dp(34) rgba(235, 92, 32, 0.22),
