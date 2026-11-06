@@ -444,8 +444,9 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   项目管理员 `admin` 用后台账号密码 + 图形验证码登录，拿到的是 audience=admin 的
   普通管理员 JWT；C 端微信 token 只用于证明 openid，绝不直接访问 `/admin/*`。
   管理端页面在 `pages/admin/**`，全部是非 tab 页；C 端保留 4 个原生 tab。管理端顶层
-  页（工作台 / 项目 / 成员 / 我的）使用 `AdminTabBar` 内页导航，不注册进原生 tabBar，
-  顶层页之间用 `redirectTo`，详情/表单页不显示底部导航。C 端项目列表**不显示**
+  页（工作台 / 项目 / 成员 / 我的）合并进 `pages/admin/home/index` 壳页，用内页
+  `AdminTabBar` 切换视图，不注册进原生 tabBar，详情/表单页不显示底部导航。
+  C 端项目列表**不显示**
   管理入口；管理员统一从小程序登录页的「管理员登录」进入工作台，避免把后台身份
   暴露在普通业主 / 工长 / 监理的主界面。管理员 token 存在 `gc_admin_*`，与 C 端 `gc_token` 分离：
   任一端 401 都不能清另一端。微信免密绑定表是 `admin_wechat_binding`（迁移 018），
@@ -467,18 +468,27 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **C 端底部导航用原生 tabBar**：`pages.json` 配置项目 / 验收 / 记账 / 我的四项，**不要**每个 tab 页自己画一个底部栏，也不要用 `reLaunch` 切 tab —— 那会重建页面并白屏。四项现在都是真实页面；「我的」是个人工作台（资料、多项目时的切换入口、业主联系人 / 工长统计、消息、订阅、反馈、注销），消息未读数用 `uni.setTabBarBadge({ index: 3 })` 挂在「我的」tab 上。
   自绘底栏、`tabBar.custom`、按平台隐藏原生栏都试过：真机切换 tab 时底栏会重绘闪烁，
   因此**保持原生**。不要为了玻璃效果再改回自绘 / custom tabBar。
-- **管理端底部导航是内页 `AdminTabBar`**：只用于管理端顶层页（工作台 / 项目 /
-  成员 / 我的），不注册进 `pages.json` 的 `tabBar`，也不要在 C 端页面渲染它。
-  顶层页之间用 `redirectTo`；详情、表单、成员、付款节点、阶段工序等嵌套页用
-  `navigateTo` 且不显示底部导航。
-  **切 tab 时不能退回加载态**：`redirectTo` 会销毁并重建顶层页，若每次 `onLoad`
-  都先 `loading = true`，用户看到的就是「切页 = 刷新」，底栏也跟着闪。
-  四个顶层页统一用 `store/adminCache.js` 的内存快照：setup 时先用快照渲染，
-  `onLoad` 走 `silent` 刷新；只有首次进入（没有快照）才显示加载态。
+- **管理端顶层页是壳页内的视图，不是四个页面**：`pages/admin/home/index` 里
+  渲染工作台 / 项目 / 成员 / 我的四个视图（`components/admin/views/*View.vue`），
+  用 `v-show` 保活、首次访问才挂载；`AdminTabBar` 只渲染一次，只发 `change` 事件。
+  **不要改回四个独立页面 + `redirectTo`**：真机会重建 webview，底部菜单栏会闪
+  （开发者工具渲染快，看不出来）。C 端用原生 tabBar + `switchTab` 达到同样效果；
+  微信只允许一套 tabBar（最多 5 个）且 tabBar 页必须在主包，管理端页面在分包里，
+  所以只能用壳页模拟，不要尝试注册第二套原生 tab。
+  `pages/admin/{workbench,projects,members,profile}/index.vue` 只是兼容旧深链的
+  转跳壳，内部入口一律走 `store/adminTabs.js` 的 `requestAdminTab`。
+  视图里不能写页面生命周期（`onLoad` / `onShow` 在组件里不生效）：初始加载放
+  `onMounted`，激活用 `watch(() => props.active)`；下拉刷新 / 触底加载由壳页
+  `onPullDownRefresh` / `onReachBottom` 转发到当前视图的 `refresh` / `loadMore`
+  （`defineExpose`）。跨组件传递回调必须用事件（`@back`），**不要用函数 prop**，
+  小程序自定义组件之间无法序列化函数。
+  嵌套页（详情 / 表单 / 成员 / 付款节点 / 阶段工序）仍用 `navigateTo`、不显示底栏；
+  从嵌套页返回时由壳页 `onShow` 刷新当前视图。
+  四个视图统一用 `store/adminCache.js` 的内存快照做首次挂载的秒开：setup 时先用
+  快照渲染，再静默刷新；只有首次进入（没有快照）才显示加载态。
   管理员登录 / 登出 / 401 会清空快照（`setAdminSession` / `clearAdminSession`），
   不要把快照写进 storage，也不要在快照里放另一个账号的数据。
-  `AdminTabBar` 的选中项不要加入场动画：底栏每次切页都会重建，动画会重播一遍。
-  成员 tab 是 `pages/admin/members/index` 的跨项目
+  成员 tab 是 `pages/admin/members/index.vue` 转跳到壳页的成员视图，内容为跨项目
   成员目录，读 `GET /admin/members`（复用 `dataScope`，手机号脱敏）；邀请 / 改指 /
   移除仍走具体项目的 `/admin/projects/:id/members`，不要为写操作另开跨项目接口。
   项目详情 `pages/admin/project/detail` 按 Stitch `64c024eb…` 还原，单项目成员页

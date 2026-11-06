@@ -33,15 +33,25 @@ const props = defineProps({
   title: { type: String, default: '管理端' },
   subtitle: { type: String, default: '' },
   back: { type: Boolean, default: false },
-  fallback: { type: String, default: '/pages/admin/workbench/index' },
+  fallback: { type: String, default: '/pages/admin/home/index' },
+  // 嵌在壳页里的视图不能用 navigateBack（页面栈里是壳页和登录页）；
+  // 置 true 时不自己导航，改为抛 back 事件由父组件决定去向。
+  // 不要用函数 prop：小程序自定义组件之间无法传递函数。
+  backCustom: { type: Boolean, default: false },
   background: { type: String, default: '#F6F7F9' },
   // 吸顶时用液态玻璃，让滚动内容从标题下方透出；表单类页面保持纯色更稳
   glass: { type: Boolean, default: false },
 })
 
+const emit = defineEmits(['back'])
+
 const { statusBarHeight: safeTop, rightInset } = useCapsuleInsets()
 
 function onBack() {
+  if (props.backCustom) {
+    emit('back')
+    return
+  }
   adminBack(props.fallback)
 }
 </script>

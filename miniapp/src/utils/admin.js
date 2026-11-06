@@ -45,7 +45,7 @@ export const TRIGGER_LABELS = {
 export const BIND_FRESH_MS = 30 * 60 * 1000
 
 /** 管理端默认落地页。管理入口、登录成功、会话失效兜底都回这里 */
-export const ADMIN_HOME = '/pages/admin/workbench/index'
+export const ADMIN_HOME = '/pages/admin/home/index'
 
 export function formatMoney(value) {
   if (value === null || value === undefined || value === '') return '0'
@@ -133,14 +133,6 @@ export function sanitizeAdminRedirect(path) {
 
 export function goCProjects() {
   uni.switchTab({ url: '/pages/projects/index' })
-}
-
-export function goAdminHome() {
-  uni.redirectTo({ url: ADMIN_HOME })
-}
-
-export function goAdminProjects() {
-  uni.redirectTo({ url: '/pages/admin/projects/index' })
 }
 
 export function adminBack(fallback = ADMIN_HOME) {

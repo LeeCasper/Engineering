@@ -26,11 +26,16 @@ const props = defineProps({
   active: { type: String, default: 'workbench' },
 })
 
+// 顶层页现在都在 pages/admin/home/index 壳页内切换，底栏只向上抛事件，
+// 不再自己 redirectTo（真机会重建 webview，底栏会闪）。
+const emit = defineEmits(['change'])
+
 /**
  * 管理端顶层页的内页导航。
  *
- * 这不是原生 tabBar：管理页仍是 pages/admin/** 下的非 tab 页。
- * 顶层页之间必须用 redirectTo，避免页面栈越点越深。
+ * 不是原生 tabBar（微信只允许一套 tabBar，且 tabBar 页必须在主包）。
+ * 四个顶层页已经合并到 pages/admin/home/index 的壳页里，这里只负责发事件；
+ * 不要改回 redirectTo，真机切页会重建 webview、底栏会闪。
  */
 const TABS = [
   {
@@ -38,34 +43,30 @@ const TABS = [
     label: '工作台',
     icon: '/static/images/icon-admin-workbench-gray.png',
     activeIcon: '/static/images/icon-admin-workbench-accent.png',
-    url: '/pages/admin/workbench/index',
   },
   {
     key: 'projects',
     label: '项目',
     icon: '/static/images/icon-admin-project-gray.png',
     activeIcon: '/static/images/icon-admin-project-accent.png',
-    url: '/pages/admin/projects/index',
   },
   {
     key: 'members',
     label: '成员',
     icon: '/static/images/icon-admin-members-gray.png',
     activeIcon: '/static/images/icon-admin-members-accent.png',
-    url: '/pages/admin/members/index',
   },
   {
     key: 'profile',
     label: '我的',
     icon: '/static/images/icon-admin-profile-gray.png',
     activeIcon: '/static/images/icon-admin-profile-accent.png',
-    url: '/pages/admin/profile/index',
   },
 ]
 
 function go(tab) {
   if (props.active === tab.key) return
-  uni.redirectTo({ url: tab.url })
+  emit('change', tab.key)
 }
 </script>
 

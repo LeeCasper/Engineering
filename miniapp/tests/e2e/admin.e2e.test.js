@@ -37,7 +37,7 @@ test('管理员登录页面可进入，并可退出管理端', { timeout: 60000 
   await devLogin.click()
   // 首登强制改密时不会进工作台；这种环境先跳过退出流程
   await page.waitForFunction(
-    () => /#\/pages\/admin\/(workbench|change-password)\/index/.test(location.hash),
+    () => /#\/pages\/admin\/(home|change-password)\/index/.test(location.hash),
     null,
     { timeout: 15000 }
   )
@@ -45,10 +45,16 @@ test('管理员登录页面可进入，并可退出管理端', { timeout: 60000 
     t.skip('管理员仍处于首登强制改密状态，请先在开发库完成一次改密')
     return
   }
-  await waitForHash(page, /#\/pages\/admin\/workbench\/index/, 5000)
+  await waitForHash(page, /#\/pages\/admin\/home\/index/, 5000)
+  await page.locator('.overview-card').waitFor({ state: 'visible', timeout: 8000 })
 
-  // 直接进入管理端「我的」页，避免依赖内页 tabbar 的点击命中区域
-  await page.goto(`${BASE_URL}/#/pages/admin/profile/index`, {
+  // 顶层 tab 是同一页面内的视图切换，不跳路由、底栏常驻
+  await page.locator('.tabbar-item').filter({ hasText: '项目' }).click()
+  await page.locator('.project-item').first().waitFor({ state: 'visible', timeout: 8000 })
+  assert.match(page.url(), /#\/pages\/admin\/home\/index/)
+
+  // 直接进入管理端「我的」tab（旧路径会转到壳页）
+  await page.goto(`${BASE_URL}/#/pages/admin/home/index?tab=profile`, {
     waitUntil: 'networkidle',
   })
   await page.locator('.logout-btn').waitFor({ state: 'visible', timeout: 8000 })

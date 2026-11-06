@@ -2,7 +2,7 @@
   <view class="admin-page admin-page--cool template-page">
     <AdminNav
       title="阶段模板"
-      fallback="/pages/admin/profile/index"
+      fallback="/pages/admin/home/index?tab=profile"
       background="#F6F7F9"
       glass
     >

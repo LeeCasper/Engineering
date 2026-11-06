@@ -3,7 +3,7 @@ import { getAdminToken, clearAdminSession, setAdminRedirect } from '../../store/
 
 // 不能从 utils/admin 引 ADMIN_HOME：utils/admin 为了 401 跳转已经引用了本模块，
 // 反向引用会形成循环 require（CLAUDE.md 第 63 条）。
-const ADMIN_HOME = '/pages/admin/workbench/index'
+const ADMIN_HOME = '/pages/admin/home/index'
 
 /**
  * 管理员请求通道。

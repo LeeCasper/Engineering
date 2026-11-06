@@ -311,7 +311,7 @@ let loadedOnce = false
 let pendingInvite = false
 
 const fallback = computed(() =>
-  projectId.value ? `/pages/admin/project/detail?id=${projectId.value}` : '/pages/admin/projects/index'
+  projectId.value ? `/pages/admin/project/detail?id=${projectId.value}` : '/pages/admin/home/index?tab=projects'
 )
 
 const canWrite = computed(() => Boolean(project.value && project.value.status !== 'archived'))

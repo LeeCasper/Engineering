@@ -228,6 +228,16 @@
           }
         },
         {
+          "path": "home/index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTextStyle": "black",
+            "backgroundColor": "#F6F7F9",
+            "backgroundTextStyle": "dark",
+            "enablePullDownRefresh": true
+          }
+        },
+        {
           "path": "change-password/index",
           "style": {
             "navigationStyle": "custom",

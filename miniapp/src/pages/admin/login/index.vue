@@ -237,7 +237,7 @@ const submitting = ref(false)
 const error = ref('')
 const bindings = ref([])
 const loggingBindingId = ref(null)
-const redirect = ref('/pages/admin/workbench/index')
+const redirect = ref('/pages/admin/home/index')
 // 登录成功后的全屏过场；与 submitting 分开，避免按钮状态和进入动画互相打断
 const entering = ref(false)
 // 登录失败的轻微抖动

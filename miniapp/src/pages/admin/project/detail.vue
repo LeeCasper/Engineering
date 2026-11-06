@@ -2,7 +2,7 @@
   <view class="admin-page admin-page--cool">
     <AdminNav
       title="项目详情"
-      fallback="/pages/admin/projects/index"
+      fallback="/pages/admin/home/index?tab=projects"
       background="#F6F7F9"
       glass
     >

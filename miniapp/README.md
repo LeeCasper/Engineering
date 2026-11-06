@@ -314,9 +314,11 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 我的管理设置 `c2274c18…`），按品牌橙与 `dp()` 令牌还原。
 它不是第四种项目角色，而是后台 `admin_user` 的 `owner` / `admin` 账号在微信里的入口：
 
-- **顶层导航**：`components/admin/AdminTabBar.vue`，四栏为工作台 / 项目 / 成员 / 我的。
-  它只是管理端非 tab 页的内页导航，不注册进 `pages.json` 的 `tabBar`；顶层页之间用
-  `redirectTo`，详情/表单页用 `navigateTo` 且不显示底部导航。
+- **顶层导航**：四个 tab 收在壳页 `pages/admin/home/index` 里（视图在
+  `components/admin/views/`），`components/admin/AdminTabBar.vue` 只渲染一次、
+  只发 `change` 事件。切换 tab 不跳页面，避免真机重建 webview 导致底栏闪烁；
+  旧的 `pages/admin/{workbench,projects,members,profile}/index` 只做深链转跳。
+  详情/表单页用 `navigateTo` 且不显示底部导航。
 - **项目表单地图定位**：`pages/admin/project/form` 新建 / 编辑项目支持按地址定位、
   服务端静态地图拖动 / 缩放、微信原生 `uni.chooseLocation` 与手工坐标。
   静态图来自 `/admin/maps/static` 的 base64 data URL，**小程序端不持有 AMap Key**；

@@ -1,6 +1,6 @@
 <template>
   <view class="admin-page">
-    <AdminNav :title="isEdit ? '编辑项目' : '新建项目'" fallback="/pages/admin/projects/index" />
+    <AdminNav :title="isEdit ? '编辑项目' : '新建项目'" fallback="/pages/admin/home/index?tab=projects" />
 
     <view class="admin-content">
       <view v-if="loading" class="admin-card">
