@@ -222,8 +222,12 @@ const form = reactive({
 const devAccount = import.meta.env.DEV
   ? { tenantCode: 'default', username: 'admin', password: 'Admin123456' }
   : null
-const devLogging = ref(false)
 /* dev-only:end */
+
+// 声明必须留在 dev-only 标记外：登录过场 playEnterTransition 在正式构建里也会
+// 复位它，若一并删掉声明，正式包会抛 ReferenceError: devLogging is not defined。
+// 这里只是一个布尔 ref，不含账号信息。
+const devLogging = ref(false)
 
 const captchaId = ref('')
 const captchaImage = ref('')

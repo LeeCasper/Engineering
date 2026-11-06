@@ -305,6 +305,10 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   不要用 `apply:'build'` 判断 —— `dev:mp-weixin` 内部也是 `vite build`；
   也不要只靠 `import.meta.env.DEV + v-if` —— 账号常量会被摇掉，但按钮文案仍会留在
   H5 render 与 WXML 里，正式包里还能被检索到。新增 dev-only 代码时沿用这套标记。
+  **被正式构建保留的公共函数不能引用 dev-only 声明**：登录过场 `playEnterTransition`
+  在正式包里仍要复位 `devLogging`，而声明原本被标记删掉了，正式包跑起来就是
+  `ReferenceError: devLogging is not defined`。需要跨边界的变量把声明放在标记外，
+  账号常量 / 按钮 / 函数仍留在标记内。
 - **内容页按当前项目租户读取**：`pages/legal/index` 请求 `/contents/:key` 时带上
   `getCurrentProject().tenantId`，后端按「租户已发布 → 平台已发布 → 404」回退；
   没有项目上下文（登录前）则读平台基础版本。不要只读平台版本，否则租户的
