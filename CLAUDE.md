@@ -475,6 +475,11 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   不要另画一条顶部栏。顶部右侧动作统一用 `AdminHeaderAction`
   （浅橙玻璃胶囊 `variant="pill"` / 圆形图标 `variant="icon"`），
   不要在页面里再写 `edit-pill`、`new-pill`、`admin-nav-action` 这类私有样式。
+  **页面 json 的 `backgroundColor` 必须与页面画布一致**：它是原生窗口底色，
+  页面切换、webview 初始化那几帧会露出来。工作台 / 我的曾经为了下拉回弹把
+  背景设成品牌橙（`#EB5C20` / `#F85A2A`），结果在管理端切页时底部会闪一块橙色；
+  现在统一用画布灰 `#F6F7F9` + `backgroundTextStyle: dark`。
+  橙色只留在页面自己的头部渐变里，不要再写进 `backgroundColor`。
 - **H5 下的 tabBar 在页面内**：底部浮层（筛选、阶段、签名等）的 z-index 必须高于 H5 的 `uni-tabbar`（当前用 1000）；小程序原生 tabBar 在 webview 外，不受影响。
 - **H5 的 `uni.showModal` 要盖住管理端面板**：它默认 `z-index: 999`，而管理端底部面板是 1300，
   从成员操作 / 模板编辑面板里弹出的确认框会被盖住、按钮点不到。`App.vue` 已在 H5 下把

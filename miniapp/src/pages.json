@@ -240,8 +240,8 @@
           "style": {
             "navigationStyle": "custom",
             "navigationBarTextStyle": "white",
-            "backgroundColor": "#EB5C20",
-            "backgroundTextStyle": "light",
+            "backgroundColor": "#F6F7F9",
+            "backgroundTextStyle": "dark",
             "enablePullDownRefresh": true
           }
         },
@@ -270,8 +270,8 @@
           "style": {
             "navigationStyle": "custom",
             "navigationBarTextStyle": "white",
-            "backgroundColor": "#F85A2A",
-            "backgroundTextStyle": "light",
+            "backgroundColor": "#F6F7F9",
+            "backgroundTextStyle": "dark",
             "enablePullDownRefresh": true
           }
         },
