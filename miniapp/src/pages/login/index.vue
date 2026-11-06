@@ -187,6 +187,24 @@
         </view>
       </view>
     </view>
+
+    <!-- 管理员登录：管理端分包首次加载时给出明确反馈 -->
+    <view
+      v-if="adminNavigating"
+      class="admin-loading-overlay"
+      @touchmove.stop.prevent
+    >
+      <view class="admin-loading-card">
+        <view class="admin-loading-logo">
+          <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+        </view>
+        <view class="admin-loading-main">
+          <text class="admin-loading-title">正在进入管理员登录</text>
+          <text class="admin-loading-sub">正在加载管理端资源，请稍候</text>
+        </view>
+        <view class="admin-loading-spinner" />
+      </view>
+    </view>
   </view>
 </template>
 
@@ -221,6 +239,8 @@ const splashLeaving = ref(false)
 const SPLASH_MIN_MS = 1180
 let splashClosed = false
 let splashMinReady = Promise.resolve()
+// 点击「管理员登录」后，管理端分包可能还在下载；用遮罩 + spinner 给出反馈
+const adminNavigating = ref(false)
 
 const WECHAT_ICON_SVG =
   'data:image/svg+xml;base64,PHN2ZyB0PSIxNzkyOTk1Mzk3ODUzIiBjbGFzcz0iaWNvbiIgdmlld0JveD0iMCAwIDEwMjQgMTAyNCIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHAtaWQ9IjU4NjkiIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cGF0aCBkPSJNNjgzLjA1OCAzNjQuNjk1YzExIDAgMjIgMS4wMTYgMzIuOTQzIDEuOTc2QzY4Ni41NjQgMjMwLjA2NCA1MzguODk2IDEyOCAzNzAuNjgxIDEyOGMtMTg4LjEwNCAwLjY2LTM0Mi4yMzcgMTI3Ljc5My0zNDIuMjM3IDI4OS4yMjYgMCA5My4wNjggNTEuMzc5IDE2OS44MjcgMTM2LjcyNSAyMjkuMjU2TDEzMC43MiA3NDguNDNsMTE5Ljc5Ni01OS4zNjhjNDIuOTE4IDguMzk1IDc3LjM3IDE2Ljc5IDExOS43NDIgMTYuNzkgMTEgMCAyMS40Ni0wLjQ4IDMxLjkxNC0xLjQ0MmEyNTkuMTY4IDI1OS4xNjggMCAwIDEtMTAuNDU1LTcxLjM1OGMwLjQ4NS0xNDguMDAyIDEyOC43NDQtMjY4LjI5NyAyOTEuNDAzLTI2OC4yOTdsLTAuMDYtMC4wNnogbS0xODQuMTEzLTkxLjk5MmMyNS45OSAwIDQyLjkxMyAxNi43OSA0Mi45MTMgNDIuNTc1IDAgMjUuMTg4LTE2LjkyMyA0Mi41NzktNDIuOTEzIDQyLjU3OS0yNS40NSAwLTUxLjM4LTE2Ljg1LTUxLjM4LTQyLjU4IDAtMjUuNzg0IDI1LjkzLTQyLjU3NCA1MS4zOC00Mi41NzR6IG0tMjM5LjU0NCA4NS4xNTRjLTI1LjM4NCAwLTUxLjM3NC0xNi44NS01MS4zNzQtNDIuNTggMC0yNS43ODQgMjUuOTktNDIuNTc0IDUxLjM3NC00Mi41NzQgMjUuNDUgMCA0Mi45MTggMTYuNzkgNDIuOTE4IDQyLjU3NSAwIDI1LjE4OC0xNi45MjQgNDIuNTc5LTQyLjkxOCA0Mi41Nzl6IG03MzYuMTU1IDI3MS42NTVjMC0xMzUuNjQ3LTEzNi43MjUtMjQ2LjUyNy0yOTAuOTgzLTI0Ni41MjctMTYyLjY1NSAwLTI5MC45MTggMTEwLjg4LTI5MC45MTggMjQ2LjUyNyAwIDEzNi4xMjggMTI4LjI2MyAyNDYuNTg3IDI5MC45MTggMjQ2LjU4NyAzMy45NzIgMCA2OC40MjMtOC4zOTUgMTAyLjgxOC0xNi44NWw5My44MDkgNTAuOTczLTI1LjkzLTg0LjY3N2M2OC45MDctNTEuOTMgMTIwLjI4Ni0xMTkuODE1IDEyMC4yODYtMTk2LjAzM3ogbS0zODUuMjc1LTQyLjU4Yy0xNi45MjMgMC0zNC40NTItMTYuNzktMzQuNDUyLTM0LjE3OSAwLTE2Ljc5IDE3LjUyOS0zNC4xOCAzNC40NTItMzQuMTggMjUuOTkgMCA0Mi45MTggMTYuODUgNDIuOTE4IDM0LjE4IDAgMTcuMzktMTYuOTI4IDM0LjE4LTQyLjkxOCAzNC4xOHogbTE4OC4xNjUgMGMtMTYuOTg0IDAtMzMuOTcyLTE2Ljc5LTMzLjk3Mi0zNC4xNzkgMC0xNi43OSAxNi45MjctMzQuMTggMzMuOTcyLTM0LjE4IDI1LjkzIDAgNDIuOTEzIDE2Ljg1IDQyLjkxMyAzNC4xOCAwIDE3LjM5LTE2Ljk4MyAzNC4xOC00Mi45MTMgMzQuMTh6IiBmaWxsPSIjMDlCQjA3IiBwLWlkPSI1ODcwIj48L3BhdGg+PC9zdmc+'
@@ -285,10 +305,24 @@ function startSplashClock() {
 async function hideSplash() {
   if (splashClosed) return
   splashClosed = true
+  // 开屏展示期间顺手把管理端分包拉下来，用户点「管理员登录」时不再等待下载
+  preloadAdminSubpackage()
   await splashMinReady
   splashLeaving.value = true
   await wait(300)
   splashVisible.value = false
+}
+
+/** 预下载 pages/admin 分包；失败不打扰用户，点击时仍会正常加载 */
+function preloadAdminSubpackage() {
+  // #ifdef MP-WEIXIN
+  if (typeof wx !== 'undefined' && typeof wx.preloadSubpackage === 'function') {
+    wx.preloadSubpackage({
+      name: 'pages/admin',
+      fail: () => {},
+    })
+  }
+  // #endif
 }
 
 async function bootstrap() {
@@ -353,7 +387,18 @@ async function onWechatLogin() {
 }
 
 function goAdminLogin() {
-  uni.navigateTo({ url: '/pages/admin/login/index' })
+  if (adminNavigating.value) return
+  adminNavigating.value = true
+  uni.navigateTo({
+    url: '/pages/admin/login/index',
+    success: () => {
+      adminNavigating.value = false
+    },
+    fail: () => {
+      adminNavigating.value = false
+      uni.showToast({ title: '进入失败，请重试', icon: 'none' })
+    },
+  })
 }
 
 function wait(ms) {
@@ -1205,6 +1250,109 @@ function openLegal(key) {
   40% {
     opacity: 1;
     transform: translateY(dp(-4)) scale(1);
+  }
+}
+
+/* ── 管理员登录分包加载遮罩 ── */
+.admin-loading-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 dp(28);
+  background: rgba(24, 21, 19, 0.32);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  backdrop-filter: blur(6px) saturate(140%);
+  animation: admin-loading-overlay-in 180ms ease-out both;
+}
+
+@keyframes admin-loading-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.admin-loading-card {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: dp(340);
+  padding: dp(16) dp(18);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: dp(18);
+  background: rgba(255, 250, 246, 0.98);
+  box-shadow:
+    0 dp(18) dp(44) rgba(24, 21, 19, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  animation: admin-loading-card-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes admin-loading-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(dp(8)) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.admin-loading-logo {
+  width: dp(44);
+  height: dp(44);
+  margin-right: dp(12);
+  overflow: hidden;
+  border-radius: dp(13);
+  background: #fff;
+  box-shadow:
+    0 dp(4) dp(12) rgba(235, 92, 32, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+}
+
+.admin-loading-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-loading-title {
+  display: block;
+  color: #241c17;
+  font-size: dp(14);
+  font-weight: 700;
+}
+
+.admin-loading-sub {
+  display: block;
+  margin-top: dp(3);
+  color: #8b8179;
+  font-size: dp(10);
+  line-height: 1.4;
+}
+
+.admin-loading-spinner {
+  width: dp(18);
+  height: dp(18);
+  margin-left: dp(12);
+  border: 2px solid rgba(235, 92, 32, 0.18);
+  border-top-color: #eb5c20;
+  border-radius: 50%;
+  animation: admin-loading-spin 720ms linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes admin-loading-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>
