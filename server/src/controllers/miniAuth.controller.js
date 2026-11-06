@@ -97,9 +97,22 @@ async function profile(req, res) {
 async function updateProfile(req, res) {
   const input = validate(updateProfileSchema, req.body)
 
-  // 被邀请进入项目后真实姓名是必填项，不能通过接口把它清空。
+  // 认证后的姓名是验收 / 结算单据上的署名，不能从这里改，也不能清空。
+  // 未认证时仍允许先填姓名，但它不会让 real_name_status 变成 verified。
+  if (input.realName !== undefined) {
+    const user = await userModel.findById(req.auth.id)
+    if (
+      user &&
+      user.real_name_status === 'verified' &&
+      input.realName !== user.real_name
+    ) {
+      throw AppError.conflict('姓名已完成实名认证，不可修改')
+    }
+  }
+
+  // 被邀请进入项目后必须完成实名认证，不能通过资料接口清空姓名。
   if (input.realName === null && (await profileService.requiresRealName(req.auth.id))) {
-    throw AppError.badRequest('加入项目后必须填写真实姓名')
+    throw AppError.badRequest('加入项目后必须完成实名认证')
   }
 
   // 改完昵称头像要把带角色的那份资料回给前端，因此这里也走 profileService

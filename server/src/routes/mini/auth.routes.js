@@ -5,11 +5,13 @@
  */
 
 const express = require('express')
+const config = require('../../../config')
 const asyncHandler = require('../../utils/asyncHandler')
 const { requireMini } = require('../../middlewares/miniAuth')
 const { uploadAny } = require('../../middlewares/upload')
 const { createRateLimit } = require('../../middlewares/rateLimit')
 const controller = require('../../controllers/miniAuth.controller')
+const realNameController = require('../../controllers/miniRealName.controller')
 const adminController = require('../../controllers/miniAdminAuth.controller')
 
 const router = express.Router()
@@ -35,6 +37,27 @@ router.put('/profile', requireMini, asyncHandler(controller.updateProfile))
 // 微信 chooseAvatar 返回临时文件，必须由服务端转存后才能长期展示
 router.post('/avatar', requireMini, uploadAny, asyncHandler(controller.uploadAvatar))
 router.post('/bind-phone', requireMini, asyncHandler(controller.bindPhone))
+
+/**
+ * 实名认证（姓名 + 身份证号）。
+ *
+ * 被邀请后必须完成认证才能确认邀请；未被邀请时也可自愿提交。
+ * 单独限流：证件号校验是最容易被脚本反复尝试的入口。
+ */
+const realNameRateLimit = createRateLimit({
+  scope: 'mini-real-name',
+  max: config.realName.maxAttemptsPerMinute,
+  identity: (req) => (req.auth ? `${req.ip}|${req.auth.id}` : req.ip),
+  message: '实名认证提交过于频繁，请稍后再试',
+})
+
+router.get('/real-name', requireMini, asyncHandler(realNameController.status))
+router.post(
+  '/real-name/verify',
+  requireMini,
+  realNameRateLimit,
+  asyncHandler(realNameController.verify)
+)
 
 /**
  * 注销账号（C-5.9 / AC-U19）。

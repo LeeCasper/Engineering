@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > 本文件记录**架构约定**与**踩过的坑**。改动代码前请先读「关键约束」一节 ——
 > 那里的每一条都是实际踩出来的，不是理论建议。
 >
-> **阅读建议**：先看「架构要点」→ 第 1~9 条（数据库/测试基础）→ 第 71~93 条（多租户、后台、小程序管理员、现场签到、主业主与可靠电子签名）。
+> **阅读建议**：先看「架构要点」→ 第 1~9 条（数据库/测试基础）→ 第 71~94 条（多租户、后台、小程序管理员、现场签到、主业主、可靠电子签名与实名认证）。
 > 约束编号是历史追加顺序且被源码注释引用，**不要重排或复用编号**。
-> 93 条约束的完整说明已按主题拆到 [`docs/constraints/`](docs/constraints/)，
+> 94 条约束的完整说明已按主题拆到 [`docs/constraints/`](docs/constraints/)，
 > 本文件只保留编号索引，按编号仍可直接检索。
 
 ## 项目定位
@@ -38,8 +38,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 文件 | 内容 |
 | --- | --- |
 | `需求文档.md` | 产品需求（v2.14），**一切实现的最终依据** |
-| `CLAUDE.md` | 本文件：架构约定、常用命令、93 条约束编号索引 |
-| `docs/constraints/` | 93 条约束的完整说明，按主题拆分；编号与源码注释一一对应 |
+| `CLAUDE.md` | 本文件：架构约定、常用命令、94 条约束编号索引 |
+| `docs/constraints/` | 94 条约束的完整说明，按主题拆分；编号与源码注释一一对应 |
 | `docs/esign-legal.md` | 可靠电子签服务商资质与法律效力核验清单（仅在启用可靠电子签时适用） |
 | `server/.env.example` | 环境变量模板；新增配置必须同步这里与 `server/config/index.js` |
 | `README.md` | 环境准备、数据库初始化、快速开始、交付进度 |
@@ -72,12 +72,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | V2.13 | **可靠电子签名（验收单，可选能力）**（§4.3 / AC-A16 / AC-A27~A33） | ✅ 代码与 mock 测试已完成；**当前产品默认关闭，验收走手写签名（仅项目内部确认，不具备法律效力）**。需要法律效力时配置服务商并设置 `ESIGN_ENABLED=true`：`esign_task`/`esign_identity`/`esign_event`（迁移 026）、回调收件箱、验签/哈希比对、实名主体绑定、私有存储；开启后生产禁止 mock、禁止手写兜底 |
 | V2.14 | **项目竣工总报告** | ✅ 项目状态为「已完工 / 已归档」后按需生成：汇总项目概况、参建成员、阶段验收、验收记录、付款节点与账务；PDF 归档（迁移 028 `project_completion_report`），签名 URL 下载；业主 / 工长可看，监理不可见 |
 | V2.15 | **阶段结算与推进门禁补全**（§4.7 / C-7.5~C-7.9 / AC-S02~AC-S08） | ✅ 验收通过自动生成阶段结算草稿；主工长提交、主业主确认或逐条提异议；确认时在同一事务内把当前阶段置 `settled`、下一阶段置 `active`；阶段结算单 PDF 与周期对账单分开渲染 |
+| V2.16 | **实名认证** | ✅ 新增 `GET /auth/real-name` 与 `POST /auth/real-name/verify`；姓名 + 身份证号校验，证件号**不落库**，只存脱敏号与核验结果（迁移 033 `identity_verification`）；被邀请（pending / active）但未认证时确认邀请返回 409；认证姓名不可再通过资料接口修改；后台成员列表显示「已实名」。核验通道可配：`local` 本地证件校验（basic 等级）或 `aliyun` 阿里云实人认证 `Id2MetaVerify`（provider 等级，按次计费） |
 | — | 租户侧项目数据看板（AC-AD36~43） | 明确不在本轮（V1.2 的项目/工长/财务统计，与平台运营看板是两套口径） |
 | — | 管理后台页面（`admin/`） | ✅ 基座 / 平台与租户双登录 / 项目 / 平台租户 / **平台数据看板** / 平台基础配置 / 基础内容页 / 平台日志中心 / 阶段模板 / 账号 / 配置 / 操作与登录日志 / 内容页 / 反馈 / 排障授权 / 平台只读排障 / 我的导出 |
 | — | C 端小程序（`miniapp/`） | ✅ 主要页面已交付（持续 UI 调整）：首页（我的项目）、项目详情页、工程动态页、记账页、验收页、验收详情页、登录页、角色说明页、我的页 1:1 还原；我的项目 / 项目详情 / 工程动态 / 记账总览、流水与对账 / 消息中心 / 订阅状态 / 意见反馈 / 注销账号 / 租户管理员移动管理端 / **考察计划与路线规划** / **现场签到与考察记录时间轴** / **进度汇报提交** / **门锁密码（业主管理、工长监理查看）** / 搜索筛选 / 邀请确认 / 无项目引导 / 跨项目验收收件箱 / **项目验收报告库** / 业主签名 / **项目竣工总报告** / 移动管理端（工作台、项目、项目详情、跨项目成员目录、阶段模板、我的管理设置）已接通 |
 
-**后端 M1~M13、V1.2-A 路线规划、V1.2-B 现场签到、V2.9 看板、V2.10 小程序品牌、V2.12 主业主、V2.13 可靠电子签名（可选，默认关闭）与 V2.14 项目竣工总报告已完成**：
-180 条路由、45 张业务表、1046 条自动化测试（49 个测试文件）、123~124 项端到端冒烟断言
+**后端 M1~M13、V1.2-A 路线规划、V1.2-B 现场签到、V2.9 看板、V2.10 小程序品牌、V2.12 主业主、V2.13 可靠电子签名（可选，默认关闭）、V2.14 项目竣工总报告与 V2.16 实名认证已完成**：
+182 条路由、46 张业务表、1081 条自动化测试（53 个测试文件）、128~129 项端到端冒烟断言
 （平台账号首登改密那条只在首次运行时出现）。
 
 管理后台页面已交付；C 端小程序的进度汇报提交页也已接通，本轮 C 端页面清单完成。
@@ -263,14 +264,31 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   `PUT /auth/profile` 的昵称不允许空串（会回落到「微信用户」，看起来像保存失败）。
   后台成员列表（网页项目详情「成员」tab、小程序管理端成员页）返回并展示
   `avatar` + `nickname`，昵称为空时回落脱敏手机号 / 首字母。
-  **真实姓名单独存 `user.real_name`（迁移 032）**，由用户在「我的 → 个人资料」填写；
+  **真实姓名存 `user.real_name`（迁移 032），认证状态存 `real_name_status`（迁移 033）**：
   所有“人”的展示名统一按 `real_name → nickname → 脱敏手机号 → 角色占位` 取，
   项目列表 / 项目详情 / 联系人 / 成员目录 / 验收流转都走这个优先级。
   不要用真实姓名覆盖 `nickname` —— 微信昵称仍要能在资料面板里单独编辑。
-  **被邀请之后真实姓名是必填项**：用户存在 pending/active 成员关系但 `real_name`
-  为空时，`GET /auth/profile` 返回 `requiresRealName: true`，小程序自动弹出资料面板；
-  确认邀请接口会返回 409（`detail.requiresRealName`），资料接口也禁止把已填的
-  真实姓名清空。还没被邀请的账号仍可留空。
+  **被邀请之后必须完成实名认证**：用户存在 pending/active 成员关系但
+  `real_name_status != 'verified'` 时，`GET /auth/profile` 返回
+  `requiresRealNameAuth: true`（旧字段 `requiresRealName` 保留为同义），
+  小程序在「我的 → 资料」里给出「去认证」入口；确认邀请接口返回 409
+  （`detail.requiresRealNameAuth`），只填姓名未认证同样会被拦下。
+  认证走 `POST /auth/real-name/verify`（姓名 + 身份证号 + 显式 consent）；
+  **证件号不落库**，库里只有 `id_card_mask`（前 6 后 4）与
+  `identity_verification` 审计流水，完整证件号不得进入日志、错误响应或 storage。
+  核验通道由 `REAL_NAME_PROVIDER` 决定：
+  - `local`：本地证件校验（校验位 / 出生日期 / 省级行政区），接口返回
+    `verificationLevel: 'basic'`，**不得宣传成公安库或第三方核验**；
+  - `aliyun`：阿里云实人认证 `Id2MetaVerify`（姓名 + 身份证号二要素），
+    返回 `verificationLevel: 'provider'`。AccessKey 只放服务端
+    `ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET`，启动自检会在
+    provider=aliyun 但缺密钥时直接拒绝启动；网络/鉴权/欠费错误一律转 503，
+    不能当成「身份不通过」。
+  新增 provider 必须实现同样的 `verify()` 契约；未实现的 provider 返回 503，
+  不能静默降级成本地校验。小程序授权文案要根据状态接口的 `provider` 字段说明
+  证件信息是否会传输给服务商。
+  认证后的姓名不可通过 `PUT /auth/profile` 修改（验收 / 结算单据的署名依据）。
+  还没被邀请的账号仍可留空、不强制认证。
 - **登录**：C 端身份是微信 `openid`，没有短信验证码接口。登录页的「登录 / 微信登录」
   都走 `uni.login → POST /auth/login`；手机号输入框在开发环境（`WX_MOCK=true`）
   顺带绑定手机号。**不要给短信登录做假倒计时** —— 后端没有这个能力。
@@ -446,6 +464,15 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   移除仍走具体项目的 `/admin/projects/:id/members`，不要为写操作另开跨项目接口。
   项目详情 `pages/admin/project/detail` 按 Stitch `64c024eb…` 还原，单项目成员页
   `pages/admin/project/members` 复用成员卡片与筛选样式；两页都不显示底部导航。
+  **管理端顶部导航统一用 `AdminNav` / `AdminRootHeader`**，右侧安全区由
+  `composables/useCapsuleInsets.js` 读取微信胶囊 `getMenuButtonBoundingClientRect()`
+  动态计算（`rightInset = 屏幕宽 − 胶囊 left + 间隙`），**不要写死 `dp(92)`**：
+  92dp 在 375px 屏只有约 88px，胶囊连同右边距接近 95px，右侧按钮会被压到胶囊下面。
+  H5 / App 没有胶囊时 `rightInset` 为 0，回落到组件自己的 CSS 内边距；
+  MP 测量失败时按屏幕宽度约 28% 保守预留。新增管理端页面必须复用这两个组件，
+  不要另画一条顶部栏。顶部右侧动作统一用 `AdminHeaderAction`
+  （浅橙玻璃胶囊 `variant="pill"` / 圆形图标 `variant="icon"`），
+  不要在页面里再写 `edit-pill`、`new-pill`、`admin-nav-action` 这类私有样式。
 - **H5 下的 tabBar 在页面内**：底部浮层（筛选、阶段、签名等）的 z-index 必须高于 H5 的 `uni-tabbar`（当前用 1000）；小程序原生 tabBar 在 webview 外，不受影响。
 - **H5 的 `uni.showModal` 要盖住管理端面板**：它默认 `z-index: 999`，而管理端底部面板是 1300，
   从成员操作 / 模板编辑面板里弹出的确认框会被盖住、按钮点不到。`App.vue` 已在 H5 下把
@@ -661,7 +688,7 @@ controller / service 里**不允许**出现 `res.status(4xx).json(...)` —— �
 
 > 编号是**历史追加顺序**，不是阅读顺序；源码注释与文档会引用具体编号
 > （例如「CLAUDE.md 第 28 条」）。**不要重排、不要复用已删除的编号**，
-> 新增条目一律追加到末尾。多租户、后台、小程序管理员、现场签到、主业主与可靠电子签名相关的条目集中在第 71~93 条。
+> 新增条目一律追加到末尾。多租户、后台、小程序管理员、现场签到、主业主、可靠电子签名与实名认证相关的条目集中在第 71~94 条。
 >
 > 完整说明已按主题拆到 [`docs/constraints/`](docs/constraints/)；本文件保留
 > 编号索引，源码注释里的「CLAUDE.md 第 N 条」仍然可以按编号查到。
@@ -873,6 +900,12 @@ controller / service 里**不允许**出现 `res.status(4xx).json(...)` —— �
 完整说明：[docs/constraints/13-esign.md](docs/constraints/13-esign.md)
 
 - [93. 可靠电子签名（可选）：回调不是事实、验签+哈希+实名+行锁缺一不可；关闭时走手写签名](docs/constraints/13-esign.md#c93)
+
+### 实名认证（94）
+
+完整说明：[docs/constraints/14-real-name.md](docs/constraints/14-real-name.md)
+
+- [94. 实名认证：证件号不落库；本地校验 ≠ 公安库核验，等级必须如实标注](docs/constraints/14-real-name.md#c94)
 
 ## 尚未确定 / 需注意
 

@@ -206,11 +206,17 @@ async function confirmInvitation(userId, memberId) {
   const user = await userModel.findById(userId)
   if (!user) throw AppError.notFound('用户不存在')
 
-  // 被邀请之后必须填写真实姓名。放在角色校验之前：这是资料完整性门槛，
-  // 与「你是以什么角色加入」无关，先提示用户去补资料。
-  if (!String(user.real_name || '').trim()) {
-    throw AppError.conflict('请先填写真实姓名后再确认邀请', {
-      detail: { requiresRealName: true },
+  // 被邀请之后必须完成实名认证。放在角色校验之前：这是身份门槛，
+  // 与「你是以什么角色加入」无关，先提示用户去认证。
+  // 未认证但已填 real_name 的旧数据同样会被拦下（V2.16 升级项）。
+  if (user.real_name_status !== 'verified') {
+    throw AppError.conflict('请先完成实名认证后再确认邀请', {
+      detail: {
+        requiresRealNameAuth: true,
+        // 兼容旧版小程序：旧客户端只认 requiresRealName
+        requiresRealName: true,
+        realNameStatus: user.real_name_status || 'none',
+      },
     })
   }
 

@@ -8,10 +8,14 @@
     >
       <template #right>
         <view v-if="detail" class="nav-actions">
-          <view v-if="!isArchived" class="edit-pill" @tap.stop="goEdit">编辑项目</view>
-          <view v-if="hasActions" class="more-btn" @tap.stop="moreSheetOpen = true">
+          <AdminHeaderAction v-if="!isArchived" label="编辑项目" @tap="goEdit" />
+          <AdminHeaderAction
+            v-if="hasActions"
+            variant="icon"
+            @tap="moreSheetOpen = true"
+          >
             <image class="more-icon" src="/static/images/icon-admin-more-gray.png" mode="aspectFit" />
-          </view>
+          </AdminHeaderAction>
         </view>
       </template>
     </AdminNav>
@@ -251,6 +255,7 @@
 import { computed, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import AdminNav from '../../../components/admin/AdminNav.vue'
+import AdminHeaderAction from '../../../components/admin/AdminHeaderAction.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
 import { resolveMediaUrl } from '../../../api/request'
 import {
@@ -565,55 +570,14 @@ function goStages() {
   gap: dp(8);
 }
 
-.edit-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: dp(30);
-  padding: 0 dp(12);
-  border: 1px solid rgba(255, 255, 255, 0.76);
-  border-radius: dp(999);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 243, 236, 0.94) 0%,
-    rgba(255, 227, 214, 0.74) 100%
-  );
-  -webkit-backdrop-filter: blur(14px) saturate(170%);
-  backdrop-filter: blur(14px) saturate(170%);
-  color: #eb5c20;
-  font-size: dp(12);
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
-}
-
-.more-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: dp(30);
-  height: dp(30);
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  border-radius: 50%;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.92) 0%,
-    rgba(255, 255, 255, 0.68) 100%
-  );
-  -webkit-backdrop-filter: blur(14px) saturate(170%);
-  backdrop-filter: blur(14px) saturate(170%);
-  box-shadow:
-    0 dp(2) dp(8) rgba(29, 33, 41, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
 .more-icon {
   width: dp(18);
   height: dp(18);
 }
 
 .content {
-  padding: 0 dp(16) dp(24);
+  /* 顶部导航是吸顶玻璃，首张卡片不能贴着导航下沿 */
+  padding: dp(12) dp(16) dp(24);
 }
 
 .archive-banner {

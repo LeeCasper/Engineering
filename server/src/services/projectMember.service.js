@@ -455,6 +455,9 @@ function toMemberView(row) {
     statusLabel: MEMBER_STATUS_LABELS[row.status] || row.status,
     nickname: row.nickname,
     realName: row.real_name || null,
+    // 实名认证状态：后台只需知道「是否已认证」，不展示证件脱敏号
+    realNameVerified: row.real_name_status === 'verified',
+    realNameStatus: row.real_name_status || 'none',
     // 后台成员列表展示用户自己设置的头像；没有头像时前端回落首字母
     avatar: row.avatar || null,
     // 手机号脱敏（与 AC-U02 同口径）。成员的完整手机号没有对外暴露的必要，

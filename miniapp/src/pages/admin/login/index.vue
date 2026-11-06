@@ -27,7 +27,11 @@
           :disabled="devLogging"
           @tap="devQuickLogin"
         >
-          {{ devLogging ? '登录中…' : '一键登录管理端' }}
+          <view v-if="devLogging" class="admin-btn-loading">
+            <view class="admin-login-spinner admin-login-spinner--ghost" />
+            <text>正在登录</text>
+          </view>
+          <text v-else>一键登录管理端</text>
         </button>
       </view>
       <!-- dev-only:end -->
@@ -55,13 +59,19 @@
               </view>
               <text class="binding-tenant">{{ binding.tenantName }} · {{ binding.tenantCode }}</text>
             </view>
-            <text class="binding-enter">{{ loggingBindingId === binding.bindingId ? '进入中…' : '进入 ›' }}</text>
+            <view class="binding-enter">
+              <view
+                v-if="loggingBindingId === binding.bindingId"
+                class="binding-spinner"
+              />
+              <text>{{ loggingBindingId === binding.bindingId ? '进入中' : '进入 ›' }}</text>
+            </view>
           </view>
         </view>
       </view>
 
       <!-- 账号密码登录 -->
-      <view class="admin-card">
+      <view class="admin-card password-card" :class="{ 'password-card--shake': shaking }">
         <view class="admin-section-head">
           <view>
             <text class="admin-section-title">账号密码登录</text>
@@ -130,13 +140,40 @@
           :disabled="submitting"
           @tap="submitPasswordLogin"
         >
-          {{ submitting ? '登录中…' : '登录管理端' }}
+          <view v-if="submitting" class="admin-btn-loading">
+            <view class="admin-login-spinner" />
+            <text>正在登录</text>
+          </view>
+          <text v-else>登录管理端</text>
         </button>
       </view>
 
       <view class="admin-note">
         管理端与业主/工长/监理身份相互独立：C 端账号的角色在邀请时固定，
         同时用管理员账号进入管理端。普通用户继续使用微信登录，管理员从这里进入管理端。
+      </view>
+    </view>
+
+    <!-- 管理端登录成功过场：遮住 redirectTo 的硬切换 -->
+    <view v-if="entering" class="enter-overlay">
+      <view class="enter-mark">
+        <view class="enter-ring enter-ring--outer" />
+        <view class="enter-ring enter-ring--inner" />
+        <image
+          class="enter-logo"
+          :src="branding.logoUrl || '/static/images/logo.png'"
+          mode="aspectFit"
+        />
+      </view>
+      <text class="enter-name">{{ branding.name }}</text>
+      <text class="enter-tip">正在进入管理端</text>
+      <view class="enter-dots">
+        <view
+          v-for="n in 3"
+          :key="n"
+          class="enter-dot"
+          :style="{ animationDelay: `${(n - 1) * 140}ms` }"
+        />
       </view>
     </view>
   </view>
@@ -197,6 +234,10 @@ const error = ref('')
 const bindings = ref([])
 const loggingBindingId = ref(null)
 const redirect = ref('/pages/admin/workbench/index')
+// 登录成功后的全屏过场；与 submitting 分开，避免按钮状态和进入动画互相打断
+const entering = ref(false)
+// 登录失败的轻微抖动
+const shaking = ref(false)
 
 onLoad((options) => {
   loadBranding()
@@ -260,10 +301,42 @@ function validateForm() {
   return ''
 }
 
+/** 登录失败时抖动账号密码卡，避免只剩一行错误文字 */
+function shakeForm() {
+  shaking.value = true
+  setTimeout(() => {
+    shaking.value = false
+  }, 420)
+}
+
+/**
+ * 登录成功后的过场。
+ *
+ * 管理端用 redirectTo 替换当前页，视觉上是硬切；先显示全屏过场，
+ * 停留一小段时间再跳。若跳转失败，过场会自动收起并恢复登录按钮。
+ */
+function playEnterTransition(action) {
+  // 先收键盘：微信在键盘收起过程中重排页面，全屏过场容易被顶到页面下方
+  if (typeof uni.hideKeyboard === 'function') uni.hideKeyboard()
+  entering.value = true
+  setTimeout(() => {
+    action()
+    setTimeout(() => {
+      entering.value = false
+      submitting.value = false
+      devLogging.value = false
+      loggingBindingId.value = null
+    }, 1500)
+  }, 680)
+}
+
 async function submitPasswordLogin() {
   if (submitting.value) return
   error.value = validateForm()
-  if (error.value) return
+  if (error.value) {
+    shakeForm()
+    return
+  }
 
   submitting.value = true
   try {
@@ -276,23 +349,25 @@ async function submitPasswordLogin() {
     })
     await completeLogin(result, form.tenantCode.trim())
   } catch (err) {
+    shakeForm()
     error.value = err.message || '登录失败'
     form.password = ''
     form.captchaAnswer = ''
     await loadCaptcha()
   } finally {
-    submitting.value = false
+    // 进入过场期间保留按钮 loading，避免过场下面又变回可点击
+    if (!entering.value) submitting.value = false
   }
 }
 
 /** 密码登录与开发环境一键登录共用：落会话 → 校验身份 → 跳转 */
-async function completeLogin(result, tenantCode) {
+async function completeLogin(result, tenantCode, defaultAuthMethod = 'password') {
   setLastAdminTenantCode(tenantCode)
   setAdminSession({
     token: result.token,
     admin: result.admin,
     meta: {
-      authMethod: result.authMethod || 'password',
+      authMethod: result.authMethod || defaultAuthMethod,
       issuedAt: result.issuedAt,
       tenantCode,
     },
@@ -307,12 +382,12 @@ async function completeLogin(result, tenantCode) {
 
   if (profile.mustChangePassword) {
     uni.showToast({ title: '请先修改初始密码', icon: 'none' })
-    redirectToAdminChangePassword(true)
+    playEnterTransition(() => redirectToAdminChangePassword(true))
     return
   }
 
   await maybeBindWechat(profile)
-  uni.redirectTo({ url: redirect.value })
+  playEnterTransition(() => uni.redirectTo({ url: redirect.value }))
 }
 
 /* dev-only:start */
@@ -338,10 +413,11 @@ async function devQuickLogin() {
     })
     await completeLogin(result, devAccount.tenantCode)
   } catch (err) {
+    shakeForm()
     error.value = err.message || '一键登录失败'
     await loadCaptcha()
   } finally {
-    devLogging.value = false
+    if (!entering.value) devLogging.value = false
   }
 }
 /* dev-only:end */
@@ -384,34 +460,14 @@ async function loginByBinding(binding) {
   loggingBindingId.value = binding.bindingId
   try {
     const result = await wechatAdminLogin(binding.bindingId)
-    setAdminSession({
-      token: result.token,
-      admin: result.admin,
-      meta: {
-        authMethod: result.authMethod || 'wechat',
-        issuedAt: result.issuedAt,
-        tenantCode: result.admin && result.admin.tenantCode,
-      },
-    })
-
-    const profile = await fetchAdminProfile()
-    if (!profile || profile.role === 'platform' || profile.tenantId == null) {
-      clearAdminSession()
-      throw new Error('该账号不能进入租户管理端')
-    }
-    setAdminUser(profile)
-
-    if (profile.mustChangePassword) {
-      redirectToAdminChangePassword(true)
-      return
-    }
-
-    uni.redirectTo({ url: redirect.value })
+    // 与密码登录共用同一套「落会话 → 校验身份 → 过场 → 跳转」
+    await completeLogin(result, result.admin && result.admin.tenantCode, 'wechat')
   } catch (err) {
+    shakeForm()
     error.value = err.message || '免密登录失败'
     await loadBindings()
   } finally {
-    loggingBindingId.value = null
+    if (!entering.value) loggingBindingId.value = null
   }
 }
 </script>
@@ -547,11 +603,23 @@ async function loginByBinding(binding) {
 }
 
 .binding-enter {
+  display: flex;
+  align-items: center;
   margin-left: dp(8);
   color: #eb5c20;
   font-size: dp(11);
   font-weight: 500;
   white-space: nowrap;
+}
+
+.binding-spinner {
+  width: dp(11);
+  height: dp(11);
+  margin-right: dp(4);
+  border: 1.5px solid rgba(235, 92, 32, 0.2);
+  border-top-color: #eb5c20;
+  border-radius: 50%;
+  animation: admin-login-spin 720ms linear infinite;
 }
 
 .captcha-row {
@@ -594,5 +662,190 @@ async function loginByBinding(binding) {
   color: #f53f3f;
   font-size: dp(11);
   line-height: 1.5;
+}
+
+/* ── 登录按钮 loading 与失败抖动 ── */
+.admin-btn-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-login-spinner {
+  width: dp(14);
+  height: dp(14);
+  margin-right: dp(7);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: admin-login-spin 720ms linear infinite;
+}
+
+.admin-login-spinner--ghost {
+  border-color: rgba(235, 92, 32, 0.2);
+  border-top-color: #eb5c20;
+}
+
+@keyframes admin-login-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.password-card--shake {
+  animation: password-card-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes password-card-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  18% {
+    transform: translateX(dp(-7));
+  }
+  36% {
+    transform: translateX(dp(6));
+  }
+  54% {
+    transform: translateX(dp(-4));
+  }
+  72% {
+    transform: translateX(dp(3));
+  }
+  88% {
+    transform: translateX(dp(-1));
+  }
+}
+
+/* ── 登录成功过场（内联在页面里，避免自定义组件在微信端的定位差异） ── */
+.enter-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(235, 92, 32, 0.14) 0%, rgba(235, 92, 32, 0) 46%),
+    radial-gradient(circle at 18% 82%, rgba(255, 196, 150, 0.18) 0%, rgba(255, 196, 150, 0) 42%),
+    #faf7f4;
+  animation: enter-overlay-in 260ms ease-out both;
+}
+
+@keyframes enter-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.enter-mark {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(124);
+  height: dp(124);
+  animation: enter-mark-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes enter-mark-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.enter-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(235, 92, 32, 0.16);
+}
+
+.enter-ring--outer {
+  width: dp(120);
+  height: dp(120);
+  border-top-color: rgba(235, 92, 32, 0.82);
+  border-right-color: rgba(235, 92, 32, 0.34);
+  animation: enter-spin 1100ms linear infinite;
+}
+
+.enter-ring--inner {
+  width: dp(96);
+  height: dp(96);
+  border-bottom-color: rgba(235, 92, 32, 0.52);
+  animation: enter-spin 1600ms linear infinite reverse;
+}
+
+@keyframes enter-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.enter-logo {
+  position: relative;
+  z-index: 1;
+  width: dp(74);
+  height: dp(74);
+  border-radius: dp(20);
+  background: #fff;
+  box-shadow:
+    0 dp(12) dp(34) rgba(235, 92, 32, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.enter-name {
+  margin-top: dp(22);
+  color: #2b1a12;
+  font-size: dp(22);
+  font-weight: 800;
+  letter-spacing: dp(-0.3);
+}
+
+.enter-tip {
+  margin-top: dp(8);
+  color: #8b8179;
+  font-size: dp(12);
+  letter-spacing: dp(0.2);
+}
+
+.enter-dots {
+  display: flex;
+  align-items: center;
+  margin-top: dp(18);
+}
+
+.enter-dot {
+  width: dp(6);
+  height: dp(6);
+  margin: 0 dp(3);
+  border-radius: 50%;
+  background: #eb5c20;
+  animation: enter-dot 900ms ease-in-out infinite;
+}
+
+@keyframes enter-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.22;
+    transform: translateY(0) scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(dp(-4)) scale(1);
+  }
 }
 </style>

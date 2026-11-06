@@ -298,7 +298,7 @@ describe('占位账号合并（§5.2 按手机号邀请的必然结果）', () =
 describe('v2.5 账号固定角色', () => {
   it('确认邀请时会锁定账号角色；之后不能确认另一角色的邀请', async () => {
     const login = await mini.login('fixed-role-confirm')
-    await db.query('UPDATE user SET real_name = ? WHERE id = ?', ['测试用户', login.userId])
+    await mini.verifyRealName(login.token, { realName: '测试用户' })
     const projectId = await mini.createProject()
     const memberId = await mini.addMember({
       projectId,
@@ -660,7 +660,7 @@ describe('AC-AD18 / AC-AD19 邀请确认', () => {
 
   it('确认后立即获得权限，项目出现在列表中（AC-AD19）', async () => {
     const { token, userId } = await mini.login('code-confirm')
-    await db.query('UPDATE user SET real_name = ? WHERE id = ?', ['待确认用户', userId])
+    await mini.verifyRealName(token, { realName: '待确认用户' })
     const projectId = await mini.createProject({ name: '待确认的项目' })
     const memberId = await mini.addMember({ projectId, userId, role: 'foreman', status: 'pending' })
 
@@ -674,30 +674,30 @@ describe('AC-AD18 / AC-AD19 邀请确认', () => {
     expect(after.body.data.groups[0].items[0].name).toBe('待确认的项目')
   })
 
-  it('被邀请后必须填写真实姓名才能确认；补全后可以加入', async () => {
+  it('被邀请后必须完成实名认证才能确认；认证后可以加入', async () => {
     const { token, userId } = await mini.login('code-require-real-name')
     const projectId = await mini.createProject({ name: '实名项目' })
     const memberId = await mini.addMember({ projectId, userId, role: 'foreman', status: 'pending' })
 
     const profile = await mini.authed('get', '/auth/profile', token)
-    expect(profile.body.data.requiresRealName).toBe(true)
+    expect(profile.body.data.requiresRealNameAuth).toBe(true)
 
     const blocked = await mini.authed('post', `/invitations/${memberId}/confirm`, token)
     expect(blocked.status).toBe(409)
-    expect(blocked.body.message).toContain('真实姓名')
-    expect(blocked.body.data.requiresRealName).toBe(true)
+    expect(blocked.body.message).toContain('实名认证')
+    expect(blocked.body.data.requiresRealNameAuth).toBe(true)
 
-    await mini.authed('put', '/auth/profile', token).send({ realName: '张三' })
+    await mini.verifyRealName(token, { realName: '张三' })
     const confirmed = await mini.authed('post', `/invitations/${memberId}/confirm`, token)
     expect(confirmed.status).toBe(200)
 
     const after = await mini.authed('get', '/auth/profile', token)
-    expect(after.body.data.requiresRealName).toBe(false)
+    expect(after.body.data.requiresRealNameAuth).toBe(false)
   })
 
   it('重复确认返回 409，不产生两次成功', async () => {
     const { token, userId } = await mini.login('code-reconfirm')
-    await db.query('UPDATE user SET real_name = ? WHERE id = ?', ['重复确认用户', userId])
+    await mini.verifyRealName(token, { realName: '重复确认用户' })
     const projectId = await mini.createProject()
     const memberId = await mini.addMember({ projectId, userId, role: 'owner', status: 'pending' })
 
@@ -806,7 +806,7 @@ describe('邀请拒绝（§5.2 流程的另一半）', () => {
 
   it('已确认的成员不能用拒绝接口退出（语义不同，应走解除）', async () => {
     const { token, userId } = await mini.login('code-reject-after-confirm')
-    await db.query('UPDATE user SET real_name = ? WHERE id = ?', ['已确认用户', userId])
+    await mini.verifyRealName(token, { realName: '已确认用户' })
     const projectId = await mini.createProject()
     const memberId = await mini.addMember({ projectId, userId, role: 'owner', status: 'pending' })
 
@@ -820,7 +820,7 @@ describe('邀请拒绝（§5.2 流程的另一半）', () => {
 
   it('拒绝后管理员重新邀请，同一行改回 pending 并可再次确认', async () => {
     const { token, userId } = await mini.login('code-reinvite')
-    await db.query('UPDATE user SET real_name = ? WHERE id = ?', ['重新邀请用户', userId])
+    await mini.verifyRealName(token, { realName: '重新邀请用户' })
     const projectId = await mini.createProject()
     const memberId = await mini.addMember({ projectId, userId, role: 'owner', status: 'pending' })
 

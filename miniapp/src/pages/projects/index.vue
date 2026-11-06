@@ -746,19 +746,22 @@ async function onAccept(inv) {
     uni.showToast({ title: '已加入项目', icon: 'success' })
     await load()
   } catch (err) {
-    // 被邀请后必须先补真实姓名；后端返回 detail.requiresRealName
-    if (err.data && err.data.requiresRealName) {
-      const goFill = await new Promise((resolve) => {
+    // 被邀请后必须先完成实名认证；后端返回 detail.requiresRealNameAuth
+    // （requiresRealName 是旧版字段名，保留兼容）
+    if (err.data && (err.data.requiresRealNameAuth || err.data.requiresRealName)) {
+      const goVerify = await new Promise((resolve) => {
         uni.showModal({
-          title: '请先填写真实姓名',
-          content: '被邀请加入项目后需要先填写真实姓名，确认邀请后才能成为项目成员。',
-          confirmText: '去填写',
+          title: '请先完成实名认证',
+          content: '被邀请加入项目后需要先完成实名认证，认证通过后才能确认邀请。',
+          confirmText: '去认证',
           cancelText: '稍后',
           success: (res) => resolve(Boolean(res.confirm)),
           fail: () => resolve(false),
         })
       })
-      if (goFill) uni.switchTab({ url: '/pages/mine/index' })
+      if (goVerify) {
+        uni.navigateTo({ url: '/pages/mine/real-name?from=invitation' })
+      }
       return
     }
     uni.showToast({ title: err.message || '确认失败', icon: 'none' })

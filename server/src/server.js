@@ -22,6 +22,7 @@ async function bootstrap() {
     require('./utils/password').assertSecureConfig()
     require('./services/doorCode.service').assertKeyConfigured()
     require('./services/esign/config').assertSafeConfig()
+    require('./services/identity.service').assertSafeConfig()
   } catch (err) {
     logger.error(`配置自检未通过，进程退出：${err.message}`)
     process.exit(1)

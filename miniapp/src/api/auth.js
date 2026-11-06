@@ -21,6 +21,19 @@ export function updateProfile(data) {
   return request({ url: '/auth/profile', method: 'PUT', data })
 }
 
+/** 实名认证状态（被邀请后必须完成） */
+export function getRealNameStatus() {
+  return request({ url: '/auth/real-name' })
+}
+
+/**
+ * 提交实名认证：姓名 + 身份证号。
+ * 证件号只在本次请求里出现，服务端不落明文；前端也不要写 storage / 日志。
+ */
+export function verifyRealName(data) {
+  return request({ url: '/auth/real-name/verify', method: 'POST', data })
+}
+
 /**
  * 上传头像。
  *

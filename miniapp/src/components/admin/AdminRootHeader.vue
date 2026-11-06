@@ -2,7 +2,11 @@
   <view
     class="root-header"
     :class="{ 'root-header--glass': glass }"
-    :style="{ paddingTop: `${safeTop + 6}px`, background: glass ? undefined : background }"
+    :style="{
+      paddingTop: `${safeTop + 6}px`,
+      paddingRight: rightInset ? `${rightInset}px` : undefined,
+      background: glass ? undefined : background,
+    }"
   >
     <view class="root-header-row">
       <view v-if="back" class="root-back" @tap="onBack">
@@ -20,8 +24,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
 import { adminBack } from '../../utils/admin'
+import { useCapsuleInsets } from '../../composables/useCapsuleInsets'
 
 defineOptions({ name: 'AdminRootHeader' })
 
@@ -35,8 +39,7 @@ const props = defineProps({
   glass: { type: Boolean, default: false },
 })
 
-const info = uni.getSystemInfoSync()
-const safeTop = ref(info.statusBarHeight || 12)
+const { statusBarHeight: safeTop, rightInset } = useCapsuleInsets()
 
 function onBack() {
   adminBack(props.fallback)
@@ -124,11 +127,4 @@ function onBack() {
   margin-left: dp(10);
   flex-shrink: 0;
 }
-
-/* 小程序右上角有微信原生胶囊，右侧动作往左让位 */
-/* #ifdef MP-WEIXIN */
-.root-header {
-  padding-right: dp(92);
-}
-/* #endif */
 </style>

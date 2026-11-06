@@ -328,12 +328,19 @@ async function clientFlow(ctx) {
   })
   const supervisorFinalToken = bindSupervisor.body.data.token || supervisorToken
 
-  // 确认邀请 → 成员转为 active
+  // 确认邀请 → 成员转为 active。
+  // V2.16 起被邀请人必须先完成实名认证，否则确认接口返回 409。
   for (const [token, label] of [
     [foremanFinalToken, '工长'],
     [ownerFinalToken, '业主'],
     [supervisorFinalToken, '监理'],
   ]) {
+    const verified = await http('POST', '/auth/real-name/verify', {
+      token,
+      body: { realName: `冒烟${label}`, idCardNo: '310101199001011234', consent: true },
+    })
+    check(`完成${label}实名认证`, verified.status === 200)
+
     const invitations = await http('GET', '/projects', { token })
     const pending = invitations.body.data.pendingInvitations || []
     if (pending.length > 0) {
@@ -855,6 +862,13 @@ async function doorCodeFlow(ctx, clients) {
     await http('POST', '/auth/bind-phone', { token: login.body.data.token, body: { phone } })
     const relogin = await http('POST', '/auth/login', { body: { code: `smoke-door-${role}-${RUN_ID}` } })
     tokens[role] = relogin.body.data.token
+
+    // 被邀请人必须先实名认证才能确认邀请
+    const verified = await http('POST', '/auth/real-name/verify', {
+      token: tokens[role],
+      body: { realName: `门锁${role}`, idCardNo: '310101199001011234', consent: true },
+    })
+    check(`门锁流程：${role} 完成实名认证`, verified.status === 200)
 
     const memberId = invited.body.data.memberId
     const confirmed = await http('POST', `/invitations/${memberId}/confirm`, { token: tokens[role] })

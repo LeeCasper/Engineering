@@ -2,7 +2,7 @@
   <view class="admin-page">
     <AdminNav title="阶段与工序" :fallback="`/pages/admin/project/detail?id=${projectId}`">
       <template #right>
-        <text v-if="canWrite" class="admin-nav-action" @tap="openCreateStage">加阶段</text>
+        <AdminHeaderAction v-if="canWrite" label="加阶段" @tap="openCreateStage" />
       </template>
     </AdminNav>
 
@@ -270,6 +270,7 @@
 import { computed, reactive, ref } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import AdminNav from '../../../components/admin/AdminNav.vue'
+import AdminHeaderAction from '../../../components/admin/AdminHeaderAction.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
 import {
   fetchAdminProject,
@@ -638,13 +639,6 @@ function removeItem(item) {
 </script>
 
 <style scoped lang="scss">
-.admin-nav-action {
-  padding: dp(4) dp(2);
-  color: #eb5c20;
-  font-size: dp(13);
-  font-weight: 500;
-}
-
 .top-note {
   margin: dp(10) 0 dp(12);
 }

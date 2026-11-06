@@ -187,6 +187,14 @@
       }
     },
     {
+      "path": "pages/mine/real-name",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "backgroundColor": "#FAF7F4"
+      }
+    },
+    {
       "path": "pages/ledger/index",
       "style": {
         "navigationStyle": "custom",

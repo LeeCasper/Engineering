@@ -35,20 +35,28 @@ async function getProfile(userId, { projectId } = {}) {
   const user = await userModel.findById(userId)
   if (!user) throw AppError.notFound('用户不存在')
 
-  // 被邀请进入项目后必须填写真实姓名；还没被邀请时可以留空。
-  // pending 也算「被邀请」：不填完就不能确认邀请。
+  // 被邀请进入项目后必须完成实名认证；还没被邀请时可以留空。
+  // pending 也算「被邀请」：不认证就不能确认邀请。
   const membershipCount = await db.count(
     `FROM project_member
       WHERE user_id = ? AND status IN ('pending', 'active') AND deleted_at IS NULL`,
     [userId]
   )
-  const requiresRealName = membershipCount > 0 && !String(user.real_name || '').trim()
+  const realNameVerified = user.real_name_status === 'verified'
+  const requiresRealNameAuth = membershipCount > 0 && !realNameVerified
 
   const profile = {
     id: user.id,
     nickname: user.nickname,
     realName: user.real_name,
-    requiresRealName,
+    // 兼容旧字段名：语义已从「姓名为空」升级为「未完成实名认证」
+    requiresRealName: requiresRealNameAuth,
+    requiresRealNameAuth,
+    realNameStatus: user.real_name_status || 'none',
+    realNameVerified,
+    realNameVerifiedAt: user.real_name_verified_at || null,
+    realNameVerifyMethod: user.real_name_verify_method || null,
+    idCardMask: user.id_card_mask || null,
     avatar: user.avatar,
     // AC-U02：只回脱敏手机号，接口不做完整回显
     phoneMasked: miniAuthService.maskPhone(user.phone),
@@ -262,12 +270,12 @@ async function getContacts(userId, projectId) {
 }
 
 /**
- * 被邀请（pending/active）且尚未填写真实姓名。
+ * 被邀请（pending/active）且尚未完成实名认证。
  * 邀请确认与资料清空都要用它，避免只在前端拦截。
  */
 async function requiresRealName(userId) {
   const user = await userModel.findById(userId)
-  if (!user || String(user.real_name || '').trim()) return false
+  if (!user || user.real_name_status === 'verified') return false
   const count = await db.count(
     `FROM project_member
       WHERE user_id = ? AND status IN ('pending', 'active') AND deleted_at IS NULL`,

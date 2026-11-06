@@ -195,6 +195,15 @@ const roleTagType: Record<string, 'primary' | 'success' | 'warning'> = {
           >
             临时业主
           </ElTag>
+          <ElTag
+            v-if="row.realNameVerified && row.status !== 'removed'"
+            class="ml-6px"
+            type="success"
+            size="small"
+            effect="plain"
+          >
+            已实名
+          </ElTag>
         </template>
       </ElTableColumn>
 

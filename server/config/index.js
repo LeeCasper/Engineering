@@ -105,6 +105,39 @@ const config = {
     mock: bool('WX_MOCK', true),
   },
 
+  realName: {
+    /**
+     * 实名认证（C 端）。
+     *
+     * provider 取值：
+     *   - local  本地证件校验（18 位格式、校验位、出生日期、省级行政区）。
+     *            它不能证明「姓名与证件号属于同一个人」，接口返回 basic 等级；
+     *   - aliyun 阿里云实人认证 Id2MetaVerify（姓名 + 身份证号二要素）。
+     *            需要配置 ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET。
+     *   其它值一律让认证接口返回 503，不静默降级。
+     *
+     * 生产建议使用 aliyun；local 只适合开发联调或无外网依赖的部署。
+     */
+    enabled: bool('REAL_NAME_ENABLED', true),
+    provider: str('REAL_NAME_PROVIDER', 'local').toLowerCase(),
+    consentVersion: str('REAL_NAME_CONSENT_VERSION', '2026-11-v1'),
+    /** 单用户每分钟最多提交几次；防止用脚本反复撞校验位 */
+    maxAttemptsPerMinute: int('REAL_NAME_MAX_ATTEMPTS_PER_MINUTE', 10),
+    aliyun: {
+      accessKeyId: str('ALIYUN_ACCESS_KEY_ID', ''),
+      accessKeySecret: str('ALIYUN_ACCESS_KEY_SECRET', ''),
+      /** 可写域名或完整 URL；默认国内版 CloudAuth 接入点 */
+      endpoint: str('ALIYUN_REAL_NAME_ENDPOINT', 'cloudauth.aliyuncs.com'),
+      timeoutMs: int('ALIYUN_REAL_NAME_TIMEOUT_MS', 8000),
+      /**
+       * 单用户每小时最多发起多少次阿里云调用。
+       * 这是**成本护栏**，不是身份校验逻辑：接口按次计费，
+       * 只靠 10 次/分钟的通用限流不足以阻止有人用随机证件号刷调用。
+       */
+      maxAttemptsPerHour: int('ALIYUN_REAL_NAME_MAX_ATTEMPTS_PER_HOUR', 10),
+    },
+  },
+
   upload: {
     dir: path.resolve(__dirname, '..', str('UPLOAD_DIR', './uploads')),
     // 对外可访问的基址与路径前缀，storage.urlFor 用它们拼绝对地址。

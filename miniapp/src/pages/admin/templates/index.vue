@@ -7,10 +7,7 @@
       glass
     >
       <template #right>
-        <view class="new-pill" @tap="openCreate">
-          <text class="new-plus">+</text>
-          <text>新建模板</text>
-        </view>
+        <AdminHeaderAction label="新建模板" prefix="+" @tap="openCreate" />
       </template>
     </AdminNav>
 
@@ -347,6 +344,7 @@
 import { computed, reactive, ref } from 'vue'
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import AdminNav from '../../../components/admin/AdminNav.vue'
+import AdminHeaderAction from '../../../components/admin/AdminHeaderAction.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
 import {
   fetchAdminTemplates,
@@ -738,35 +736,6 @@ function removeTemplate() {
 </script>
 
 <style scoped lang="scss">
-.new-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: dp(30);
-  padding: 0 dp(12);
-  border: 1px solid rgba(255, 255, 255, 0.76);
-  border-radius: dp(999);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 243, 236, 0.94) 0%,
-    rgba(255, 227, 214, 0.74) 100%
-  );
-  -webkit-backdrop-filter: blur(14px) saturate(170%);
-  backdrop-filter: blur(14px) saturate(170%);
-  color: #eb5c20;
-  font-size: dp(12);
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
-}
-
-.new-plus {
-  margin-right: dp(4);
-  font-size: dp(14);
-  font-weight: 700;
-  line-height: 1;
-}
-
 .content {
   padding: dp(4) dp(16) dp(24);
 }

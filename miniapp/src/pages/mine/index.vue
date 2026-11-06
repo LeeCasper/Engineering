@@ -186,8 +186,14 @@
       </view>
 
       <button class="deactivate-btn" :disabled="deactivating" @tap="confirmDeactivate">
-        <image class="deactivate-icon" src="/static/images/icon-logout-gray.png" mode="aspectFit" />
-        <text>{{ deactivating ? '注销中…' : '注销账号' }}</text>
+        <view v-if="deactivating" class="deactivate-loading">
+          <view class="deactivate-spinner" />
+          <text>正在注销</text>
+        </view>
+        <template v-else>
+          <image class="deactivate-icon" src="/static/images/icon-logout-gray.png" mode="aspectFit" />
+          <text>注销账号</text>
+        </template>
       </button>
       <text class="version">{{ branding.name }} v{{ appVersion }}</text>
     </view>
@@ -269,22 +275,28 @@
           </button>
           <text class="profile-edit-tip">点击头像可直接使用微信头像</text>
 
-          <view class="profile-name-field">
-            <text class="profile-name-label">真实姓名</text>
-            <input
-              v-model="realNameDraft"
-              class="profile-name-input"
-              type="text"
-              maxlength="50"
-              placeholder="请输入真实姓名"
-              placeholder-class="profile-name-placeholder"
-              @blur="realNameDraft = realNameDraft.trim()"
-            />
+          <view class="profile-name-field profile-name-field--stacked">
+            <view class="profile-name-head">
+              <text class="profile-name-label">实名认证</text>
+              <text v-if="profile && profile.requiresRealNameAuth" class="profile-required">（加入项目后必填）</text>
+            </view>
+            <view class="real-name-row">
+              <view class="real-name-main">
+                <text
+                  class="real-name-status"
+                  :class="{ 'real-name-status--verified': profile && profile.realNameVerified }"
+                >
+                  {{ profile && profile.realNameVerified ? '已实名' : '未实名' }}
+                </text>
+                <text v-if="profile && profile.realName" class="real-name-value">{{ profile.realName }}</text>
+                <text v-if="profile && profile.idCardMask" class="real-name-mask">{{ profile.idCardMask }}</text>
+              </view>
+              <text class="real-name-action" @tap="goRealName">
+                {{ profile && profile.realNameVerified ? '查看' : '去认证' }}
+              </text>
+            </view>
           </view>
-          <text class="profile-edit-tip">
-            真实姓名会显示在项目参与人、联系人和验收记录中
-            <text v-if="profile && profile.requiresRealName" class="profile-required">（加入项目后必填）</text>
-          </text>
+          <text class="profile-edit-tip">实名认证后，姓名会显示在项目参与人、联系人和验收记录中</text>
 
           <view class="profile-name-field">
             <text class="profile-name-label">昵称</text>
@@ -319,6 +331,31 @@
             <text class="detail-label">当前项目</text>
             <text class="detail-value">{{ currentProject?.name || '—' }}</text>
           </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 注销成功过场：遮住清会话后 reLaunch 的硬切换 -->
+    <view v-if="leaving" class="exit-overlay">
+      <view class="exit-card">
+        <view class="exit-mark">
+          <view class="exit-ring exit-ring--outer" />
+          <view class="exit-ring exit-ring--inner" />
+          <image
+            class="exit-logo"
+            :src="branding.logoUrl || '/static/images/logo.png'"
+            mode="aspectFit"
+          />
+        </view>
+        <text class="exit-title">账号已注销</text>
+        <text class="exit-tip">个人资料已匿名化，历史业务记录仍会保留</text>
+        <view class="exit-dots">
+          <view
+            v-for="n in 3"
+            :key="n"
+            class="exit-dot"
+            :style="{ animationDelay: `${(n - 1) * 140}ms` }"
+          />
         </view>
       </view>
     </view>
@@ -410,11 +447,12 @@ const switching = ref(false)
 // 「验收报告」入口：没有当前项目时先让用户选项目，选完自动进入报告页
 const pendingAcceptanceReports = ref(false)
 const deactivating = ref(false)
+// 注销成功后的退出过场
+const leaving = ref(false)
 const avatarError = ref(false)
 // 资料编辑：头像先选临时文件，保存时才上传；昵称直接改
 const savingProfile = ref(false)
 const nicknameDraft = ref('')
-const realNameDraft = ref('')
 const avatarPreview = ref('')
 const avatarChanged = ref(false)
 const appVersion = APP_VERSION
@@ -619,11 +657,11 @@ async function loadProfileAndRole() {
   profile.value = data
   avatarError.value = false
 
-  // 被邀请进入项目后必须补真实姓名：打开「我的」直接弹出资料面板，
-  // 不让用户以为这里只是一个可选昵称。
-  if (data.requiresRealName && !profileSheetOpen.value) {
+  // 被邀请进入项目后必须完成实名认证：打开「我的」时提示，
+  // 资料面板里给出「去认证」入口，不在这里直接跳走打断用户。
+  if (data.requiresRealNameAuth && !profileSheetOpen.value) {
     openProfileSheet()
-    uni.showToast({ title: '加入项目后请先填写真实姓名', icon: 'none' })
+    uni.showToast({ title: '加入项目后请先完成实名认证', icon: 'none' })
   }
 
   // 后端的角色是最终事实；把本地项目上下文里的角色同步过去，
@@ -766,12 +804,17 @@ function onAvatarError() {
 
 /** 打开资料面板时同步草稿，避免上次未保存的临时头像残留 */
 function openProfileSheet() {
-  realNameDraft.value = ((profile.value && profile.value.realName) || '').trim()
   nicknameDraft.value = ((profile.value && profile.value.nickname) || '').trim()
   avatarPreview.value = ''
   avatarChanged.value = false
   avatarError.value = false
   profileSheetOpen.value = true
+}
+
+/** 进入实名认证页；返回时 onShow 会静默刷新资料 */
+function goRealName() {
+  profileSheetOpen.value = false
+  uni.navigateTo({ url: '/pages/mine/real-name' })
 }
 
 /** 微信「选择头像」回调；返回的是临时文件，保存时才上传 */
@@ -809,11 +852,6 @@ async function saveProfile() {
     uni.showToast({ title: '请输入昵称', icon: 'none' })
     return
   }
-  const realName = String(realNameDraft.value || '').trim()
-  if (profile.value && profile.value.requiresRealName && !realName) {
-    uni.showToast({ title: '请先填写真实姓名', icon: 'none' })
-    return
-  }
 
   savingProfile.value = true
   try {
@@ -827,18 +865,17 @@ async function saveProfile() {
       avatarError.value = false
     }
 
-    const data = await updateProfile({ nickname, realName: realName || null })
+    const data = await updateProfile({ nickname })
     // 刷新一次带项目上下文的资料，恢复 role / roleLabel
     await loadProfileAndRole().catch(() => {})
     profile.value = {
       ...(profile.value || data),
       nickname: data.nickname,
-      realName: data.realName,
       avatar: data.avatar,
     }
 
     const cached = getUser() || {}
-    setUser({ ...cached, nickname: data.nickname, realName: data.realName, avatar: data.avatar })
+    setUser({ ...cached, nickname: data.nickname, avatar: data.avatar })
 
     profileSheetOpen.value = false
     uni.showToast({ title: '资料已更新', icon: 'success' })
@@ -1001,13 +1038,24 @@ async function confirmDeactivate() {
   deactivating.value = true
   try {
     await deactivateAccount()
+    // 注销接口已经让 token 失效；先显示过场，再清本地会话并回登录页，
+    // 避免页面直接硬切。
+    leaving.value = true
+    await new Promise((resolve) => setTimeout(resolve, 680))
     clearSession()
     setMineTabBadge(0)
-    uni.reLaunch({ url: '/pages/login/index' })
+    uni.reLaunch({
+      url: '/pages/login/index',
+      fail: () => {
+        leaving.value = false
+        deactivating.value = false
+        uni.showToast({ title: '退出失败，请重试', icon: 'none' })
+      },
+    })
   } catch (err) {
     uni.showToast({ title: err.message || '注销失败，请稍后重试', icon: 'none' })
   } finally {
-    deactivating.value = false
+    if (!leaving.value) deactivating.value = false
   }
 }
 function closeActiveSheet() {
@@ -1701,6 +1749,27 @@ function closeActiveSheet() {
   background: #fbf9f7;
 }
 
+.deactivate-loading {
+  display: flex;
+  align-items: center;
+}
+
+.deactivate-spinner {
+  width: dp(15);
+  height: dp(15);
+  margin-right: dp(7);
+  border: 2px solid #e2dad3;
+  border-top-color: #6d6259;
+  border-radius: 50%;
+  animation: deactivate-spin 720ms linear infinite;
+}
+
+@keyframes deactivate-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .deactivate-icon {
   width: dp(16);
   height: dp(16);
@@ -1908,6 +1977,70 @@ function closeActiveSheet() {
   background: #fdfbf9;
 }
 
+.profile-name-field--stacked {
+  display: block;
+}
+
+.profile-name-head {
+  display: flex;
+  align-items: center;
+}
+
+.real-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: dp(8);
+}
+
+.real-name-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.real-name-status {
+  padding: dp(2) dp(7);
+  border-radius: dp(999);
+  background: rgba(235, 92, 32, 0.1);
+  color: #c44710;
+  font-size: dp(10);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.real-name-status--verified {
+  background: rgba(0, 180, 95, 0.1);
+  color: #008a4a;
+}
+
+.real-name-value {
+  margin-left: dp(8);
+  overflow: hidden;
+  color: #241c17;
+  font-size: dp(14);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.real-name-mask {
+  margin-left: dp(6);
+  overflow: hidden;
+  color: #a79c92;
+  font-size: dp(10);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.real-name-action {
+  margin-left: dp(10);
+  color: #eb5c20;
+  font-size: dp(12);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
 .profile-name-label {
   margin-right: dp(10);
   color: #8b8179;
@@ -1990,5 +2123,154 @@ function closeActiveSheet() {
   text-align: right;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* ── 注销成功过场 ── */
+.exit-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 dp(28);
+  background: rgba(24, 21, 19, 0.48);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  animation: exit-overlay-in 220ms ease-out both;
+}
+
+@keyframes exit-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.exit-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: dp(320);
+  padding: dp(28) dp(24) dp(24);
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: dp(22);
+  background: rgba(255, 250, 246, 0.97);
+  box-shadow:
+    0 dp(20) dp(48) rgba(24, 21, 19, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  animation: exit-card-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes exit-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(dp(8));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.exit-mark {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(86);
+  height: dp(86);
+}
+
+.exit-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(235, 92, 32, 0.22);
+  animation: exit-ring 700ms ease-out both;
+}
+
+.exit-ring--outer {
+  width: dp(84);
+  height: dp(84);
+}
+
+.exit-ring--inner {
+  width: dp(68);
+  height: dp(68);
+  animation-delay: 90ms;
+}
+
+@keyframes exit-ring {
+  0% {
+    opacity: 0.75;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+.exit-logo {
+  position: relative;
+  z-index: 1;
+  width: dp(56);
+  height: dp(56);
+  border-radius: dp(16);
+  background: #fff;
+  opacity: 0.92;
+  box-shadow:
+    0 dp(8) dp(22) rgba(235, 92, 32, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.exit-title {
+  margin-top: dp(16);
+  color: #241c17;
+  font-size: dp(17);
+  font-weight: 800;
+  letter-spacing: dp(-0.2);
+}
+
+.exit-tip {
+  margin-top: dp(6);
+  color: #8b8179;
+  font-size: dp(11);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.exit-dots {
+  display: flex;
+  align-items: center;
+  margin-top: dp(16);
+}
+
+.exit-dot {
+  width: dp(5);
+  height: dp(5);
+  margin: 0 dp(3);
+  border-radius: 50%;
+  background: #eb5c20;
+  animation: exit-dot 900ms ease-in-out infinite;
+}
+
+@keyframes exit-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.22;
+    transform: translateY(0) scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(dp(-3)) scale(1);
+  }
 }
 </style>

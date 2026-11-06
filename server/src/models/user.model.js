@@ -12,7 +12,9 @@ const db = require('../db/pool')
 
 async function findById(id) {
   return db.queryOne(
-    `SELECT id, openid, unionid, phone, nickname, real_name, avatar, status, role, anonymized_at, last_login_at, created_at
+    `SELECT id, openid, unionid, phone, nickname, real_name, real_name_status,
+            id_card_mask, real_name_verified_at, real_name_verify_method,
+            avatar, status, role, anonymized_at, last_login_at, created_at
        FROM user WHERE id = ? AND deleted_at IS NULL`,
     [id]
   )
@@ -21,7 +23,9 @@ async function findById(id) {
 async function findByOpenid(openid) {
   if (!openid) return null
   return db.queryOne(
-    `SELECT id, openid, unionid, phone, nickname, real_name, avatar, status, role, anonymized_at, last_login_at
+    `SELECT id, openid, unionid, phone, nickname, real_name, real_name_status,
+            id_card_mask, real_name_verified_at, real_name_verify_method,
+            avatar, status, role, anonymized_at, last_login_at
        FROM user WHERE openid = ? AND deleted_at IS NULL`,
     [openid]
   )
@@ -147,7 +151,12 @@ async function bindPhone(userId, phone) {
       return { ok: false, reason: '该手机号已被其他账号绑定' }
     }
 
-    const current = await tx.queryOne('SELECT id, openid, nickname, real_name, avatar, role FROM user WHERE id = ?', [userId])
+    const current = await tx.queryOne(
+      `SELECT id, openid, nickname, real_name, real_name_status, id_card_mask,
+              real_name_verified_at, real_name_verify_method, avatar, role
+         FROM user WHERE id = ?`,
+      [userId]
+    )
 
     // ── 固定角色不能因手机号合并而改变 ──
     // 占位账号通常是管理员按手机号邀请时创建的，角色已经确定；
@@ -167,9 +176,24 @@ async function bindPhone(userId, phone) {
     await tx.query(
       `UPDATE user
           SET openid = ?, nickname = COALESCE(nickname, ?), real_name = COALESCE(real_name, ?),
+              real_name_status = IF(real_name_status = 'verified', real_name_status, ?),
+              id_card_mask = COALESCE(id_card_mask, ?),
+              real_name_verified_at = COALESCE(real_name_verified_at, ?),
+              real_name_verify_method = COALESCE(real_name_verify_method, ?),
               avatar = COALESCE(avatar, ?), role = COALESCE(role, ?), last_login_at = NOW()
         WHERE id = ?`,
-      [current.openid, current.nickname, current.real_name, current.avatar, mergedRole, existing.id]
+      [
+        current.openid,
+        current.nickname,
+        current.real_name,
+        current.real_name_status || 'none',
+        current.id_card_mask,
+        current.real_name_verified_at,
+        current.real_name_verify_method,
+        current.avatar,
+        mergedRole,
+        existing.id,
+      ]
     )
 
     await tx.query('UPDATE user SET deleted_at = NOW() WHERE id = ?', [userId])
@@ -213,6 +237,26 @@ async function touchLastLogin(id) {
 }
 
 /**
+ * 写入实名认证结果。
+ *
+ * 用 `real_name_status <> 'verified'` 做条件更新：并发提交两次时只有第一次生效，
+ * 后一次不会把姓名/证件脱敏号覆盖成另一份资料。调用方在更新后重新读取用户。
+ */
+async function markRealNameVerified(id, { realName, idCardMask, method }) {
+  await db.query(
+    `UPDATE user
+        SET real_name = ?,
+            real_name_status = 'verified',
+            id_card_mask = ?,
+            real_name_verified_at = NOW(),
+            real_name_verify_method = ?
+      WHERE id = ? AND real_name_status <> 'verified'`,
+    [realName, idCardMask, method, id]
+  )
+  return findById(id)
+}
+
+/**
  * 注销账号（AC-U19 / AC-U20）。
  *
  * ── 这里**不设** `deleted_at`，这是最容易被写错的一处 ──
@@ -248,6 +292,10 @@ async function anonymize(userId, tx = db) {
             unionid       = NULL,
             nickname      = '已注销用户',
             real_name     = NULL,
+            real_name_status = 'none',
+            id_card_mask  = NULL,
+            real_name_verified_at = NULL,
+            real_name_verify_method = NULL,
             avatar        = NULL
       WHERE id = ? AND anonymized_at IS NULL`,
     [userId]
@@ -263,5 +311,6 @@ module.exports = {
   bindPhone,
   updateProfile,
   touchLastLogin,
+  markRealNameVerified,
   anonymize,
 }

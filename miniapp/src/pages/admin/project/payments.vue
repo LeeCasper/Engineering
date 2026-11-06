@@ -2,7 +2,7 @@
   <view class="admin-page">
     <AdminNav title="付款节点" :fallback="`/pages/admin/project/detail?id=${projectId}`">
       <template #right>
-        <text v-if="canWrite && !editing" class="admin-nav-action" @tap="startEdit">编辑</text>
+        <AdminHeaderAction v-if="canWrite && !editing" label="编辑" @tap="startEdit" />
       </template>
     </AdminNav>
 
@@ -151,6 +151,7 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import AdminNav from '../../../components/admin/AdminNav.vue'
+import AdminHeaderAction from '../../../components/admin/AdminHeaderAction.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
 import {
   fetchAdminProject,
@@ -363,13 +364,6 @@ function unlock(node) {
 </script>
 
 <style scoped lang="scss">
-.admin-nav-action {
-  padding: dp(4) dp(2);
-  color: #eb5c20;
-  font-size: dp(13);
-  font-weight: 500;
-}
-
 .top-note {
   margin: dp(10) 0 dp(12);
 }

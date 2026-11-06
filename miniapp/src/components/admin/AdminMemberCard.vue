@@ -12,6 +12,7 @@
     <view class="member-main">
       <view class="member-name-row">
         <text class="member-name">{{ displayName }}</text>
+        <text v-if="member.realNameVerified" class="member-verified">已实名</text>
         <text class="member-role">{{ roleText }}</text>
       </view>
       <text class="member-phone">{{ member.phoneMasked || '未绑定手机号' }}</text>
@@ -49,7 +50,11 @@ watch(
 )
 
 const displayName = computed(
-  () => props.member.nickname || props.member.phoneMasked || '待确认用户'
+  () =>
+    props.member.realName ||
+    props.member.nickname ||
+    props.member.phoneMasked ||
+    '待确认用户'
 )
 
 const initial = computed(() => {
@@ -122,6 +127,18 @@ const statusTone = computed(() => {
   border-radius: dp(999);
   background: #fff0e6;
   color: #eb5c20;
+  font-size: dp(10);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.member-verified {
+  padding: dp(2) dp(7);
+  border-radius: dp(999);
+  background: rgba(0, 180, 95, 0.1);
+  color: #008a4a;
   font-size: dp(10);
   font-weight: 600;
   line-height: 1.3;

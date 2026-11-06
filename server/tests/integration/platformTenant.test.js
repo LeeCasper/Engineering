@@ -506,7 +506,10 @@ describe('P3 · 停用与到期：后台失效、C 端只读', () => {
       .send({ status: 'active' })
       .expect(200)
 
-    await db.query('UPDATE user SET real_name = ? WHERE id = ?', ['跨租户邀请用户', invitee.userId])
+    await db.query(
+      "UPDATE user SET real_name = ?, real_name_status = 'verified', real_name_verified_at = NOW() WHERE id = ?",
+      ['跨租户邀请用户', invitee.userId]
+    )
     const confirmAfter = await request.authed('post', `/invitations/${memberId}/confirm`, invitee.token)
     expect(confirmAfter.status).toBe(200)
   })

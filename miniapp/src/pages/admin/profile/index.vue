@@ -111,7 +111,18 @@
         </view>
       </view>
 
-      <view class="logout-btn" @tap="logout">退出管理端</view>
+      <view
+        class="logout-btn"
+        :class="{ 'logout-btn--busy': loggingOut }"
+        hover-class="logout-btn--pressed"
+        @tap="logout"
+      >
+        <view v-if="loggingOut" class="logout-loading">
+          <view class="logout-spinner" />
+          <text>正在退出</text>
+        </view>
+        <text v-else>退出管理端</text>
+      </view>
       <text class="web-note">
         账号管理、数据看板、系统配置、操作日志与导出仍在网页后台；小程序与网页共用同一套数据。
       </text>
@@ -171,6 +182,31 @@
         </view>
       </view>
     </view>
+
+    <!-- 退出 / 切换账号过场：遮住 clearAdminSession 后的页面硬切换 -->
+    <view v-if="leaving" class="exit-overlay">
+      <view class="exit-card">
+        <view class="exit-mark">
+          <view class="exit-ring exit-ring--outer" />
+          <view class="exit-ring exit-ring--inner" />
+          <image
+            class="exit-logo"
+            :src="branding.logoUrl || '/static/images/logo.png'"
+            mode="aspectFit"
+          />
+        </view>
+        <text class="exit-title">{{ leavingText }}</text>
+        <text class="exit-tip">{{ leavingTip }}</text>
+        <view class="exit-dots">
+          <view
+            v-for="n in 3"
+            :key="n"
+            class="exit-dot"
+            :style="{ animationDelay: `${(n - 1) * 140}ms` }"
+          />
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -186,6 +222,7 @@ import {
 } from '../../../api/admin/auth'
 import { getToken } from '../../../store/session'
 import { clearAdminSession, setBindingHint } from '../../../store/adminSession'
+import { branding } from '../../../store/branding'
 import {
   requireAdminSession,
   isAdminFresh,
@@ -204,6 +241,11 @@ const binding = ref(null)
 const bindingLoading = ref(false)
 const bindingAction = ref(false)
 const bindingOpen = ref(false)
+// 退出 / 切换账号：按钮 loading + 全屏过场
+const loggingOut = ref(false)
+const leaving = ref(false)
+const leavingText = ref('正在退出管理端')
+const leavingTip = ref('')
 
 let loadedOnce = false
 
@@ -362,36 +404,81 @@ function goChangePassword() {
   uni.navigateTo({ url: '/pages/admin/change-password/index' })
 }
 
+/**
+ * 退出 / 切换账号的统一过场。
+ *
+ * 清掉管理员会话后页面会立刻失去数据，紧接着的 redirectTo / switchTab
+ * 又是硬切换；先显示全屏过场并停留一小段，再执行真正的跳转。
+ */
+function playExitTransition(text, tip, action) {
+  leavingText.value = text
+  leavingTip.value = tip
+  leaving.value = true
+  setTimeout(() => {
+    action()
+    // 跳转失败时把页面恢复成可操作状态，避免过场一直盖着
+    setTimeout(() => {
+      leaving.value = false
+      loggingOut.value = false
+    }, 1500)
+  }, 620)
+}
+
 function switchAccount() {
+  if (leaving.value) return
   uni.showModal({
     title: '切换管理账号',
     content: '将退出当前管理员会话，并使用另一个账号登录。',
     success: (res) => {
       if (!res.confirm) return
       const hadBinding = Boolean(binding.value && binding.value.bound)
-      clearAdminSession()
-      setBindingHint(hadBinding ? 1 : 0)
-      uni.redirectTo({ url: '/pages/admin/login/index' })
+      playExitTransition('正在切换账号', '即将返回管理员登录页', () => {
+        clearAdminSession()
+        setBindingHint(hadBinding ? 1 : 0)
+        uni.redirectTo({
+          url: '/pages/admin/login/index',
+          fail: () => {
+            leaving.value = false
+            uni.showToast({ title: '跳转失败，请重试', icon: 'none' })
+          },
+        })
+      })
     },
   })
 }
 
 async function logout() {
-  uni.showModal({
-    title: '退出管理端',
-    content: '只退出管理员会话，不会退出微信登录。',
-    success: async (res) => {
-      if (!res.confirm) return
-      try {
-        await logoutAdmin()
-      } catch (err) {
-        // 会话过期也按退出处理
-      }
-      const hadBinding = Boolean(binding.value && binding.value.bound)
-      clearAdminSession()
-      setBindingHint(hadBinding ? 1 : 0)
-      uni.switchTab({ url: '/pages/projects/index' })
-    },
+  if (loggingOut.value || leaving.value) return
+
+  const confirmed = await new Promise((resolve) => {
+    uni.showModal({
+      title: '退出管理端',
+      content: '只退出管理员会话，不会退出微信登录。',
+      success: (res) => resolve(Boolean(res.confirm)),
+      fail: () => resolve(false),
+    })
+  })
+  if (!confirmed) return
+
+  loggingOut.value = true
+  try {
+    await logoutAdmin()
+  } catch (err) {
+    // 会话过期也按退出处理
+  }
+
+  const hadBinding = Boolean(binding.value && binding.value.bound)
+  playExitTransition('正在退出管理端', '微信登录仍保持，可随时重新进入', () => {
+    clearAdminSession()
+    setBindingHint(hadBinding ? 1 : 0)
+    uni.switchTab({
+      url: '/pages/projects/index',
+      fail: () => {
+        leaving.value = false
+        loggingOut.value = false
+        uni.showToast({ title: '退出失败，请重试', icon: 'none' })
+      },
+    })
   })
 }
 </script>
@@ -662,6 +749,39 @@ async function logout() {
   box-shadow:
     0 dp(4) dp(16) rgba(235, 92, 32, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 160ms ease;
+}
+
+.logout-btn--pressed {
+  transform: scale(0.985);
+  background: rgba(255, 240, 232, 0.96);
+}
+
+.logout-btn--busy {
+  opacity: 0.88;
+}
+
+.logout-loading {
+  display: flex;
+  align-items: center;
+}
+
+.logout-spinner {
+  width: dp(15);
+  height: dp(15);
+  margin-right: dp(8);
+  border: 2px solid rgba(235, 92, 32, 0.2);
+  border-top-color: #eb5c20;
+  border-radius: 50%;
+  animation: logout-spin 720ms linear infinite;
+}
+
+@keyframes logout-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .web-note {
@@ -717,5 +837,154 @@ async function logout() {
 
 .binding-action {
   margin-top: dp(14);
+}
+
+/* ── 退出 / 切换账号过场 ── */
+.exit-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 dp(28);
+  background: rgba(24, 21, 19, 0.48);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  animation: exit-overlay-in 220ms ease-out both;
+}
+
+@keyframes exit-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.exit-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: dp(320);
+  padding: dp(28) dp(24) dp(24);
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: dp(22);
+  background: rgba(255, 250, 246, 0.97);
+  box-shadow:
+    0 dp(20) dp(48) rgba(24, 21, 19, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  animation: exit-card-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes exit-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(dp(8));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.exit-mark {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(86);
+  height: dp(86);
+}
+
+.exit-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(235, 92, 32, 0.22);
+  animation: exit-ring 700ms ease-out both;
+}
+
+.exit-ring--outer {
+  width: dp(84);
+  height: dp(84);
+}
+
+.exit-ring--inner {
+  width: dp(68);
+  height: dp(68);
+  animation-delay: 90ms;
+}
+
+@keyframes exit-ring {
+  0% {
+    opacity: 0.75;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+.exit-logo {
+  position: relative;
+  z-index: 1;
+  width: dp(56);
+  height: dp(56);
+  border-radius: dp(16);
+  background: #fff;
+  opacity: 0.92;
+  box-shadow:
+    0 dp(8) dp(22) rgba(235, 92, 32, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.exit-title {
+  margin-top: dp(16);
+  color: #241c17;
+  font-size: dp(17);
+  font-weight: 800;
+  letter-spacing: dp(-0.2);
+}
+
+.exit-tip {
+  margin-top: dp(6);
+  color: #8b8179;
+  font-size: dp(11);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.exit-dots {
+  display: flex;
+  align-items: center;
+  margin-top: dp(16);
+}
+
+.exit-dot {
+  width: dp(5);
+  height: dp(5);
+  margin: 0 dp(3);
+  border-radius: 50%;
+  background: #eb5c20;
+  animation: exit-dot 900ms ease-in-out infinite;
+}
+
+@keyframes exit-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.22;
+    transform: translateY(0) scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(dp(-3)) scale(1);
+  }
 }
 </style>

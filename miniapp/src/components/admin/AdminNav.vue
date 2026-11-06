@@ -2,7 +2,11 @@
   <view
     class="admin-nav"
     :class="{ 'admin-nav--glass': glass }"
-    :style="{ paddingTop: `${safeTop + 6}px`, backgroundColor: glass ? undefined : background }"
+    :style="{
+      paddingTop: `${safeTop + 6}px`,
+      paddingRight: rightInset ? `${rightInset}px` : undefined,
+      backgroundColor: glass ? undefined : background,
+    }"
   >
     <view class="admin-nav-row">
       <view class="admin-nav-back" @tap="onBack">
@@ -17,8 +21,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
 import { ADMIN_HOME, adminBack, goCProjects } from '../../utils/admin'
+import { useCapsuleInsets } from '../../composables/useCapsuleInsets'
 
 defineOptions({ name: 'AdminNav' })
 
@@ -32,8 +36,7 @@ const props = defineProps({
   glass: { type: Boolean, default: false },
 })
 
-const info = uni.getSystemInfoSync()
-const safeTop = ref(info.statusBarHeight || 12)
+const { statusBarHeight: safeTop, rightInset } = useCapsuleInsets()
 
 function onBack() {
   if (props.backToC) {
@@ -107,11 +110,4 @@ function onBack() {
   justify-content: flex-end;
   flex-shrink: 0;
 }
-
-/* 小程序右上角有微信原生胶囊，右侧动作往左让位 */
-/* #ifdef MP-WEIXIN */
-.admin-nav {
-  padding-right: dp(92);
-}
-/* #endif */
 </style>

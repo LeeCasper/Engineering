@@ -9,10 +9,7 @@
       glass
     >
       <template #right>
-        <view v-if="canWrite" class="invite-pill" @tap="openInvite">
-          <text class="invite-plus">+</text>
-          <text>邀请成员</text>
-        </view>
+        <AdminHeaderAction v-if="canWrite" label="邀请成员" prefix="+" @tap="openInvite" />
       </template>
     </AdminRootHeader>
 
@@ -250,6 +247,7 @@
 import { computed, reactive, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import AdminRootHeader from '../../../components/admin/AdminRootHeader.vue'
+import AdminHeaderAction from '../../../components/admin/AdminHeaderAction.vue'
 import AdminMemberCard from '../../../components/admin/AdminMemberCard.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
 import { resolveMediaUrl } from '../../../api/request'
@@ -614,37 +612,6 @@ async function removeMember() {
 </script>
 
 <style scoped lang="scss">
-.invite-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: dp(32);
-  padding: 0 dp(13);
-  border: 1px solid rgba(255, 255, 255, 0.76);
-  border-radius: dp(999);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 243, 236, 0.94) 0%,
-    rgba(255, 227, 214, 0.74) 100%
-  );
-  -webkit-backdrop-filter: blur(14px) saturate(170%);
-  backdrop-filter: blur(14px) saturate(170%);
-  color: #eb5c20;
-  font-size: dp(13);
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow:
-    0 dp(2) dp(8) rgba(235, 92, 32, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
-}
-
-.invite-plus {
-  margin-right: dp(4);
-  font-size: dp(15);
-  font-weight: 500;
-  line-height: 1;
-}
-
 .content {
   padding: 0 dp(16) dp(20);
 }

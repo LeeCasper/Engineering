@@ -719,6 +719,21 @@ async function payPaymentNode(userId, projectId, nodeId, context = {}) {
     context
   )
 
+  // 一键收款同时改变节点状态并写收入流水，两个动作都要留痕：
+  // ledger.create 记录账目，payment_node.pay 记录节点流转与关联流水。
+  await operationLog.record({
+    ...context,
+    action: operationLog.ACTIONS.PAYMENT_NODE_PAY,
+    targetType: 'payment_node',
+    targetId: nodeId,
+    projectId,
+    detail: {
+      before: { status: node.status },
+      after: { status: NODE_STATUS.PAID },
+      ledgerId: income.id,
+    },
+  })
+
   return { id: nodeId, status: NODE_STATUS.PAID, ledgerId: income.id }
 }
 

@@ -18,7 +18,8 @@
     "test:watch": "vitest tests/unit",
     "test:integration": "vitest run tests/integration --no-file-parallelism",
     "test:all": "vitest run --no-file-parallelism",
-    "smoke": "node scripts/smoke.js"
+    "smoke": "node scripts/smoke.js",
+    "check:real-name": "node scripts/check-real-name.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -88,6 +88,8 @@ export interface ProjectMember {
   statusLabel: string;
   nickname: string | null;
   realName?: string | null;
+  realNameVerified?: boolean;
+  realNameStatus?: 'none' | 'pending' | 'verified' | 'failed';
   avatar: string | null;
   phoneMasked: string | null;
   invitedAt: string;

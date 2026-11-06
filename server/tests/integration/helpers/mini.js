@@ -27,6 +27,21 @@ function authed(method, url, token) {
   return request.authed(method, url, token)
 }
 
+/**
+ * 完成实名认证（姓名 + 身份证号）。
+ * 默认证件号是校验位正确的固定样本；需要不同身份时显式传入。
+ */
+function verifyRealName(
+  token,
+  { realName = '测试用户', idCardNo = '310101199001011234' } = {}
+) {
+  return authed('post', '/auth/real-name/verify', token).send({
+    realName,
+    idCardNo,
+    consent: true,
+  })
+}
+
 /** 直接建项目，绕过尚未实现的建档接口（M4） */
 async function createProject({
   name = '测试项目',
@@ -111,6 +126,7 @@ async function createWechatUser(openid) {
 module.exports = {
   login,
   authed,
+  verifyRealName,
   createProject,
   createStage,
   addMember,
