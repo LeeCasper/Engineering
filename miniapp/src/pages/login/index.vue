@@ -57,7 +57,7 @@
           hover-class="login-btn--pressed"
           @tap="onLogin"
         >
-          <view v-if="loading" class="login-btn-inner">
+          <view v-if="loading && loginChannel === 'phone'" class="login-btn-inner">
             <view class="login-spinner" />
             <text>正在登录</text>
           </view>
@@ -90,13 +90,19 @@
         </view>
         <view class="login-actions">
           <button class="wechat-btn" :disabled="loading" @tap="onWechatLogin">
-            <image
-              class="wechat-icon"
-              :src="wechatIcon"
-              mode="aspectFit"
-              @error="onWechatIconError"
-            />
-            <text class="wechat-text">微信登录</text>
+            <view v-if="loading && loginChannel === 'wechat'" class="wechat-loading">
+              <view class="wechat-spinner" />
+              <text class="wechat-text">正在登录</text>
+            </view>
+            <template v-else>
+              <image
+                class="wechat-icon"
+                :src="wechatIcon"
+                mode="aspectFit"
+                @error="onWechatIconError"
+              />
+              <text class="wechat-text">微信登录</text>
+            </template>
           </button>
           <view class="admin-login-btn" @tap="goAdminLogin">
             <view
@@ -228,6 +234,9 @@ const phone = ref('')
 const smsCode = ref('')
 const agreed = ref(true)
 const loading = ref(false)
+// 当前登录入口：phone / wechat。两个按钮各自显示自己的 loading，避免点了微信登录却
+// 只有主登录按钮在转圈。
+const loginChannel = ref(null)
 const safeTop = ref(0)
 // 登录成功后的全屏过场；与 loading 分开，避免按钮状态和进入动画互相打断
 const entering = ref(false)
@@ -379,11 +388,11 @@ function onGetCode() {
 }
 
 async function onLogin() {
-  await doLogin({ bindPhone: true })
+  await doLogin({ bindPhone: true, channel: 'phone' })
 }
 
 async function onWechatLogin() {
-  await doLogin({ bindPhone: false })
+  await doLogin({ bindPhone: false, channel: 'wechat' })
 }
 
 function goAdminLogin() {
@@ -436,7 +445,7 @@ async function enterApp(url) {
   })
 }
 
-async function doLogin({ bindPhone: shouldBind }) {
+async function doLogin({ bindPhone: shouldBind, channel }) {
   if (!agreed.value) {
     shakeCard()
     uni.showToast({ title: '请先阅读并同意用户协议与隐私政策', icon: 'none' })
@@ -444,6 +453,11 @@ async function doLogin({ bindPhone: shouldBind }) {
   }
   if (loading.value) return
   loading.value = true
+  loginChannel.value = channel || 'phone'
+
+  // 先让 loading 状态渲染一帧，再调用 uni.login / 网络请求。
+  // 否则微信原生登录桥接会抢占主线程，按钮看起来像「点了没反应」。
+  await wait(40)
 
   try {
     const code = await getWxCode()
@@ -475,7 +489,10 @@ async function doLogin({ bindPhone: shouldBind }) {
     uni.showToast({ title: err.message || '登录失败', icon: 'none' })
   } finally {
     // 进入过场期间保留 loading，避免过场下面按钮又变回「登录」
-    if (!entering.value) loading.value = false
+    if (!entering.value) {
+      loading.value = false
+      loginChannel.value = null
+    }
   }
 }
 
@@ -819,6 +836,29 @@ function openLegal(key) {
   height: dp(20);
   margin-right: dp(8);
   flex-shrink: 0;
+}
+
+.wechat-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wechat-spinner {
+  width: dp(16);
+  height: dp(16);
+  margin-right: dp(8);
+  border: 2px solid rgba(7, 193, 96, 0.22);
+  border-top-color: #07c160;
+  border-radius: 50%;
+  animation: wechat-login-spin 720ms linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes wechat-login-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .wechat-text {
