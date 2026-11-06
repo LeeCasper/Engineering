@@ -341,11 +341,9 @@
         <view class="exit-mark">
           <view class="exit-ring exit-ring--outer" />
           <view class="exit-ring exit-ring--inner" />
-          <image
-            class="exit-logo"
-            :src="branding.logoUrl || '/static/images/logo.png'"
-            mode="aspectFit"
-          />
+          <view class="exit-logo">
+            <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+          </view>
         </view>
         <text class="exit-title">账号已注销</text>
         <text class="exit-tip">个人资料已匿名化，历史业务记录仍会保留</text>

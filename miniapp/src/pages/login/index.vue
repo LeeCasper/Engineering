@@ -6,7 +6,9 @@
     <view class="top" :style="{ paddingTop: `${safeTop}px` }">
       <!-- 品牌 -->
       <view class="brand">
-        <image class="brand-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
+        <view class="brand-logo">
+          <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+        </view>
         <view class="brand-text">
           <text class="brand-name">{{ branding.name }}</text>
           <text class="brand-slogan">让装修工程更透明、更可控</text>
@@ -141,11 +143,9 @@
       <view class="enter-mark">
         <view class="enter-ring enter-ring--outer" />
         <view class="enter-ring enter-ring--inner" />
-        <image
-          class="enter-logo"
-          :src="branding.logoUrl || '/static/images/logo.png'"
-          mode="aspectFit"
-        />
+        <view class="enter-logo">
+          <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+        </view>
       </view>
       <text class="enter-name">{{ branding.name }}</text>
       <text class="enter-tip">正在进入项目空间</text>
@@ -171,11 +171,9 @@
         <view class="splash-mark">
           <view class="splash-ring splash-ring--outer" />
           <view class="splash-ring splash-ring--inner" />
-          <image
-            class="splash-logo"
-            :src="branding.logoUrl || '/static/images/logo.png'"
-            mode="aspectFit"
-          />
+          <view class="splash-logo">
+            <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+          </view>
         </view>
         <text class="splash-name">{{ branding.name }}</text>
         <text class="splash-slogan">让装修工程更透明、更可控</text>

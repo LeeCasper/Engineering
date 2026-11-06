@@ -5,7 +5,9 @@
       <image class="hero-skyline" src="/static/images/home-skyline.png" mode="widthFix" />
       <view class="hero-content">
         <view class="brand">
-          <image class="brand-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
+          <view class="brand-logo">
+            <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+          </view>
           <view class="brand-text">
             <text class="brand-name">{{ branding.name }}</text>
             <text class="brand-slogan">让装修工程更透明、更可控</text>
@@ -122,7 +124,9 @@
 
     <!-- 完全没有任何项目：沿用「绑定手机号 + 联系管理员」引导 -->
     <view v-if="noProjects" class="no-project">
-      <image class="no-project-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
+      <view class="no-project-logo">
+        <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+      </view>
       <text class="no-project-title">还没有加入任何项目</text>
       <text class="no-project-text">
         项目邀请按手机号发送。请确认已绑定手机号，再联系邀请您的装修公司管理员。

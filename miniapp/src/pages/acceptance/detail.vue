@@ -31,7 +31,9 @@
         <view class="overview-card">
           <view class="overview-top">
             <view class="overview-left">
-              <image class="project-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
+              <view class="project-logo">
+                <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+              </view>
               <view class="overview-text">
                 <text class="project-name">{{ detail.projectName }}</text>
                 <view class="address-row">

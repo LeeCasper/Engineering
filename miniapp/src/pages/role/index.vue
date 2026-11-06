@@ -20,7 +20,9 @@
 
       <!-- 品牌与主文案 -->
       <view class="brand">
-        <image class="brand-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
+        <view class="brand-logo">
+          <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+        </view>
         <text class="brand-name">{{ branding.name }}</text>
       </view>
 

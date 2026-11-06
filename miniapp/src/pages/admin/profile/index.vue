@@ -189,11 +189,9 @@
         <view class="exit-mark">
           <view class="exit-ring exit-ring--outer" />
           <view class="exit-ring exit-ring--inner" />
-          <image
-            class="exit-logo"
-            :src="branding.logoUrl || '/static/images/logo.png'"
-            mode="aspectFit"
-          />
+          <view class="exit-logo">
+            <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+          </view>
         </view>
         <text class="exit-title">{{ leavingText }}</text>
         <text class="exit-tip">{{ leavingTip }}</text>

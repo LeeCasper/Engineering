@@ -4,7 +4,9 @@
 
     <view class="admin-content">
       <view class="login-hero">
-        <image class="login-logo" :src="branding.logoUrl || '/static/images/logo.png'" mode="aspectFit" />
+        <view class="login-logo">
+          <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+        </view>
         <view class="login-hero-text">
           <text class="login-title">{{ branding.name }} · 管理端</text>
           <text class="login-sub">使用租户管理员账号登录，与网页后台同一套数据</text>
@@ -159,11 +161,9 @@
       <view class="enter-mark">
         <view class="enter-ring enter-ring--outer" />
         <view class="enter-ring enter-ring--inner" />
-        <image
-          class="enter-logo"
-          :src="branding.logoUrl || '/static/images/logo.png'"
-          mode="aspectFit"
-        />
+        <view class="enter-logo">
+          <gc-brand-logo :src="branding.logoUrl" mode="aspectFit" />
+        </view>
       </view>
       <text class="enter-name">{{ branding.name }}</text>
       <text class="enter-tip">正在进入管理端</text>
