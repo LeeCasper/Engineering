@@ -555,6 +555,14 @@ src/
 └── manifest.json
 ```
 
+## 自动化测试
+
+- H5 E2E：`npm run test:e2e:h5`。使用 Node 内置测试运行器 + Playwright Core，
+  自动拉起 dev 后端与 H5 dev server，覆盖开屏、登录、管理员入口 / 退出等入口链路；
+- 微信端 E2E：`npm run test:e2e:mp`。使用 `miniprogram-automator`，需要微信开发者工具
+  开启服务端口并设置 `WECHAT_DEVTOOLS_CLI`，用于验证真实微信运行时与分包加载；
+- 完整说明见 [`tests/README.md`](tests/README.md)。
+
 ## 下一步
 
 - 意见反馈图片：需要先补多文件暂存接口，再开放配图；

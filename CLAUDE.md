@@ -127,6 +127,8 @@ npm run dev:h5              # 浏览器预览（需后端 WX_MOCK=true，固定 
 npm run dev:mp-weixin       # 用微信开发者工具导入 dist/dev/mp-weixin；新增页面/路由后必须重启 watcher
 npm run build:mp-weixin     # 默认接口回落到 127.0.0.1:3000，仅本地调试用
 npm run build:h5
+npm run test:e2e:h5         # H5 E2E（自动拉起 dev 后端 + H5，Playwright 驱动）
+npm run test:e2e:mp         # 微信端 E2E（需安装 miniprogram-automator 并开启开发者工具服务端口）
 # 生产包必须显式指定 HTTPS API，否则真机会报 url not in domain list
 VITE_API_BASE=https://bzg.yanxinn.com/api/v1 npm run build:mp-weixin
 node scripts/gen-assets.js  # 从 design-refs/ 重新生成 PNG 静态资源
@@ -159,10 +161,10 @@ H5 预览与冒烟测试需要 `WX_MOCK=true`（集成测试会自行强制该�
 （验证码接口要返回 `debugAnswer`），并会从租户入口登录。
 
 **验证组合**：后端 `npm run test:all` + `npm run smoke`；后台 `pnpm typecheck && pnpm build`
-（没有前端自动化测试，交互用 Playwright 手工验证）；小程序至少跑
-`npm run build:h5 && npm run build:mp-weixin`，交互用 `dev:h5` 跑通。
-只改小程序样式时也不能只看构建成功 —— 用 H5 / 微信开发者工具实际看一眼主色、
-tabBar 选中态和底部安全区。
+（没有前端自动化测试，交互用 Playwright 手工验证）；小程序跑
+`npm run test:e2e:h5` + `npm run build:h5 && npm run build:mp-weixin`，
+需要真机 / 微信运行时再用 `npm run test:e2e:mp`。只改小程序样式时也不能只看构建成功 ——
+用 H5 / 微信开发者工具实际看一眼主色、tabBar 选中态和底部安全区。
 
 ## 生产部署（当前环境）
 

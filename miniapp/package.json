@@ -7,7 +7,9 @@
     "dev:mp-weixin": "uni -p mp-weixin",
     "build:mp-weixin": "uni build -p mp-weixin",
     "dev:h5": "uni",
-    "build:h5": "uni build"
+    "build:h5": "uni build",
+    "test:e2e:h5": "node tests/e2e/run.js",
+    "test:e2e:mp": "node tests/mp/login.mp.test.js"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-alpha-5030220261016001",
@@ -20,6 +22,8 @@
     "@dcloudio/uni-cli-shared": "3.0.0-alpha-5030220261016001",
     "@dcloudio/uni-stacktracey": "3.0.0-alpha-5030220261016001",
     "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5030220261016001",
+    "miniprogram-automator": "^0.13.0",
+    "playwright-core": "^1.64.1",
     "sass": "^1.77.0",
     "vite": "5.2.8"
   }
