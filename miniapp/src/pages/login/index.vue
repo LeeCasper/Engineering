@@ -397,14 +397,24 @@ async function onWechatLogin() {
 
 function goAdminLogin() {
   if (adminNavigating.value) return
+  // 全局路由里如果已经压了管理员登录页，再 navigateTo 会创建两个同路由页面，
+  // 微信会把前一个 webview 直接销毁并抛
+  // SystemError: routeDone with a webviewId ... is not found。
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  const top = pages && pages.length ? pages[pages.length - 1] : null
+  if (top && top.route === 'pages/admin/login/index') return
+
   adminNavigating.value = true
   uni.navigateTo({
     url: '/pages/admin/login/index',
-    success: () => {
-      adminNavigating.value = false
+    complete: () => {
+      // success 只代表路由已发起，页面推入动画还没结束；锁要撑过这段，
+      // 否则连点第二下仍会再 push 一页，触发上面的路由错误
+      setTimeout(() => {
+        adminNavigating.value = false
+      }, 400)
     },
     fail: () => {
-      adminNavigating.value = false
       uni.showToast({ title: '进入失败，请重试', icon: 'none' })
     },
   })
