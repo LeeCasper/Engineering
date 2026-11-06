@@ -72,15 +72,15 @@ watch(
 .gc-brand-logo__fallback {
   z-index: 0;
   opacity: 1;
-  transition: opacity 160ms ease;
 }
 
 .gc-brand-logo__remote {
   z-index: 1;
   opacity: 0;
-  transition: opacity 160ms ease;
 }
 
+/* 不要做交叉淡入：两层同时半透明时，底层 Logo 会透出背景色，表现为「变白」。
+ * 远程图触发 load 时已经解码完成，直接整帧切换即可。 */
 .gc-brand-logo--loaded .gc-brand-logo__fallback {
   opacity: 0;
 }

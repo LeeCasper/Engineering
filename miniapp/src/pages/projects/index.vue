@@ -13,16 +13,6 @@
             <text class="brand-slogan">让装修工程更透明、更可控</text>
           </view>
         </view>
-        <view v-if="adminEntryVisible" class="hero-actions">
-          <view class="admin-entry" @tap="openAdmin">
-            <image
-              class="admin-entry-icon"
-              src="/static/images/icon-gear-white.png"
-              mode="aspectFit"
-            />
-            <text class="admin-entry-label">管理</text>
-          </view>
-        </view>
       </view>
     </view>
 
@@ -326,7 +316,7 @@ import { onLoad, onShow, onPageScroll, onPullDownRefresh } from '@dcloudio/uni-a
 import { branding, loadBranding } from '../../store/branding'
 import { myProjects, confirmInvitation, rejectInvitation } from '../../api/project'
 import { resolveMediaUrl } from '../../api/request'
-import { bindPhone, listAdminBindings } from '../../api/auth'
+import { bindPhone } from '../../api/auth'
 import { DEV_PHONE_BIND } from '../../config'
 import {
   setCachedProjects,
@@ -337,11 +327,6 @@ import {
 } from '../../store/session'
 import { setCurrentProject, syncProjectContext } from '../../store/projectContext'
 import { refreshMineTabBadge } from '../../utils/notificationBadge'
-import {
-  getAdminToken,
-  getBindingHint,
-  setBindingHint,
-} from '../../store/adminSession'
 import { useSwipeClose } from '../../composables/useSwipeClose'
 
 // 底部弹窗下滑关闭：绑定把手 / 标题区，不干扰表单滚动
@@ -387,7 +372,6 @@ const user = ref(getUser() || {})
 const phoneInput = ref('')
 const binding = ref(false)
 const safeTop = ref(12)
-const adminEntryVisible = ref(false)
 const searchStuck = ref(false)
 const searchStickyThreshold = ref(0)
 const pageScrollTop = ref(0)
@@ -444,38 +428,6 @@ const emptyText = computed(() => {
   return '没有符合当前筛选条件的项目，试试调整筛选条件'
 })
 
-async function refreshAdminAccess() {
-  if (!getToken()) return
-
-  if (getAdminToken()) {
-    adminEntryVisible.value = true
-    return
-  }
-
-  const hint = getBindingHint()
-  if (hint && Date.now() - Number(hint.checkedAt || 0) < 5 * 60 * 1000) {
-    adminEntryVisible.value = Number(hint.count) > 0
-    return
-  }
-
-  try {
-    const data = await listAdminBindings()
-    const count = (data.bindings || []).length
-    setBindingHint(count)
-    adminEntryVisible.value = count > 0
-  } catch (err) {
-    adminEntryVisible.value = false
-  }
-}
-
-function openAdmin() {
-  if (getAdminToken()) {
-    uni.navigateTo({ url: '/pages/admin/workbench/index' })
-    return
-  }
-  uni.navigateTo({ url: '/pages/admin/login/index' })
-}
-
 onPageScroll((event) => {
   const top = Number(event && event.scrollTop) || 0
   pageScrollTop.value = top
@@ -497,7 +449,6 @@ onLoad((options) => {
     uni.redirectTo({ url: '/pages/login/index' })
     return
   }
-  refreshAdminAccess()
   load()
 })
 
@@ -505,7 +456,6 @@ onShow(() => {
   // 从其他页面返回时同步用户信息；首次 onLoad 已经触发加载
   user.value = getUser() || {}
   if (getToken()) {
-    refreshAdminAccess()
     refreshMineTabBadge()
   }
   if (!loading.value && getToken()) load()
@@ -915,34 +865,6 @@ function closeActiveSheet() {
   align-items: center;
   flex: 1;
   min-width: 0;
-}
-
-.hero-actions {
-  display: flex;
-  align-items: flex-start;
-  gap: dp(14);
-  flex-shrink: 0;
-}
-
-.admin-entry {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: dp(2);
-  flex-shrink: 0;
-  color: #fff;
-}
-
-.admin-entry-icon {
-  width: dp(20);
-  height: dp(20);
-}
-
-.admin-entry-label {
-  margin-top: dp(2);
-  color: #fff;
-  font-size: dp(11);
-  font-weight: 500;
 }
 
 .filter-active-dot {

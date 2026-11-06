@@ -434,9 +434,9 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   普通管理员 JWT；C 端微信 token 只用于证明 openid，绝不直接访问 `/admin/*`。
   管理端页面在 `pages/admin/**`，全部是非 tab 页；C 端保留 4 个原生 tab。管理端顶层
   页（工作台 / 项目 / 成员 / 我的）使用 `AdminTabBar` 内页导航，不注册进原生 tabBar，
-  顶层页之间用 `redirectTo`，详情/表单页不显示底部导航。项目列表顶部
-  「管理」入口只对有管理员 token 或有效微信绑定的用户显示，有 token 时进入工作台；
-  首次登录在小程序登录页的「管理员登录」进入。管理员 token 存在 `gc_admin_*`，与 C 端 `gc_token` 分离：
+  顶层页之间用 `redirectTo`，详情/表单页不显示底部导航。C 端项目列表**不显示**
+  管理入口；管理员统一从小程序登录页的「管理员登录」进入工作台，避免把后台身份
+  暴露在普通业主 / 工长 / 监理的主界面。管理员 token 存在 `gc_admin_*`，与 C 端 `gc_token` 分离：
   任一端 401 都不能清另一端。微信免密绑定表是 `admin_wechat_binding`（迁移 018），
   以 openid 为权威键，`admin_token_version` 失配即失效；改密、重置、禁用、C 端注销
   必须撤销绑定。平台账号不能登录小程序管理端，也不能绑定。管理员复用后台
