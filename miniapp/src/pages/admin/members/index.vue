@@ -163,6 +163,8 @@ import {
   setAdminPrimaryForeman,
   removeAdminMember,
 } from '../../../api/admin/project'
+import { getAdminUser } from '../../../store/adminSession'
+import { readAdminCache, writeAdminCache } from '../../../store/adminCache'
 import {
   memberRoleText,
   memberStatusText,
@@ -179,15 +181,17 @@ const ROLE_OPTIONS = [
   { key: 'owner', label: '业主', countKey: 'owner' },
 ]
 
-const profile = ref(null)
-const members = ref([])
-const total = ref(0)
-const page = ref(1)
-const totalPages = ref(1)
+// 切 tab 会重建页面：先渲染上一个实例的快照，再后台静默刷新
+const snapshot = readAdminCache('members')
+const profile = ref(getAdminUser())
+const members = ref(snapshot && snapshot.members ? snapshot.members : [])
+const total = ref(snapshot ? snapshot.total : 0)
+const page = ref(snapshot ? snapshot.page : 1)
+const totalPages = ref(snapshot ? snapshot.totalPages : 1)
 const pageSize = 20
 const keyword = ref('')
 const role = ref('')
-const roleCounts = ref(null)
+const roleCounts = ref(snapshot ? snapshot.roleCounts : null)
 const loading = ref(false)
 const loadingMore = ref(false)
 const error = ref('')
@@ -201,7 +205,7 @@ const memberSheetOpen = ref(false)
 const selectedMember = ref(null)
 
 let bootstrapped = false
-let loadedOnce = false
+let loadedOnce = Boolean(snapshot)
 let requestSeq = 0
 let debounceTimer = null
 let pendingInvite = false
@@ -279,11 +283,11 @@ onLoad(async (options) => {
   try {
     profile.value = await requireAdminSession()
   } catch (err) {
-    showAdminError(err, '管理员信息加载失败')
+    if (!members.value.length) showAdminError(err, '管理员信息加载失败')
   }
   bootstrapped = true
   if (profile.value) {
-    await load(true)
+    await load(true, { silent: Boolean(snapshot) })
     // 工作台「成员邀请」快捷入口直接进入邀请流程
     if (pendingInvite) invitePickerOpen.value = true
   }
@@ -344,6 +348,16 @@ async function load(reset = false, { silent = false } = {}) {
       owner: 0,
     }
     loadedOnce = true
+    // 只缓存「无筛选、无项目范围」的默认目录
+    if (!keyword.value && !role.value && !scopeProjectId.value) {
+      writeAdminCache('members', {
+        members: members.value,
+        total: total.value,
+        page: page.value,
+        totalPages: totalPages.value,
+        roleCounts: roleCounts.value,
+      })
+    }
   } catch (err) {
     if (seq !== requestSeq) return
     if (silent && members.value.length) {

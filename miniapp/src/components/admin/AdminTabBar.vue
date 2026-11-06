@@ -105,9 +105,9 @@ function go(tab) {
 }
 
 .tabbar-item--active .tabbar-icon-wrap {
+  /* 顶层页之间是 redirectTo，底栏每个页面都会重建；加弹跳动画会在每次切页时
+     重播一遍，看起来就是底栏在闪。这里只保留选中底色，不做入场动画。 */
   background: #fff2ed;
-  transform-origin: center;
-  animation: gc-tab-pop 360ms cubic-bezier(0.2, 1.35, 0.35, 1) both;
 }
 
 .tabbar-icon {
@@ -127,9 +127,4 @@ function go(tab) {
   font-weight: 600;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tabbar-item--active .tabbar-icon-wrap {
-    animation: none;
-  }
-}
 </style>

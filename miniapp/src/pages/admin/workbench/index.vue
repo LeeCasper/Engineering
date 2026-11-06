@@ -168,6 +168,8 @@ import {
   markAdminNotificationsRead,
 } from '../../../api/admin/project'
 import { branding, loadBranding } from '../../../store/branding'
+import { getAdminUser } from '../../../store/adminSession'
+import { readAdminCache, writeAdminCache } from '../../../store/adminCache'
 import {
   requireAdminSession,
   ADMIN_ROLE_LABELS,
@@ -180,12 +182,14 @@ defineOptions({ name: 'AdminWorkbenchPage' })
 const info = uni.getSystemInfoSync()
 const safeTop = ref(info.statusBarHeight || 12)
 
-const profile = ref(null)
-const stats = ref(null)
-const recentProjects = ref([])
-const previewNotifications = ref([])
-const unread = ref(0)
-const loading = ref(true)
+// 切 tab 会重建页面：先用上一个实例的快照渲染，避免每次都退回加载态
+const snapshot = readAdminCache('workbench')
+const profile = ref(getAdminUser())
+const stats = ref(snapshot ? snapshot.stats : null)
+const recentProjects = ref(snapshot ? snapshot.recentProjects : [])
+const previewNotifications = ref(snapshot ? snapshot.previewNotifications : [])
+const unread = ref(snapshot ? snapshot.unread : 0)
+const loading = ref(!snapshot)
 const error = ref('')
 
 const reminderOpen = ref(false)
@@ -197,7 +201,7 @@ const sheetTotal = ref(0)
 const markingAll = ref(false)
 
 let bootstrapped = false
-let loadedOnce = false
+let loadedOnce = Boolean(snapshot)
 let inFlight = false
 
 const brandTitle = computed(() => `${branding.name || '柏总管'} · 管理端`)
@@ -313,13 +317,14 @@ onLoad(async () => {
   try {
     profile.value = await requireAdminSession()
   } catch (err) {
-    error.value = err.message || '管理员信息加载失败'
+    // 有快照时先保持展示，网络抖动不应该把已有数据清成错误页
+    if (!stats.value) error.value = err.message || '管理员信息加载失败'
     loading.value = false
     return
   }
 
   bootstrapped = true
-  if (profile.value) await load()
+  if (profile.value) await load({ silent: Boolean(snapshot) })
   else loading.value = false
 })
 
@@ -364,6 +369,12 @@ async function load({ silent = false } = {}) {
       unread.value = Number(notificationData.unread) || 0
     }
     loadedOnce = true
+    writeAdminCache('workbench', {
+      stats: stats.value,
+      recentProjects: recentProjects.value,
+      previewNotifications: previewNotifications.value,
+      unread: unread.value,
+    })
 
     if (!silent && (!projectsData || !notificationData)) {
       uni.showToast({ title: '部分数据加载失败', icon: 'none' })

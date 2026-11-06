@@ -219,7 +219,12 @@ import {
   logoutAdmin,
 } from '../../../api/admin/auth'
 import { getToken } from '../../../store/session'
-import { clearAdminSession, setBindingHint } from '../../../store/adminSession'
+import {
+  clearAdminSession,
+  setBindingHint,
+  getAdminUser,
+} from '../../../store/adminSession'
+import { readAdminCache, writeAdminCache } from '../../../store/adminCache'
 import { branding } from '../../../store/branding'
 import {
   requireAdminSession,
@@ -234,8 +239,10 @@ defineOptions({ name: 'AdminProfilePage' })
 const info = uni.getSystemInfoSync()
 const safeTop = info.statusBarHeight || 12
 
-const profile = ref(null)
-const binding = ref(null)
+// 切 tab 会重建页面：先渲染上一个实例的快照，再后台静默刷新
+const snapshot = readAdminCache('profile')
+const profile = ref((snapshot && snapshot.profile) || getAdminUser())
+const binding = ref(snapshot ? snapshot.binding : null)
 const bindingLoading = ref(false)
 const bindingAction = ref(false)
 const bindingOpen = ref(false)
@@ -245,7 +252,7 @@ const leaving = ref(false)
 const leavingText = ref('正在退出管理端')
 const leavingTip = ref('')
 
-let loadedOnce = false
+let loadedOnce = Boolean(snapshot)
 
 const avatarText = computed(() => {
   const name = profile.value && profile.value.username ? String(profile.value.username) : ''
@@ -295,6 +302,7 @@ onLoad(async () => {
   if (profile.value) {
     await loadBinding()
     loadedOnce = true
+    writeAdminCache('profile', { profile: profile.value, binding: binding.value })
   }
 })
 
@@ -319,7 +327,10 @@ onPullDownRefresh(async () => {
 async function refreshProfile() {
   try {
     const data = await requireAdminSession()
-    if (data) profile.value = data
+    if (data) {
+      profile.value = data
+      writeAdminCache('profile', { profile: profile.value, binding: binding.value })
+    }
   } catch (err) {
     showAdminError(err, '账号信息刷新失败')
   }
@@ -329,6 +340,7 @@ async function loadBinding() {
   bindingLoading.value = true
   try {
     binding.value = await fetchAdminWechatBinding()
+    writeAdminCache('profile', { profile: profile.value, binding: binding.value })
   } catch (err) {
     showAdminError(err, '绑定状态加载失败')
   } finally {

@@ -10,6 +10,8 @@
  * 调 /admin/auth/profile 回库确认账号、租户与首登改密状态。
  */
 
+import { clearAdminCache } from './adminCache'
+
 const TOKEN_KEY = 'gc_admin_token'
 const USER_KEY = 'gc_admin_user'
 const META_KEY = 'gc_admin_meta'
@@ -38,6 +40,8 @@ export function setLastAdminTenantCode(code) {
 }
 
 export function setAdminSession({ token, admin, meta }) {
+  // 换账号必须丢掉上一个会话的页面快照
+  clearAdminCache()
   if (token) uni.setStorageSync(TOKEN_KEY, token)
   if (admin) uni.setStorageSync(USER_KEY, admin)
   if (meta) uni.setStorageSync(META_KEY, meta)
@@ -48,6 +52,7 @@ export function setAdminUser(admin) {
 }
 
 export function clearAdminSession() {
+  clearAdminCache()
   uni.removeStorageSync(TOKEN_KEY)
   uni.removeStorageSync(USER_KEY)
   uni.removeStorageSync(META_KEY)

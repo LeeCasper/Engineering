@@ -89,6 +89,8 @@ import AdminTabBar from '../../../components/admin/AdminTabBar.vue'
 import AdminProjectCard from '../../../components/admin/AdminProjectCard.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
 import { fetchAdminProjects, fetchAdminProjectStats } from '../../../api/admin/project'
+import { getAdminUser } from '../../../store/adminSession'
+import { readAdminCache, writeAdminCache } from '../../../store/adminCache'
 import { requireAdminSession, showAdminError } from '../../../utils/admin'
 
 defineOptions({ name: 'AdminProjectsPage' })
@@ -101,22 +103,24 @@ const STATUS_OPTIONS = [
   { key: 'archived', label: '已归档' },
 ]
 
-const profile = ref(null)
-const projects = ref([])
-const total = ref(0)
-const page = ref(1)
-const totalPages = ref(1)
+// 切 tab 会重建页面：先渲染上一个实例的快照，再后台静默刷新
+const snapshot = readAdminCache('projects')
+const profile = ref(getAdminUser())
+const projects = ref(snapshot && snapshot.projects ? snapshot.projects : [])
+const total = ref(snapshot ? snapshot.total : 0)
+const page = ref(snapshot ? snapshot.page : 1)
+const totalPages = ref(snapshot ? snapshot.totalPages : 1)
 const pageSize = 20
 const keyword = ref('')
 const status = ref('')
-const stats = ref(null)
+const stats = ref(snapshot ? snapshot.stats : null)
 const loading = ref(false)
 const loadingMore = ref(false)
 const error = ref('')
 const mode = ref('')
 
 let bootstrapped = false
-let loadedOnce = false
+let loadedOnce = Boolean(snapshot)
 let requestSeq = 0
 
 const isDefaultMode = computed(() => mode.value === '')
@@ -154,15 +158,24 @@ onLoad(async (options) => {
   // 成员 tab 已迁到 pages/admin/members/index；旧的 mode=members 深链
   // 回落成普通项目列表，不再渲染第二套「成员管理」标题
   mode.value = options && options.mode === 'stages' ? 'stages' : ''
+  // 阶段管理是另一个入口，不能复用项目列表的快照
+  if (isStagesMode.value) {
+    projects.value = []
+    total.value = 0
+    stats.value = null
+    loadedOnce = false
+  }
 
   try {
     profile.value = await requireAdminSession()
   } catch (err) {
-    showAdminError(err, '管理员信息加载失败')
+    if (!projects.value.length) showAdminError(err, '管理员信息加载失败')
   }
 
   bootstrapped = true
-  if (profile.value) await load(true)
+  if (profile.value) {
+    await load(true, { silent: isDefaultMode.value && Boolean(snapshot) })
+  }
 })
 
 onShow(() => {
@@ -221,6 +234,16 @@ async function load(reset = false, { silent = false } = {}) {
     totalPages.value = (data && data.totalPages) || 1
     if (statsData) stats.value = statsData
     loadedOnce = true
+    // 只缓存「无筛选」的默认列表，避免切回来时列表和筛选条对不上
+    if (isDefaultMode.value && !keyword.value && !status.value) {
+      writeAdminCache('projects', {
+        projects: projects.value,
+        total: total.value,
+        page: page.value,
+        totalPages: totalPages.value,
+        stats: stats.value,
+      })
+    }
   } catch (err) {
     if (seq !== requestSeq) return
     if (silent && projects.value.length) {

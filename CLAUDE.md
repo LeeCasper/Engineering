@@ -45,6 +45,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `README.md` | 环境准备、数据库初始化、快速开始、交付进度 |
 | `admin/README.md` | 双登录入口、角色菜单、已实现页面与验证方式 |
 | `miniapp/README.md` | Stitch 设计稿来源、页面行为、原生 tabBar、资源生成 |
+| `miniapp/tests/README.md` | H5 / 微信端 E2E 的运行方式与 Linux 开发者工具自动化配置 |
 | `DESIGN.md` | Stitch 导出的设计令牌（品牌色 `#165DFF` 等），仅作设计参考 |
 
 ## 当前进度
@@ -99,7 +100,8 @@ cd ../miniapp && npm install
 npm run dev                 # 开发模式（nodemon 热重载）
 npm start                   # 生产启动
 npm run migrate             # 执行未应用的迁移
-npm run migrate:test        # 在测试库上执行迁移（NODE_ENV=test）
+npm run migrate:test        # 测试库迁移；脚本用 cross-env，但它不在依赖里
+NODE_ENV=test node scripts/migrate.js   # 上面报 cross-env: not found 时用这条
 npm run migrate -- --status # 只看迁移状态，不改库
 npm run migrate -- --fresh  # 删库重建（非生产环境可用）
 npm run seed                # 灌种子数据（幂等，可重复执行）
@@ -137,6 +139,9 @@ node scripts/gen-assets.js  # 从 design-refs/ 重新生成 PNG 静态资源
 curl http://127.0.0.1:3000/health        # 存活探针
 curl http://127.0.0.1:3000/api/v1/health # 就绪探针（真连 MySQL + 缓存）
 ```
+
+运行环境：Node.js ≥ 20（本机 22.x）；管理后台额外要求 Node ≥ 20.19 与 pnpm ≥ 8.7。
+小程序 E2E 需要本机 Chrome；微信端 E2E 还需要微信开发者工具开启服务端口。
 
 首次启动前先按 `README.md` 建好 `renovation_dev` / `renovation_test`（`utf8mb4`），
 并在 `server/.env` 配好数据库、JWT、`SIGNED_URL_SECRET`、`DOOR_CODE_KEY`；
@@ -465,7 +470,15 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
 - **管理端底部导航是内页 `AdminTabBar`**：只用于管理端顶层页（工作台 / 项目 /
   成员 / 我的），不注册进 `pages.json` 的 `tabBar`，也不要在 C 端页面渲染它。
   顶层页之间用 `redirectTo`；详情、表单、成员、付款节点、阶段工序等嵌套页用
-  `navigateTo` 且不显示底部导航。成员 tab 是 `pages/admin/members/index` 的跨项目
+  `navigateTo` 且不显示底部导航。
+  **切 tab 时不能退回加载态**：`redirectTo` 会销毁并重建顶层页，若每次 `onLoad`
+  都先 `loading = true`，用户看到的就是「切页 = 刷新」，底栏也跟着闪。
+  四个顶层页统一用 `store/adminCache.js` 的内存快照：setup 时先用快照渲染，
+  `onLoad` 走 `silent` 刷新；只有首次进入（没有快照）才显示加载态。
+  管理员登录 / 登出 / 401 会清空快照（`setAdminSession` / `clearAdminSession`），
+  不要把快照写进 storage，也不要在快照里放另一个账号的数据。
+  `AdminTabBar` 的选中项不要加入场动画：底栏每次切页都会重建，动画会重播一遍。
+  成员 tab 是 `pages/admin/members/index` 的跨项目
   成员目录，读 `GET /admin/members`（复用 `dataScope`，手机号脱敏）；邀请 / 改指 /
   移除仍走具体项目的 `/admin/projects/:id/members`，不要为写操作另开跨项目接口。
   项目详情 `pages/admin/project/detail` 按 Stitch `64c024eb…` 还原，单项目成员页
@@ -570,6 +583,11 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   登录、项目详情等首屏链路留在主包。新增非 tab 页面优先放进分包；
   分包被打包后路径不变（仍是 `/pages/admin/...`、`/pages/settlement/...`）。
   `dist/dev/mp-weixin` 比正式包大，**上传发布必须用 `dist/build/mp-weixin`**。
+- **`mp-weixin.lazyCodeLoading` 保持 `requiredComponents`**：微信开发者工具在
+  每次编译后的冷启动里，第一次路由进入**任何**分包（`pages/admin`、`pages/settlement`
+  都复现）都会抛 `SystemError: routeDone with a webviewId ... is not found`。
+  已验证与 `wx.preloadSubpackage` 无关；开启按需注入后连续冷启动不再出现。
+  这是运行时路由问题，不是可选的性能项，不要删掉。
 
 ### 管理后台（`admin/`）
 
