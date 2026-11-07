@@ -58,6 +58,14 @@ class MemoryCache {
     return removed
   }
 
+  /** 原子取出并删除。用于验证码等「一次性消费」的键 */
+  async take(key) {
+    const item = this.entry(key)
+    if (!item) return null
+    this.store.delete(key)
+    return item.value
+  }
+
   /** 原子自增。用于登录失败计数（AC-AD03）与接口限流 */
   async incr(key) {
     const item = this.entry(key)

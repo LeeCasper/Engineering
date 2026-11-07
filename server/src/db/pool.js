@@ -71,11 +71,15 @@ async function query(sql, params = []) {
   } catch (err) {
     // 慢查询与失败查询都要留痕：AC-AD43 要求 500 项目下看板 ≤ 3s，
     // 上线后靠这条日志定位需要加索引的查询
+    // 不要记录 params 与原始 err.message：MySQL 的 ER_DUP_ENTRY 等错误消息
+    // 会回显冲突值，而 params 里有手机号、真实姓名、反馈正文、账目备注等 PII。
+    // 只记 SQL 形状、参数个数、错误码与堆栈，足够定位问题。
     logger.error('SQL 执行失败', {
       sql: normalizeSql(sql),
-      params,
+      paramCount: Array.isArray(params) ? params.length : 0,
       durationMs: Date.now() - started,
-      err,
+      errCode: err && err.code,
+      errStack: err && err.stack,
     })
     throw err
   }

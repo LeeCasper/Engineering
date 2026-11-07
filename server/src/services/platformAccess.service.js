@@ -20,6 +20,7 @@
 
 const AppError = require('../utils/AppError')
 const datetime = require('../utils/datetime')
+const db = require('../db/pool')
 const tenantModel = require('../models/tenant.model')
 const adminUserModel = require('../models/adminUser.model')
 const platformAccessGrantModel = require('../models/platformAccessGrant.model')
@@ -95,19 +96,27 @@ async function grant(operator, input) {
   }
 
   // 同一平台账号对同一租户只允许一个有效窗口。多个窗口并存时，
-  // 撤销其中一个不会真正断掉访问 —— 客户会以为「已经关掉了」
-  const active = await platformAccessGrantModel.findActive(target.id, operator.tenantId)
-  if (active) {
-    throw AppError.conflict('该平台账号已持有有效授权，请先撤销或等待过期')
-  }
-
+  // 撤销其中一个不会真正断掉访问 —— 客户会以为「已经关掉了」。
+  //
+  // 检查和插入必须在同一事务里，并锁住租户行：旧写法是裸 SELECT + 裸
+  // INSERT，两个并发请求都能看到「无有效授权」并各插一行。
   const expiresAtDb = datetime.toDb(expiresAt)
-  const id = await platformAccessGrantModel.create({
-    tenantId: operator.tenantId,
-    adminUserId: target.id,
-    grantedBy: operator.id,
-    reason: input.reason,
-    expiresAt: expiresAtDb,
+  const id = await db.withTransaction(async (tx) => {
+    await tenantModel.lockById(operator.tenantId, tx)
+    const active = await platformAccessGrantModel.findActive(target.id, operator.tenantId, tx)
+    if (active) {
+      throw AppError.conflict('该平台账号已持有有效授权，请先撤销或等待过期')
+    }
+    return platformAccessGrantModel.create(
+      {
+        tenantId: operator.tenantId,
+        adminUserId: target.id,
+        grantedBy: operator.id,
+        reason: input.reason,
+        expiresAt: expiresAtDb,
+      },
+      tx
+    )
   })
 
   await operationLog.record({

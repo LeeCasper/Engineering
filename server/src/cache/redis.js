@@ -57,6 +57,22 @@ class RedisCache {
     return client.del(...flat)
   }
 
+  /**
+   * 原子取出并删除（GETDEL）。
+   *
+   * 不能拆成 get + del：两个并发请求都会在 del 之前读到值，
+   * 一次性验证码就变成「一次解题、多次使用」。
+   */
+  async take(key) {
+    const client = await this.ensureConnected()
+    if (typeof client.getdel === 'function') return client.getdel(key)
+    return client.eval(
+      "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]) end; return v",
+      1,
+      key
+    )
+  }
+
   async incr(key) {
     const client = await this.ensureConnected()
     return client.incr(key)

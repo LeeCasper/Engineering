@@ -215,9 +215,10 @@ async function deactivate(userId, operator) {
     return { affected: memberships, promotions: promoted }
   })
 
-  // 头像属于个人数据，账号注销后不再保留文件；外部 URL（微信头像）不动
-  const marker = `${config.upload.publicPath}/`
-  if (user.avatar && String(user.avatar).includes(marker)) {
+  // 头像属于个人数据，账号注销后不再保留文件；外部 URL（微信头像）不动。
+  // 必须用本系统绝对前缀，不能用 includes('/uploads/') —— 后者可被构造的 URL 绕过。
+  const ownUploadPrefix = `${config.upload.publicBaseUrl}${config.upload.publicPath}/`
+  if (user.avatar && String(user.avatar).startsWith(ownUploadPrefix)) {
     await storage.remove(storage.extractKey(user.avatar))
   }
 

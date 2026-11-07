@@ -20,6 +20,7 @@ async function bootstrap() {
   try {
     require('./services/wx.service').assertSafeConfig()
     require('./utils/password').assertSecureConfig()
+    require('./utils/secrets').assertSecureSecrets()
     require('./services/doorCode.service').assertKeyConfigured()
     require('./services/esign/config').assertSafeConfig()
     require('./services/identity.service').assertSafeConfig()

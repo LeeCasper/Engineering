@@ -99,7 +99,11 @@ async function login({ username, password: plainPassword, captchaId, captchaAnsw
       ? tenant
         ? await adminUserModel.findForLogin(username, tenant.id)
         : []
-      : await adminUserModel.findForLogin(username, tenant ? tenant.id : undefined)
+      : portal === 'platform'
+        // 平台门户只解析平台命名空间。用全局查询会让任何租户创建同名账号后
+        // 把平台运营永久卡在「用户名在多个租户下存在」的 400 上。
+        ? await adminUserModel.findForLogin(username, null)
+        : await adminUserModel.findForLogin(username, tenant ? tenant.id : undefined)
   if (candidates.length > 1) {
     // **不猜。** 取第一条会把人登进别人的公司，而症状是「登录成功但看到的项目全不认识」——
     // 用户只会以为自己进错了系统
@@ -118,13 +122,15 @@ async function login({ username, password: plainPassword, captchaId, captchaAnsw
 
   if (!passwordOk) {
     if (admin) {
-      // 已锁定期间不再累加失败次数：否则攻击者可以持续刷新来无限延长锁定，
-      // 变成一种「拿别人的账号打我自己的锁定」的骚扰手段
-      const locked = isLocked(admin)
-      const failedCount = locked ? admin.failed_count : admin.failed_count + 1
-      const lockedUntil = locked ? admin.locked_until : computeLockedUntil(admin.failed_count + 1)
+      // 原子累加：并发请求不能各自读到同一个旧值再写回绝对值，否则
+      // 一次并发爆破只算一次失败，5 次锁形同虚设。锁定窗口内不延长窗口。
+      const failure = await adminUserModel.registerLoginFailure(admin.id, {
+        maxAttempts: MAX_FAILED_ATTEMPTS,
+        lockMinutes: LOCK_MINUTES,
+      })
+      const locked = failure ? isLocked(failure) : false
+      const failedCount = failure ? failure.failed_count : admin.failed_count + 1
 
-      await adminUserModel.updateLoginFailure(admin.id, { failedCount, lockedUntil })
       await loginLogModel.record({
         adminUserId: admin.id,
         tenantId: admin.tenant_id,
@@ -149,7 +155,12 @@ async function login({ username, password: plainPassword, captchaId, captchaAnsw
   }
 
   // 4. 密码正确之后才暴露账号状态 —— 没通过密码校验的人不该知道这些
-  if (isLocked(admin)) {
+  //
+  // 重新读取持久化的锁定状态：本次请求读到的 admin 行可能早于同一批并发
+  // 失败请求的写入，拿旧行判断会让「同批里命中正确密码」的请求直接登录成功。
+  const current = await adminUserModel.findById(admin.id, { withPassword: true })
+  if (!current) throw AppError.unauthorized()
+  if (isLocked(current)) {
     await loginLogModel.record({
       adminUserId: admin.id,
       username,
@@ -157,8 +168,10 @@ async function login({ username, password: plainPassword, captchaId, captchaAnsw
       result: 'failed',
       failReason: '账号已锁定',
     })
-    const remainMinutes = Math.max(1, Math.ceil((new Date(admin.locked_until) - Date.now()) / 60000))
-    throw AppError.unauthorized(`账号已锁定，请在 ${remainMinutes} 分钟后重试`)
+    // 锁定期间不区分「密码正确但被锁」与「密码错误」：否则锁定窗口会变成
+    // 一个密码正确性 oracle（AC-AD01 要求对外提示不泄露账号状态）。
+    // 真实锁定时长只写日志，不返回给调用方。
+    throw AppError.unauthorized(INVALID_CREDENTIALS)
   }
 
   if (admin.status !== 'active') {

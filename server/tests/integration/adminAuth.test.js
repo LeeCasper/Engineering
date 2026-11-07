@@ -149,10 +149,11 @@ describe('AC-AD03 连续失败锁定', () => {
     expect(remainingMinutes).toBeGreaterThan(14)
     expect(remainingMinutes).toBeLessThanOrEqual(15.05)
 
-    // 关键：锁定期间即使密码正确也不放行
+    // 关键：锁定期间即使密码正确也不放行，且响应不能泄露「密码是对的」
     const result = await auth.login('lockuser', 'Test123456')
     expect(result.status).toBe(401)
-    expect(result.body.message).toContain('锁定')
+    expect(result.body.message).toBe('账号或密码错误')
+    expect(result.body.message).not.toContain('锁定')
   })
 
   it('锁定期间继续尝试不会无限延长锁定时间', async () => {

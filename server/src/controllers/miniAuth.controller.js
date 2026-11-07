@@ -17,7 +17,14 @@ const userModel = require('../models/user.model')
 const loginSchema = z.object({
   code: z.string().min(1, '缺少登录凭证 code').max(128),
   nickname: z.string().trim().max(64).optional(),
-  avatar: z.string().trim().max(512).optional(),
+  // 头像仍接受外部 URL（登录时微信可能带过来）；但绝不允许路径穿越片段。
+  // 真正的删除保护在 storage.uploadPath()，这里是第二道。
+  avatar: z
+    .string()
+    .trim()
+    .max(512)
+    .refine((value) => !value.includes('..'), { message: '头像地址不合法' })
+    .optional(),
 })
 
 const bindPhoneSchema = z
@@ -42,8 +49,13 @@ const updateProfileSchema = z.object({
     (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
     z.union([z.string().trim().max(50, '真实姓名最多 50 个字符'), z.null()]).optional()
   ),
-  // 头像仍接受外部 URL（登录时微信可能带过来）；小程序端上传走下面的 /avatar
-  avatar: z.string().trim().max(512).optional(),
+  // 头像仍接受外部 URL；小程序端上传走下面的 /avatar
+  avatar: z
+    .string()
+    .trim()
+    .max(512)
+    .refine((value) => !value.includes('..'), { message: '头像地址不合法' })
+    .optional(),
 })
 
 /**
@@ -132,7 +144,9 @@ async function updateProfile(req, res) {
  * 外部 URL（例如登录时微信带过来的头像）不删，避免误删对方域名下的资源。
  */
 async function uploadAvatar(req, res) {
-  const files = normalizeFiles(req.files)
+  // 单文件中间件写 req.file；兼容旧的多文件形态写 req.files
+  const rawFiles = req.file ? [req.file] : req.files || []
+  const files = normalizeFiles(rawFiles)
   const file = files.find((item) => item.field === 'avatar') || files[0]
 
   if (!file) throw AppError.badRequest('请选择头像图片')
@@ -146,9 +160,10 @@ async function uploadAvatar(req, res) {
   const saved = await storage.save(file.buffer, { category: 'avatars', ext: file.ext })
   await userModel.updateProfile(req.auth.id, { avatar: saved.url })
 
-  // 只清理本系统 uploads 下的旧头像；storage.remove 内部吞掉 ENOENT
-  const marker = `${config.upload.publicPath}/`
-  if (user.avatar && String(user.avatar).includes(marker)) {
+  // 只清理本系统 uploads 下的旧头像；外部 URL（微信头像）与任何非本系统前缀都不动。
+  // 用 startsWith 而不是 includes：后者会让 "https://evil/x/uploads/../../.env" 通过。
+  const ownUploadPrefix = `${config.upload.publicBaseUrl}${config.upload.publicPath}/`
+  if (user.avatar && String(user.avatar).startsWith(ownUploadPrefix)) {
     await storage.remove(storage.extractKey(user.avatar))
   }
 

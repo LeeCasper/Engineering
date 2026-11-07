@@ -508,6 +508,19 @@ async function updateLedger(userId, projectId, ledgerId, input, context = {}) {
     if (!row || Number(row.project_id) !== Number(projectId)) throw AppError.notFound('流水不存在')
     if (row.locked === 1) throw AppError.conflict('已对账流水不可修改，如需更正请发起红冲')
 
+    // 付款节点关联的收入只能通过红冲更正：直接改阶段/金额会让节点仍显示
+    // 已付款，而账目或阶段结算对不上（创建与红冲都显式维护这条不变量）。
+    if (row.type === 'income' && row.payment_node_id) {
+      const node = await paymentNodeModel.lockById(tx, row.payment_node_id)
+      if (input.stageId !== undefined && node && node.trigger_stage_id &&
+          Number(node.trigger_stage_id) !== Number(input.stageId)) {
+        throw AppError.badRequest('收入归属阶段必须与付款节点关联阶段一致')
+      }
+      if (input.amount !== undefined && node && money.compare(input.amount, node.amount) !== 0) {
+        throw AppError.conflict('付款节点关联收入的金额不可直接修改，请发起红冲后重新登记')
+      }
+    }
+
     const fields = {}
     if (input.amount !== undefined) fields.amount = validateAmount(input.amount)
     if (input.occurredAt !== undefined) fields.occurred_at = input.occurredAt
@@ -555,6 +568,11 @@ async function deleteLedger(userId, projectId, ledgerId, context = {}) {
     const row = await ledgerModel.lockById(tx, ledgerId)
     if (!row || Number(row.project_id) !== Number(projectId)) throw AppError.notFound('流水不存在')
     if (row.locked === 1) throw AppError.conflict('已对账流水不可删除，如需更正请发起红冲')
+    // 删除会让节点保持 paid/confirmed 而没有对应收入，且软删除会释放唯一收入位；
+    // 只能走红冲（红冲会把节点重置为 unlocked）。
+    if (row.type === 'income' && row.payment_node_id) {
+      throw AppError.conflict('付款节点关联的收入不能直接删除，请发起红冲')
+    }
 
     await ledgerModel.softDeleteUnlocked(ledgerId, tx)
 

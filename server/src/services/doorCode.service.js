@@ -216,13 +216,18 @@ async function list(userId, projectId, { ip, requestId }) {
 
     if (code !== null) {
       // AC-K09：**每条**被读到的密码都留痕。operator_type='user' 由 fromOperator 映射
-      await operationLog.record({
-        ...operationLog.fromOperator(operator),
-        action: operationLog.ACTIONS.DOOR_CODE_READ,
-        targetType: 'door_code',
-        targetId: row.id,
-        projectId,
-      })
+      await operationLog.record(
+        {
+          ...operationLog.fromOperator(operator),
+          action: operationLog.ACTIONS.DOOR_CODE_READ,
+          targetType: 'door_code',
+          targetId: row.id,
+          projectId,
+        },
+        undefined,
+        // AC-K09 的读审计是这条链路唯一的留痕：写不进去就不能返回明文
+        { strict: true }
+      )
     }
 
     list.push({

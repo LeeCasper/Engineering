@@ -354,6 +354,11 @@ function renderSigningDocument({ documentId, generatedAt, acceptance, project, s
 async function retry(acceptanceId) {
   const acceptance = await acceptanceModel.findById(acceptanceId)
   if (!acceptance) throw new Error(`验收单 ${acceptanceId} 不存在`)
+  // 报告是「验收通过」的归档物：草稿/流转中/待整改的单子绝不能生成写着
+  // 「验收结论：通过」的 PDF，否则任何项目成员都能伪造一份可转发的通过报告。
+  if (acceptance.status !== 'passed') {
+    throw new Error('验收单尚未通过，不能生成验收报告')
+  }
   if (acceptance.report_pdf_status === 'success') {
     throw new Error('验收报告已生成，无需重试')
   }

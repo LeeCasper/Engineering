@@ -150,6 +150,7 @@ function openDefaultTenantLogin() {
       登 录
     </ElButton>
 
+    <!-- dev-only:start -->
     <div v-if="isDev" class="mt-16px text-12px text-#86909c leading-20px">
       <p v-if="captcha?.debugAnswer">开发环境验证码：<b>{{ captcha.debugAnswer }}</b></p>
 
@@ -168,6 +169,7 @@ function openDefaultTenantLogin() {
         </ElButton>
       </template>
     </div>
+    <!-- dev-only:end -->
   </ElForm>
 </template>
 

@@ -16,7 +16,8 @@ const db = require('../db/pool')
 async function create({ tenantId, adminUserId, type, title, content, refType, refId }, tx = db) {
   const result = await tx.query(
     `INSERT INTO admin_notification (tenant_id, admin_user_id, type, title, content, ref_type, ref_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE id = id`,
     [tenantId, adminUserId, type, title, content ?? null, refType ?? null, refId ?? null]
   )
   return result.insertId

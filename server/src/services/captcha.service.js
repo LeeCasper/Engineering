@@ -90,10 +90,9 @@ async function generate({ format = 'svg' } = {}) {
 async function verify(captchaId, answer) {
   if (!captchaId || !answer) return false
 
-  const expected = await cache.get(key(captchaId))
-
-  // 先删再比：即便下面的比较抛错，验证码也已经被消费掉了
-  await cache.del(key(captchaId))
+  // 原子取出并删除：先 get 再 del 会让并发请求都读到同一个答案，
+  // 一次解题即可覆盖一批登录（AC-AD02 的一次性语义失效）。
+  const expected = await cache.take(key(captchaId))
 
   if (expected === null) {
     // 过期或从未签发。不区分这两种情况对外提示，但日志里要能看出来

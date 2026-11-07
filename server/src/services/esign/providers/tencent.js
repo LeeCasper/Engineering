@@ -317,7 +317,10 @@ async function cancelTask({ providerTaskId }) {
 /**
  * 腾讯电子签 v2 回调：{"encrypt":"base64"}，AES-256-CBC，
  * key = CallbackUrlKey，IV = key 前 16 字节，PKCS#7。
- * 也兼容未加密的明文 JSON（控制台未配置 CallbackKey 时）。
+ *
+ * 只接受加密信封。**不要恢复「明文 JSON 原样返回」的兼容分支**：
+ * 回调路由是公开的，明文分支等于让任何人伪造服务商事件；
+ * 控制台未配置 CallbackKey 时应拒绝处理并让运维补齐配置。
  */
 function decryptCallback(rawBody) {
   const text = rawBody.toString('utf8').trim()
@@ -326,9 +329,10 @@ function decryptCallback(rawBody) {
   try {
     const parsed = JSON.parse(text)
     if (parsed && typeof parsed.encrypt === 'string') cipherText = parsed.encrypt
-    else return parsed
-  } catch {
-    // 旧版回调直接是 base64 字符串
+    else throw new Error('腾讯电子签回调未加密，已拒绝未认证回调')
+  } catch (err) {
+    // JSON 解析失败时才走旧版 base64 字符串；明文 JSON 已在上面拒绝
+    if (err && err.message.includes('未加密')) throw err
     cipherText = text
   }
 

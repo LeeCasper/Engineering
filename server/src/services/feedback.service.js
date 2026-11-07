@@ -19,6 +19,7 @@ const AppError = require('../utils/AppError')
 const storage = require('../storage')
 const db = require('../db/pool')
 const feedbackModel = require('../models/feedback.model')
+const projectMemberModel = require('../models/projectMember.model')
 const operationLog = require('./operationLog.service')
 
 /**
@@ -47,6 +48,10 @@ async function submit(userId, input, files, operator) {
   // 两者都没有（不属于任何租户的用户）才落成平台级反馈。
   let tenantId = null
   if (input.projectId) {
+    // 项目 id 不能直接决定租户：先确认调用者是该项目的 active 成员。
+    // 否则任何微信用户都能把反馈和 feedback.submit 审计写进别人的租户。
+    const membership = await projectMemberModel.findActiveRole(input.projectId, userId)
+    if (!membership) throw AppError.forbidden('无权对该项目提交反馈')
     const row = await db.queryOne('SELECT tenant_id FROM project WHERE id = ? AND deleted_at IS NULL', [
       input.projectId,
     ])

@@ -77,7 +77,10 @@ function tenantWriteGuard({ resource = 'project', param = 'id' } = {}) {
       'SELECT tenant_id FROM project WHERE id = ? AND deleted_at IS NULL',
       [projectId]
     )
-    if (!project) return next()
+    // 项目不存在或已软删除：写操作应按「资源不存在」处理，而不是放行。
+    // 旧行为在项目被删除后会把请求交给 service，而 service 的成员查询
+    // 只过滤 project_member，导致已删除项目仍可写（验收/对账等）。
+    if (!project) throw AppError.notFound('项目不存在')
 
     const tenant = await db.queryOne(
       'SELECT status, expires_at FROM tenant WHERE id = ? AND deleted_at IS NULL',

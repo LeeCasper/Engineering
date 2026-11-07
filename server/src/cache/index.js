@@ -52,6 +52,22 @@ async function get(key) {
   }
 }
 
+/**
+ * 原子取出并删除。
+ *
+ * 验证码这类「一次性消费」必须用它：get 后再 del 之间存在窗口，
+ * 并发请求会全部读到同一个值。
+ */
+async function take(key) {
+  const raw = await getDriver().take(k(key))
+  if (raw === null || raw === undefined) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return raw
+  }
+}
+
 /** ttlSeconds 不传表示永不过期 —— 慎用，无 TTL 的键是内存泄漏的常见来源 */
 async function set(key, value, ttlSeconds) {
   return getDriver().set(k(key), JSON.stringify(value), ttlSeconds)
@@ -128,6 +144,7 @@ async function close() {
 
 module.exports = {
   get,
+  take,
   set,
   setIfAbsent,
   del,

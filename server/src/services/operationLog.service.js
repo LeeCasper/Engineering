@@ -21,6 +21,7 @@
 
 const db = require('../db/pool')
 const logger = require('../utils/logger')
+const AppError = require('../utils/AppError')
 const dataScope = require('./dataScope.service')
 const operationLogModel = require('../models/operationLog.model')
 
@@ -106,7 +107,7 @@ const ACTIONS = {
  * @param {string} [params.requestId]
  * @param {object} [params.tx] 传入则跟着业务事务一起提交
  */
-async function record(params, tx) {
+async function record(params, tx, { strict = false } = {}) {
   const executor = tx || db
 
   try {
@@ -126,13 +127,18 @@ async function record(params, tx) {
     await operationLogModel.insert({ ...params, tenantId }, executor)
   } catch (err) {
     // 审计日志写失败不阻断业务（见文件头说明）。
-    // 但要记 error 级：它意味着审计链出现了缺口，运维应当知道
-    logger.error('写入操作日志失败（业务已继续）', {
+    // 但要记 error 级：它意味着审计链出现了缺口，运维应当知道。
+    //
+    // strict 用于**安全强制审计**（如门锁密码读取，AC-K09）：这类审计是
+    // 披露动作的唯一留痕，写不进去就不能把敏感值返回给调用方。
+    logger.error('写入操作日志失败', {
       action: params.action,
       targetType: params.targetType,
       targetId: params.targetId,
       message: err.message,
+      strict,
     })
+    if (strict) throw AppError.serviceUnavailable('审计日志写入失败，请稍后重试')
   }
 }
 

@@ -137,6 +137,22 @@ async function loadWritableProject(projectId) {
   return project
 }
 
+/**
+ * 事务内的可写校验（AC-AD25 / AC-AD57）。
+ *
+ * 必须在每个验收写事务的开头调用：上面那个非锁定版本只用于「省资源」的
+ * 前置检查，真正防止「检查后归档」的竞态要靠 FOR UPDATE 锁住项目行。
+ */
+async function assertProjectWritable(projectId, tx) {
+  const project = await tx.queryOne(
+    'SELECT id, status FROM project WHERE id = ? AND deleted_at IS NULL FOR UPDATE',
+    [projectId]
+  )
+  if (!project) throw AppError.notFound('项目不存在')
+  if (project.status === 'archived') throw AppError.forbidden('项目已归档，全部数据只读')
+  return project
+}
+
 // ─────────────────────────────────────────────────────────────
 // 发起验收
 // ─────────────────────────────────────────────────────────────
@@ -325,8 +341,10 @@ async function saveDraft(userId, acceptanceId, input) {
   const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
   assertPrimaryForeman(viewer)
   assertTransition(acceptance.status, 'submit') // 草稿保留在可提交状态
+  await loadWritableProject(acceptance.project_id)
 
   await db.withTransaction(async (tx) => {
+    await assertProjectWritable(acceptance.project_id, tx)
     if (input.description !== undefined) {
       await acceptanceModel.updateDescription(acceptanceId, input.description, tx)
     }
@@ -349,10 +367,12 @@ async function submitSelfCheck(userId, acceptanceId, input) {
   const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
   assertPrimaryForeman(viewer)
   assertTransition(acceptance.status, 'submit')
+  await loadWritableProject(acceptance.project_id)
 
   const trimmedDescription = input.description !== undefined ? input.description : acceptance.description
 
   return db.withTransaction(async (tx) => {
+    await assertProjectWritable(acceptance.project_id, tx)
     if (input.description !== undefined) {
       await acceptanceModel.updateDescription(acceptanceId, input.description, tx)
     }
@@ -451,6 +471,7 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
     throw AppError.forbidden(`当前处于「${STATUS_LABELS[acceptance.status]}」，仅该项目${roleLabel(expectedRole)}可处理`)
   }
   if (expectedRole === 'owner') assertPrimaryOwner(viewer, '确认验收')
+  await loadWritableProject(acceptance.project_id)
 
   const step = expectedRole === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER
 
@@ -474,6 +495,13 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
   const isFinal = step === STEP.OWNER
 
   await db.withTransaction(async (tx) => {
+    await assertProjectWritable(acceptance.project_id, tx)
+    // 同一环节的通过/驳回是并发写：先锁行，再按最新状态重新校验。
+    // 没有这一步，两个主管同时操作会各写一条 flow，最后一次 UPDATE 覆盖前一次。
+    const locked = await acceptanceModel.lockById(tx, acceptanceId)
+    if (!locked || locked.status !== acceptance.status) {
+      throw AppError.conflict('验收状态已变化，请刷新后重试')
+    }
     const round = acceptanceModel.currentRound(acceptance)
 
     await acceptanceModel.appendFlow(
@@ -549,6 +577,7 @@ async function reject(userId, acceptanceId, { reason, files }) {
     throw AppError.conflict('电子签名已完成，不能驳回')
   }
   if (expectedRole === 'owner') await esignService.assertNoActiveTask(acceptanceId)
+  await loadWritableProject(acceptance.project_id)
 
   const text = String(reason || '').trim()
   if (!text) throw AppError.badRequest('驳回原因必填')
@@ -571,6 +600,11 @@ async function reject(userId, acceptanceId, { reason, files }) {
   const step = expectedRole === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER
 
   await db.withTransaction(async (tx) => {
+    await assertProjectWritable(acceptance.project_id, tx)
+    const locked = await acceptanceModel.lockById(tx, acceptanceId)
+    if (!locked || locked.status !== acceptance.status) {
+      throw AppError.conflict('验收状态已变化，请刷新后重试')
+    }
     const round = acceptanceModel.currentRound(acceptance)
 
     await acceptanceModel.appendFlow(
@@ -602,8 +636,10 @@ async function resubmit(userId, acceptanceId, input = {}) {
   const { acceptance, viewer } = await loadForAction(userId, acceptanceId)
   assertPrimaryForeman(viewer)
   assertTransition(acceptance.status, 'resubmit')
+  await loadWritableProject(acceptance.project_id)
 
   const nextStatus = await db.withTransaction(async (tx) => {
+    await assertProjectWritable(acceptance.project_id, tx)
     if (input.description !== undefined) {
       await acceptanceModel.updateDescription(acceptanceId, input.description, tx)
     }
@@ -788,7 +824,7 @@ async function getDetail(userId, acceptanceId) {
       // AC-A20：通过带签名的临时 URL 访问。**每次读取都重新签发**，
       // 因此过期后重新获取即可正常下载
       signedPath:
-        acceptance.report_pdf_status === 'success'
+        acceptance.status === 'passed' && acceptance.report_pdf_status === 'success'
           ? signedUrl.buildPath({
               resource: 'acceptance-report',
               id: acceptance.id,

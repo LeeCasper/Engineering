@@ -8,7 +8,7 @@ const express = require('express')
 const config = require('../../../config')
 const asyncHandler = require('../../utils/asyncHandler')
 const { requireMini } = require('../../middlewares/miniAuth')
-const { uploadAny } = require('../../middlewares/upload')
+const { uploadAny, uploadAvatar } = require('../../middlewares/upload')
 const { createRateLimit } = require('../../middlewares/rateLimit')
 const controller = require('../../controllers/miniAuth.controller')
 const realNameController = require('../../controllers/miniRealName.controller')
@@ -35,7 +35,7 @@ router.post('/login', loginRateLimit, asyncHandler(controller.login))
 router.get('/profile', requireMini, asyncHandler(controller.profile))
 router.put('/profile', requireMini, asyncHandler(controller.updateProfile))
 // 微信 chooseAvatar 返回临时文件，必须由服务端转存后才能长期展示
-router.post('/avatar', requireMini, uploadAny, asyncHandler(controller.uploadAvatar))
+router.post('/avatar', requireMini, uploadAvatar, asyncHandler(controller.uploadAvatar))
 router.post('/bind-phone', requireMini, asyncHandler(controller.bindPhone))
 
 /**

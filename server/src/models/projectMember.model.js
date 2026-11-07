@@ -24,10 +24,15 @@ const ACTIVE = "pm.status = 'active' AND pm.deleted_at IS NULL"
  */
 async function findActiveRole(projectId, userId) {
   // is_primary 一并返回：验收发起、阶段结算单提交的权限判定要用它（Q11），
-  // 让调用方不必再查一次
+  // 让调用方不必再查一次。
+  //
+  // JOIN project 不是可选项：软删除只写 project.deleted_at，不会撤销
+  // project_member；没有这个 JOIN，已删除项目仍会通过成员授权（报告、验收、
+  // 联系人、拜访等路径都以本函数为唯一授权依据）。
   return db.queryOne(
-    `SELECT id, user_id, role, is_primary, owner_type
+    `SELECT pm.id, pm.user_id, pm.role, pm.is_primary, pm.owner_type
        FROM project_member pm
+       JOIN project p ON p.id = pm.project_id AND p.deleted_at IS NULL
       WHERE pm.project_id = ? AND pm.user_id = ? AND ${ACTIVE}`,
     [projectId, userId]
   )

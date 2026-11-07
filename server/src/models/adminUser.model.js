@@ -150,6 +150,36 @@ async function updateLoginFailure(id, { failedCount, lockedUntil }) {
   ])
 }
 
+/**
+ * 原子累加失败次数（AC-AD03）。
+ *
+ * 旧写法是「读 failed_count → JS 加一 → 写绝对值」，并发请求都读到旧值并
+ * 互相覆盖，一次并发爆破只算一次失败，5 次锁定形同虚设。
+ *
+ * 这里用 `failed_count = failed_count + 1`，并在同一条 UPDATE 里决定是否
+ * 锁定；已经处于锁定窗口内时不延长窗口（避免攻击者持续刷新锁定）。
+ *
+ * @returns {Promise<{failed_count:number, locked_until:Date|string|null}>}
+ */
+async function registerLoginFailure(id, { maxAttempts, lockMinutes }) {
+  await db.query(
+    `UPDATE admin_user
+        SET failed_count = failed_count + 1,
+            locked_until = IF(
+              failed_count + 1 >= ?
+                AND (locked_until IS NULL OR locked_until <= NOW()),
+              DATE_ADD(NOW(), INTERVAL ? MINUTE),
+              locked_until
+            )
+      WHERE id = ? AND deleted_at IS NULL`,
+    [maxAttempts, lockMinutes, id]
+  )
+  return db.queryOne(
+    'SELECT failed_count, locked_until FROM admin_user WHERE id = ? AND deleted_at IS NULL',
+    [id]
+  )
+}
+
 /** 登录成功：清零失败计数、解除锁定、记录登录时间 */
 async function resetLoginFailure(id) {
   await db.query('UPDATE admin_user SET failed_count = 0, locked_until = NULL WHERE id = ?', [id])
@@ -196,6 +226,7 @@ module.exports = {
   list,
   create,
   updateLoginFailure,
+  registerLoginFailure,
   resetLoginFailure,
   updatePassword,
   updateStatus,

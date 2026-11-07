@@ -86,6 +86,10 @@ async function runOnce({ now = datetime.now() } = {}) {
         projectId: project.id,
         title: '项目已连续多日没有进度汇报',
         content: `「${project.name}」已有 ${silentDays} 天没有收到进度汇报，请关注`,
+        // 与 C 端共用同一个静默期锚点：同一静默期只插一行，
+        // 工长汇报后锚点变化，下一个静默期才可再次提醒
+        refType: 'project',
+        refId,
       })
       .catch((err) => {
         // 管理员侧发失败不影响业主侧：两者是独立的通道

@@ -60,6 +60,47 @@ const uploader = multer({
   },
 })
 
+/**
+ * 单文件上传中间件。
+ *
+ * 头像这类「业务上只要一张图」的接口不要复用 `uploadAny`：后者按 12 个文件
+ * 的内存上限缓冲，一个 5MB 的头像请求可以被迫分配 120MB。这里把 multer 的
+ * files 上限降到 1，并按业务上限设置单文件大小。
+ */
+function singleUploader({ field = 'avatar', maxSizeMb = 5 } = {}) {
+  return multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: maxSizeMb * 1024 * 1024,
+      files: 1,
+      fields: 20,
+      fieldSize: 1024 * 100,
+    },
+    fileFilter(req, file, cb) {
+      if (IMAGE_MIME.has(file.mimetype)) return cb(null, true)
+      cb(AppError.badRequest(`不支持的文件类型：${file.mimetype}`))
+    },
+  }).single(field)
+}
+
+function handleSingleUpload({ field = 'avatar', maxSizeMb = 5 } = {}) {
+  const handler = singleUploader({ field, maxSizeMb })
+  return (req, res, next) => {
+    handler(req, res, (err) => {
+      if (!err) return next()
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return next(AppError.badRequest(`文件不得超过 ${maxSizeMb}MB`))
+        }
+        if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+          return next(AppError.badRequest('一次只能上传一张图片'))
+        }
+      }
+      return next(err)
+    })
+  }
+}
+
 /** 把 multer 的异常翻译成统一响应（AC-AD46：不暴露框架内部信息） */
 function handleUploadErrors(req, res, next) {
   uploader.any()(req, res, (err) => {
@@ -110,5 +151,6 @@ module.exports = {
   EXTENSION_BY_MIME,
   MAX_FILES,
   uploadAny: handleUploadErrors,
+  uploadAvatar: handleSingleUpload({ field: 'avatar', maxSizeMb: 5 }),
   normalizeFiles,
 }

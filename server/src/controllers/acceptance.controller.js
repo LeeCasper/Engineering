@@ -125,6 +125,9 @@ async function resubmit(req, res) {
 async function retryPdf(req, res) {
   const id = Number(req.params.id)
   const detail = await acceptanceService.getDetail(req.auth.id, id) // 复用可见性校验
+  if (detail.projectStatus === 'archived') {
+    throw AppError.forbidden('项目已归档，全部数据只读')
+  }
   if (detail.esign && detail.esign.status === 'signed') {
     await esignService.retryArchive(id)
   } else {

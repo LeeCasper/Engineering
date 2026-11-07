@@ -33,6 +33,24 @@ const projectMemberModel = require('../models/projectMember.model')
 const projectModel = require('../models/project.model')
 const stageSettlementService = require('./stageSettlement.service')
 
+/**
+ * 归档项目全链路只读（AC-AD25 / AC-AD57）。
+ *
+ * 对账确认会锁流水、结算阶段、激活下一阶段，必须和验收写路径一样
+ * 在事务内锁住项目行再判断，不能只依赖 tenantWriteGuard（它只看租户状态）。
+ */
+async function assertProjectWritable(projectId, tx) {
+  const project = tx
+    ? await tx.queryOne(
+        'SELECT id, status FROM project WHERE id = ? AND deleted_at IS NULL FOR UPDATE',
+        [projectId]
+      )
+    : await projectModel.findByIdUnscoped(projectId)
+  if (!project) throw AppError.notFound('项目不存在')
+  if (project.status === 'archived') throw AppError.forbidden('项目已归档，全部数据只读')
+  return project
+}
+
 const STATUS = {
   DRAFT: 'draft',
   PENDING: 'pending',
@@ -169,12 +187,14 @@ async function confirm(userId, reconciliationId, context = {}) {
 
   const viewer = await resolveViewer(userId, reconciliation.project_id)
   assertPrimaryOwner(viewer, '确认对账')
+  await assertProjectWritable(reconciliation.project_id)
 
   if (reconciliation.status !== STATUS.PENDING && reconciliation.status !== STATUS.DISPUTED) {
     throw AppError.conflict(`对账单当前为「${STATUS_LABELS[reconciliation.status]}」，不能确认`)
   }
 
   return db.withTransaction(async (tx) => {
+    await assertProjectWritable(reconciliation.project_id, tx)
     // 加锁读，避免两个确认请求同时通过状态校验
     const locked = await reconciliationModel.lockById(tx, reconciliationId)
     if (!locked) throw AppError.notFound('对账单不存在')
@@ -282,6 +302,7 @@ async function dispute(userId, reconciliationId, { detailId, remark }, context =
 
   const viewer = await resolveViewer(userId, reconciliation.project_id)
   assertPrimaryOwner(viewer, '提出异议')
+  await assertProjectWritable(reconciliation.project_id)
 
   if (reconciliation.status !== STATUS.PENDING && reconciliation.status !== STATUS.DISPUTED) {
     throw AppError.conflict(`对账单当前为「${STATUS_LABELS[reconciliation.status]}」，不能提出异议`)
@@ -291,6 +312,7 @@ async function dispute(userId, reconciliationId, { detailId, remark }, context =
   if (!text) throw AppError.badRequest('异议说明必填')
 
   return db.withTransaction(async (tx) => {
+    await assertProjectWritable(reconciliation.project_id, tx)
     const ok = await reconciliationModel.setDispute({ reconciliationId, detailId, remark: text }, tx)
     if (!ok) throw AppError.notFound('对账明细不存在')
 

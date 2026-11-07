@@ -101,7 +101,7 @@ async function persist(buffer, { category, ext, allowed }) {
   }
 
   const key = buildKey({ category, ext: normalizedExt })
-  const fullPath = path.join(config.upload.dir, key)
+  const fullPath = uploadPath(key)
 
   // 递归创建目录：同一天内多个并发上传可能同时尝试创建，因此要容忍已存在
   await fs.mkdir(path.dirname(fullPath), { recursive: true })
@@ -125,16 +125,43 @@ function urlFor(key) {
 }
 
 /**
+ * 解析公开存储的绝对路径，并做目录逃逸检查。
+ *
+ * `key` 在多数调用点来自数据库里我们自己生成的存储 key，但头像清理路径的 key
+ * 来自用户可写的 `user.avatar`（见 miniAuth 的旧头像清理）。没有这条检查，
+ * 一个 `../../.env` 就能让 `remove()` 删掉上传目录之外的文件。
+ */
+function uploadPath(key) {
+  const root = path.resolve(config.upload.dir)
+  const full = path.resolve(root, String(key || ''))
+  if (full !== root && !full.startsWith(`${root}${path.sep}`)) {
+    throw new Error('上传存储路径非法')
+  }
+  return full
+}
+
+/**
  * 删除文件。
  *
  * 失败只记 warn 不抛错：调用场景都是「补偿性删除」（如事务回滚后清理已落盘的文件），
  * 为此抛错会把原始失败原因盖掉。孤儿文件由运维任务清理。
+ *
+ * 路径逃逸不按「业务失败」吞掉：它说明调用方把不可信字符串当成了存储 key，
+ * 必须让上层感知并拒绝这次删除。
  */
 async function remove(key) {
   if (!key) return false
 
+  let fullPath
   try {
-    await fs.unlink(path.join(config.upload.dir, key))
+    fullPath = uploadPath(key)
+  } catch (err) {
+    logger.warn('拒绝删除上传目录之外的路径', { key })
+    return false
+  }
+
+  try {
+    await fs.unlink(fullPath)
     return true
   } catch (err) {
     if (err.code === 'ENOENT') return false
@@ -155,7 +182,7 @@ async function remove(key) {
 async function read(keyOrUrl) {
   const key = extractKey(keyOrUrl)
   if (!key) throw new Error('无法从入参解析出存储 key')
-  return fs.readFile(path.join(config.upload.dir, key))
+  return fs.readFile(uploadPath(key))
 }
 
 /** 从 url 或 key 里截出存储 key */
