@@ -59,9 +59,23 @@ test('管理员登录页面可进入，并可退出管理端', { timeout: 60000 
   })
   await page.locator('.logout-btn').waitFor({ state: 'visible', timeout: 8000 })
 
+  // 记录退出过程中的路由，确认没有经过 C 端项目首页
+  await page.evaluate(() => {
+    window.__logoutHashes = []
+    window.addEventListener('hashchange', () => window.__logoutHashes.push(location.hash))
+  })
+
   await page.locator('.logout-btn').click()
   await page.getByText('确定', { exact: true }).last().click()
 
   await page.locator('.exit-overlay').waitFor({ state: 'visible', timeout: 5000 })
-  await waitForHash(page, /#\/($|pages\/projects\/index)/, 10000)
+  // 本用例没有登录 C 端微信身份：退出管理端应直接回登录页，
+  // 不能先闪一下项目首页再被未登录守卫重定向
+  await waitForHash(page, /#\/($|pages\/login\/index)/, 10000)
+  await page.locator('.login-card').waitFor({ state: 'visible', timeout: 8000 })
+  const visited = await page.evaluate(() => window.__logoutHashes || [])
+  assert.ok(
+    !visited.includes('#/pages/projects/index'),
+    `退出过程中不应经过项目首页，实际路由：${visited.join(' -> ')}`
+  )
 })

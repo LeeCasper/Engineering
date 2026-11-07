@@ -480,9 +480,26 @@ async function logout() {
   }
 
   const hadBinding = Boolean(binding.value && binding.value.bound)
+  // C 端没有微信登录态时不能 switchTab 到项目首页：tab 页会被创建出来，
+  // 再因为没有 token 立刻 redirect 到登录页，用户会看到一瞬间的项目首页。
+  // 这种情况直接回登录页（管理员登录入口也在那里）。
+  const hasCUser = Boolean(getToken())
   playExitTransition('正在退出管理端', '微信登录仍保持，可随时重新进入', () => {
     clearAdminSession()
     setBindingHint(hadBinding ? 1 : 0)
+
+    if (!hasCUser) {
+      uni.reLaunch({
+        url: '/pages/login/index',
+        fail: () => {
+          leaving.value = false
+          loggingOut.value = false
+          uni.showToast({ title: '退出失败，请重试', icon: 'none' })
+        },
+      })
+      return
+    }
+
     uni.switchTab({
       url: '/pages/projects/index',
       fail: () => {
