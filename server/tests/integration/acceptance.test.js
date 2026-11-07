@@ -701,6 +701,10 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
     expect(item.reportPdf.status).toBe('success')
     expect(item.reportPdf.signedPath).toContain('/api/v1/acceptances/')
     expect(item.reportPdf.signedPath).toContain('sig=')
+    // 报告编号与 PDF 上印的一致：AC-{通过日期}-{项目}-{验收单 6 位}
+    expect(item.reportNo).toMatch(
+      new RegExp(`^AC-\\d{8}-${ctx.projectId}-${String(id).padStart(6, '0')}$`)
+    )
   })
 
   it('后台按项目查询验收报告，已通过项带签名下载链接', async () => {
@@ -723,6 +727,9 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
     expect(item.reportPdf.status).toBe('success')
     expect(item.reportPdf.signedPath).toContain('/api/v1/acceptances/')
     expect(item.reportPdf.signedPath).toContain('sig=')
+    expect(item.reportNo).toMatch(
+      new RegExp(`^AC-\\d{8}-${ctx.projectId}-${String(id).padStart(6, '0')}$`)
+    )
   })
 
   it('AC-A19 PDF 生成失败不阻断验收进入已通过，且提供重试入口', async () => {

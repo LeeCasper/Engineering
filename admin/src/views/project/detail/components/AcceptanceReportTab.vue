@@ -53,7 +53,7 @@ const filteredItems = computed(() => {
     }
 
     if (!term) return true;
-    const haystack = [item.stageName, item.itemName, item.submitter, String(item.id)]
+    const haystack = [item.reportNo, item.stageName, item.itemName, item.submitter, String(item.id)]
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
@@ -159,7 +159,7 @@ function openReport(item: AdminAcceptanceReport) {
         v-model="keyword"
         class="w-240px"
         clearable
-        placeholder="搜索阶段 / 工序 / 提交人 / 编号"
+        placeholder="搜索报告编号 / 阶段 / 工序 / 提交人"
       />
       <ElButton link type="primary" @click="resetFilters">重置</ElButton>
       <span class="ml-auto text-12px text-#86909c">
@@ -168,8 +168,8 @@ function openReport(item: AdminAcceptanceReport) {
     </div>
 
     <ElTable :data="filteredItems" row-key="id" border>
-      <ElTableColumn label="编号" width="80">
-        <template #default="{ row }">#{{ row.id }}</template>
+      <ElTableColumn label="报告编号" width="210">
+        <template #default="{ row }">{{ row.reportNo || '—' }}</template>
       </ElTableColumn>
 
       <ElTableColumn label="类型" width="88">

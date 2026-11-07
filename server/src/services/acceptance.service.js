@@ -28,6 +28,7 @@ const logger = require('../utils/logger')
 const storage = require('../storage')
 const watermark = require('../utils/watermark')
 const signedUrl = require('../utils/signedUrl')
+const { buildAcceptanceReportNo } = require('../utils/acceptanceReportNo')
 const { OWNER_TYPE, assertPrimaryOwner, isPrimaryOwner } = require('../utils/ownerType')
 const notificationService = require('./notification.service')
 const sysConfigService = require('./sysConfig.service')
@@ -907,6 +908,8 @@ async function listAcceptances(userId, projectId) {
     hasSignature: Boolean(row.signature_url) || row.esign_status === 'signed',
     esignStatus: row.esign_status || null,
     reportPdfStatus: row.report_pdf_status,
+    reportNo:
+      row.report_no || (row.status === STATUS.PASSED ? buildAcceptanceReportNo(row) : null),
     // 报告库页面直接在这里拿签名链接，避免为每个已通过验收单再请求一次详情
     reportPdf:
       row.status === STATUS.PASSED && row.report_pdf_status === 'success'

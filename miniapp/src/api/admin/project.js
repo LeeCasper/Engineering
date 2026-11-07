@@ -213,6 +213,14 @@ export function unlockAdminPaymentNode(projectId, nodeId) {
   })
 }
 
+// ── 验收报告（管理端只读）────────────────────────────────────
+// 放在已有模块里，避免微信开发者工具对新增 JS 模块的映射缓存问题。
+// 返回 { items, summary }，无分页；只有已通过且报告生成的单子带
+// reportPdf.signedPath（2 小时签名 URL，下载不需要 Authorization）。
+export function fetchAdminProjectAcceptances(projectId) {
+  return adminRequest({ url: `/projects/${projectId}/acceptances` })
+}
+
 // ── 阶段与工序 ───────────────────────────────────────────────
 
 export function addAdminStage(projectId, data) {

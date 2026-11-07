@@ -172,6 +172,36 @@
                 </view>
               </view>
             </view>
+
+            <!-- 验收报告 -->
+            <view class="section">
+              <view class="section-head">
+                <text class="section-title">验收报告</text>
+                <view class="section-link" @tap="goReports">
+                  <text>查看</text>
+                  <text class="section-link-arrow">›</text>
+                </view>
+              </view>
+
+              <view class="config-card">
+                <view class="config-row" @tap="goReports">
+                  <view class="config-icon">
+                    <image
+                      class="config-icon-img"
+                      src="/static/images/icon-document-amber.png"
+                      mode="aspectFit"
+                    />
+                  </view>
+                  <view class="config-main">
+                    <text class="config-title">验收单与报告</text>
+                    <text class="config-sub">
+                      查看各阶段 / 工序验收进度，下载已生成的 PDF 报告
+                    </text>
+                  </view>
+                  <text class="config-chevron">›</text>
+                </view>
+              </view>
+            </view>
           </view>
         </template>
       </AdminPageState>
@@ -560,6 +590,10 @@ function goPayments() {
 
 function goStages() {
   uni.navigateTo({ url: `/pages/admin/project/stages?id=${projectId.value}` })
+}
+
+function goReports() {
+  uni.navigateTo({ url: `/pages/admin/project/reports?id=${projectId.value}` })
 }
 </script>
 

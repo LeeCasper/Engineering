@@ -24,6 +24,7 @@ const datetime = require('../utils/datetime')
 const logger = require('../utils/logger')
 const storage = require('../storage')
 const acceptanceModel = require('../models/acceptance.model')
+const { buildAcceptanceReportNo } = require('../utils/acceptanceReportNo')
 const projectModel = require('../models/project.model')
 const projectStageModel = require('../models/projectStage.model')
 
@@ -74,6 +75,10 @@ async function generate(acceptanceId) {
     const photos = parseJson(acceptance.photos) || []
     const photosWithWatermark = photos.map((p) => p.watermarkUrl || p.url).filter(Boolean)
 
+    // 旧报告在迁移里回填了旧编号，继续沿用；新报告用日期 + 项目 + 验收单的新格式。
+    // 重试生成时编号保持不变（日期取通过时间）。
+    const reportNo = acceptance.report_no || buildAcceptanceReportNo(acceptance)
+
     const buffer = await render({
       acceptance,
       items,
@@ -82,12 +87,18 @@ async function generate(acceptanceId) {
       stage,
       photoUrls: photosWithWatermark,
       signatureUrl: acceptance.signature_url,
+      reportNo,
     })
 
     // saveGenerated 而非 save：这份 PDF 是服务端渲染出来的，不是用户上传的，
     // 不该受「上传类型白名单」约束（见 storage/index.js 的说明）
     const saved = await storage.saveGenerated(buffer, { category: 'acceptance-reports', ext: 'pdf' })
-    await acceptanceModel.updatePdfState(acceptanceId, { status: 'success', url: saved.url, error: null })
+    await acceptanceModel.updatePdfState(acceptanceId, {
+      status: 'success',
+      url: saved.url,
+      error: null,
+      reportNo,
+    })
 
     logger.info('验收报告已生成', { acceptanceId, sizeBytes: saved.sizeBytes })
     return saved
@@ -355,7 +366,7 @@ async function retry(acceptanceId) {
  * 用 Promise 包住 pdfkit 的流式 API —— 它本身是事件式的，
  * 而调用方（HTTP 请求）需要的是一个结果。
  */
-function render({ acceptance, items, flow, project, stage, photoUrls, signatureUrl }) {
+function render({ acceptance, items, flow, project, stage, photoUrls, signatureUrl, reportNo }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true })
     const chunks = []
@@ -375,7 +386,7 @@ function render({ acceptance, items, flow, project, stage, photoUrls, signatureU
       doc
         .fontSize(9)
         .fillColor('#888888')
-        .text(`报告编号：AC-${String(acceptance.id).padStart(6, '0')}　生成时间：${datetime.format()}`, {
+        .text(`报告编号：${reportNo}　生成时间：${datetime.format()}`, {
           align: 'center',
         })
       doc.fillColor('#000000').moveDown(1.2)

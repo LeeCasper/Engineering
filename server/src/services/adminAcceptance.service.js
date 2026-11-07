@@ -12,6 +12,7 @@
  */
 
 const signedUrl = require('../utils/signedUrl')
+const { buildAcceptanceReportNo } = require('../utils/acceptanceReportNo')
 const acceptanceModel = require('../models/acceptance.model')
 const projectAccess = require('./projectAccess.service')
 
@@ -51,6 +52,9 @@ async function list(operator, projectId) {
       hasSignature: Boolean(row.signature_url) || row.esign_status === 'signed',
       signatureMode: row.signature_mode || 'legacy',
       esignStatus: row.esign_status || null,
+      // 与 PDF 上印的编号一致：旧报告是回填的 AC-{id}，新报告是日期+项目+id；
+      // 已通过但报告还没生成的单子也先给出编号，生成后（同一函数）不会变
+      reportNo: row.report_no || (passed ? buildAcceptanceReportNo(row) : null),
       reportPdf: {
         status: reportStatus,
         error: row.report_pdf_error || null,

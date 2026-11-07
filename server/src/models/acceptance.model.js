@@ -65,7 +65,7 @@ async function findById(id, tx = db) {
             submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
             signature_url, signature_mode, esign_status, esign_task_id, esign_completed_at,
             report_pdf_url, report_pdf_key, report_pdf_private, report_pdf_sha256,
-            report_pdf_source, report_pdf_status, report_pdf_error,
+            report_pdf_source, report_pdf_status, report_pdf_error, report_no,
             post_pass_status, post_pass_error, post_pass_done_at, description, photos,
             created_at, updated_at
        FROM acceptance WHERE id = ? AND deleted_at IS NULL`,
@@ -80,7 +80,7 @@ async function lockById(tx, id) {
             submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
             signature_url, signature_mode, esign_status, esign_task_id, esign_completed_at,
             report_pdf_url, report_pdf_key, report_pdf_private, report_pdf_sha256,
-            report_pdf_source, report_pdf_status, report_pdf_error
+            report_pdf_source, report_pdf_status, report_pdf_error, report_no
        FROM acceptance WHERE id = ? AND deleted_at IS NULL FOR UPDATE`,
     [id]
   )
@@ -130,12 +130,16 @@ async function markPassed(id, { signatureUrl, finishedAt, esignTaskId, esignStat
 }
 
 /** 更新 PDF 生成/归档状态（AC-A19：失败要有可重试入口，但不能阻断状态流转） */
-async function updatePdfState(id, { status, url, error, key, private: isPrivate, sha256, source }, tx = db) {
+async function updatePdfState(
+  id,
+  { status, url, error, key, private: isPrivate, sha256, source, reportNo },
+  tx = db
+) {
   await tx.query(
     `UPDATE acceptance
         SET report_pdf_status = ?, report_pdf_url = ?, report_pdf_key = ?,
             report_pdf_private = ?, report_pdf_sha256 = ?, report_pdf_source = ?,
-            report_pdf_error = ?
+            report_pdf_error = ?, report_no = COALESCE(?, report_no)
       WHERE id = ?`,
     [
       status,
@@ -145,6 +149,7 @@ async function updatePdfState(id, { status, url, error, key, private: isPrivate,
       sha256 ?? null,
       source ?? 'generated',
       error ?? null,
+      reportNo ?? null,
       id,
     ]
   )
@@ -323,7 +328,7 @@ async function listByProject(projectId) {
     `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
             a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at, a.resubmit_count,
             a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
-            a.report_pdf_status, a.report_pdf_error, a.created_at,
+            a.report_pdf_status, a.report_pdf_error, a.report_no, a.created_at,
             s.name AS stage_name, i.name AS item_name,
             u.nickname AS submitter_nickname, u.real_name AS submitter_real_name,
             (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count

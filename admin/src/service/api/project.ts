@@ -278,6 +278,8 @@ export interface AdminAcceptanceReport {
   hasSignature: boolean;
   signatureMode: 'legacy' | 'provider';
   esignStatus: string | null;
+  /** 报告编号：旧报告为 AC-{id}，新报告为 AC-{通过日期}-{项目}-{id} */
+  reportNo: string | null;
   reportPdf: {
     status: 'pending' | 'success' | 'failed';
     error: string | null;

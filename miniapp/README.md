@@ -357,6 +357,11 @@ VITE_API_BASE=http://192.168.1.20:3000/api/v1 npm run dev:mp-weixin
 - **单项目成员**：`pages/admin/project/members` 复用同一套成员卡片与筛选样式；
   支持按姓名 / 手机号 / 角色搜索、角色计数、人员配置抽屉、邀请、设主工长与移除；
   从详情「邀请项目成员」进入时带 `invite=1` 自动打开邀请面板。
+- **验收报告**：`pages/admin/project/reports` 从项目详情「验收报告」进入，只读列出项目
+  全部验收单（含草稿与流转中），汇总总数 / 已通过 / 进行中 / 报告已就绪，支持状态、
+  类型与关键词筛选；每张卡片展示 PDF 上的报告编号（旧报告为 AC-{id}，
+  新报告为 AC-{通过日期}-{项目}-{id}），可按编号搜索。只有已通过且报告生成成功的单子有「下载报告」（2 小时签名 URL，
+  微信端 `uni.downloadFile` + `uni.openDocument`）；链接过期时提示下拉刷新。
 - **阶段选择态**：`pages/admin/projects/index?mode=stages` 从工作台快捷入口进入，
   带返回箭头、不显示底部导航，选中项目后进入阶段与工序页。
 - **阶段模板**：`pages/admin/templates/index` 按设计稿还原模板概览卡、阶段结构列表

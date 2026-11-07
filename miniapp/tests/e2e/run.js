@@ -128,7 +128,7 @@ async function main() {
   console.log(`[e2e] 执行 ${files.length} 个测试文件`)
   const runner = spawn(
     process.execPath,
-    ['--test', '--test-timeout=60000', ...files],
+    ['--test', '--test-timeout=60000', '--test-concurrency=1', ...files],
     {
       cwd: ROOT,
       env: { ...process.env, E2E_BASE_URL: BASE_URL },
