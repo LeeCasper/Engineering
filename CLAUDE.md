@@ -684,6 +684,12 @@ Vue 3 + Vite + TypeScript + Element Plus + UnoCSS，基座是 **Soybean Admin El
   不能出现「共享小程序打不开隐私政策」。
   **微信订阅消息模板 ID 是平台专属项**（`platformOnly`）：模板来自小程序主体，
   租户申请不到，租户后台只读、写接口 403；读取固定走平台配置，历史租户覆盖值被忽略。
+  **模板关键词映射也是平台专属配置**（`subscribe_template_<type>_fields`）：
+  微信要求 `data` 的键与所选模板**完全一致**（`thing1` / `time2` …），公共模板库的关键词
+  布局又因模板而异，因此不能写死在代码里；默认给一套常见布局，运营按模板详情改成
+  JSON（值可用 `projectName / title / content / typeLabel / time / date / refId`）。
+  推送走 `stable_token`（`force_refresh=false` 时多实例拿到同一 token，避免互相顶掉），
+  token 落 Redis；发送失败只记日志，站内消息不受影响，且**推送不阻塞业务请求**。
 - **日志要分两套**：平台日志中心 `/platform/log` 只看 `tenant_id IS NULL` 的
   平台级事件（租户开通/停用、平台配置与内容页修改等）；租户的业务操作与登录日志
   留在租户后台 `/log/*`。平台默认不能横向浏览租户业务日志，只能在排障授权窗口内只读。

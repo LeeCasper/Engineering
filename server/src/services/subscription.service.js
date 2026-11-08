@@ -70,13 +70,9 @@ async function list(userId, tenantId) {
   }
 }
 
-const TYPE_LABELS = {
-  acceptance: '验收通知',
-  progress: '进度提醒',
-  payment: '付款提醒',
-  comment: '评论回复',
-  system: '系统通知',
-}
+// 展示名集中在 notification.service（推送的 typeLabel 也用它），这里只做别名，
+// 避免两处中文标签各写一份后漂移
+const TYPE_LABELS = notificationService.TYPE_LABELS
 
 /**
  * 记录一次授权结果（AC-U11 的回传端点）。

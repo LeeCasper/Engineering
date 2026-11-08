@@ -44,6 +44,21 @@ describe('AC-AD65 配置值校验', () => {
     expect(() => sysConfig.normalizeValue('support_contact', 'x'.repeat(200))).toThrow(AppError)
   })
 
+  it('JSON 配置在保存时就校验，而不是等到推送时静默回落', () => {
+    expect(() => sysConfig.normalizeValue('subscribe_template_acceptance_fields', '{bad')).toThrow(
+      AppError
+    )
+    expect(() => sysConfig.normalizeValue('subscribe_template_acceptance_fields', '["thing1"]')).toThrow(
+      AppError
+    )
+
+    // 空串合法：表示使用内置映射；对象会被压成紧凑 JSON 再入库
+    expect(sysConfig.normalizeValue('subscribe_template_acceptance_fields', '')).toBe('')
+    expect(
+      sysConfig.normalizeValue('subscribe_template_acceptance_fields', '{ "thing1": "title" }')
+    ).toBe('{"thing1":"title"}')
+  })
+
   it('未知配置项一律拒绝', () => {
     // 放行的话，写入一个谁都不读的键既不会报错也不会生效，
     // 而管理员会以为配置成功了

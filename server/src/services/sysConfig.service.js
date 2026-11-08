@@ -296,6 +296,23 @@ const SCHEMA = {
  */
 const SUBSCRIBE_TEMPLATE_TYPES = ['acceptance', 'progress', 'payment', 'comment', 'system']
 
+/**
+ * 模板关键词 → 业务字段的内置映射。
+ *
+ * 微信订阅消息要求 `data` 的键**与所选模板的关键词完全一致**（thing1 / time2 …），
+ * 而公共模板库里的关键词布局由运营选定，代码里写死任何一个都可能配不上。
+ * 因此默认给一套常见布局，运营可在「订阅消息数据映射」里按实际模板改。
+ *
+ * 可用的来源见 notification.service 的 `SUBSCRIBE_DATA_SOURCES`。
+ */
+const SUBSCRIBE_FIELD_DEFAULTS = Object.freeze({
+  acceptance: Object.freeze({ thing1: 'projectName', thing2: 'title', time3: 'time' }),
+  progress: Object.freeze({ thing1: 'projectName', thing2: 'title', time3: 'time' }),
+  payment: Object.freeze({ thing1: 'projectName', thing2: 'title', time3: 'time' }),
+  comment: Object.freeze({ thing1: 'projectName', thing2: 'title', thing3: 'content', time4: 'time' }),
+  system: Object.freeze({ thing1: 'title', thing2: 'content', time3: 'time' }),
+})
+
 for (const type of SUBSCRIBE_TEMPLATE_TYPES) {
   SCHEMA[`subscribe_template_${type}`] = {
     type: 'string',
@@ -310,10 +327,30 @@ for (const type of SUBSCRIBE_TEMPLATE_TYPES) {
     // 模板 ID 要从微信后台申请审核通过后才有，没配就是走纯站内消息（AC-U12）
     note: '由平台统一配置（模板 ID 来自微信公众平台）；留空表示该类消息只发站内信',
   }
+
+  /**
+   * 数据映射必须跟着模板走。选好模板后，在模板详情里能看到
+   * 「项目名称 {{thing1.DATA}}」这样的关键词；把 thing1 之类填成 JSON 的键，
+   * 值填业务字段名即可。留空或写错时回落到上面的内置映射。
+   */
+  SCHEMA[`subscribe_template_${type}_fields`] = {
+    // json：保存时校验语法，避免「保存成功但推送时回落到默认映射」这种无声失败
+    type: 'json',
+    maxLength: 500,
+    label: `订阅消息数据映射（${type}）`,
+    requirement: 'B-5.7',
+    platformOnly: true,
+    note:
+      'JSON，键为模板关键词、值为数据来源；可用来源：projectName / title / content / typeLabel / time / date / refId。留空使用内置映射',
+  }
+
   // 默认值由注册表补全，而不是要求改代码的人记得去上面那个 DEFAULTS 字面量里再写一行。
   // 漏写的后果很隐蔽：`getRaw` 会对没有默认值的键返回空串，于是「未配置」
   // 与「配置成了空值」在代码里无法区分
   if (DEFAULTS[`subscribe_template_${type}`] === undefined) DEFAULTS[`subscribe_template_${type}`] = ''
+  if (DEFAULTS[`subscribe_template_${type}_fields`] === undefined) {
+    DEFAULTS[`subscribe_template_${type}_fields`] = JSON.stringify(SUBSCRIBE_FIELD_DEFAULTS[type])
+  }
 }
 
 /** 数值型配置的展示精度：比例保留两位，其余按整数 */
@@ -359,6 +396,28 @@ function normalizeValue(key, value) {
       throw AppError.badRequest(`${spec.label}只能是：${spec.allowed.join(' / ')}`)
     }
     return String(value)
+  }
+
+  if (spec.type === 'json') {
+    const text = String(value ?? '').trim()
+    // 空串是合法的「未配置」，读取时会回落到内置映射
+    if (text === '') return ''
+
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      throw AppError.badRequest(`${spec.label}必须是合法的 JSON`)
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw AppError.badRequest(`${spec.label}必须是 JSON 对象`)
+    }
+
+    const normalized = JSON.stringify(parsed)
+    if (normalized.length > spec.maxLength) {
+      throw AppError.badRequest(`${spec.label}不超过 ${spec.maxLength} 个字符`)
+    }
+    return normalized
   }
 
   // string：模板 ID 之类。trim 之后存，避免从微信后台复制时带上首尾空格 ——
@@ -629,6 +688,7 @@ function invalidate(tenantId) {
 module.exports = {
   DEFAULTS,
   SCHEMA,
+  SUBSCRIBE_FIELD_DEFAULTS,
   getRaw,
   getInt,
   getFloat,

@@ -81,7 +81,8 @@ const GROUP_DEFS: GroupDef[] = [
   {
     key: 'subscribe',
     title: '订阅消息模板',
-    description: '微信订阅消息模板 ID 由平台统一配置（来自小程序主体），租户只读；留空表示该类消息只发站内信。',
+    description:
+      '微信订阅消息模板 ID 与数据映射由平台统一配置（模板来自小程序主体），租户只读；模板 ID 留空表示该类消息只发站内信。',
     prefix: 'subscribe_template_'
   },
   {

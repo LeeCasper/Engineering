@@ -151,15 +151,16 @@ describe('P5 · 订阅授权按租户隔离', () => {
       .send({ type: 'progress', tenantId: tenantB, status: 'rejected' })
       .expect(200)
 
-    // 微信推送尚未接入（无真实凭据），但「查订阅」这一步是真实执行的：
-    // accepted → not_implemented；rejected → not_subscribed。
+    // 测试环境 WX_MOCK=true，不会真的调用微信接口：
+    // accepted → mock（走到了发送这一步，被 mock 通道拦下）；
+    // rejected → not_subscribed。
     // 若查询漏了 tenant_id，两条会命中同一行，结果必然有一条是错的
     const pushA = await notificationService.tryPushSubscribeMessage({
       userId: user.userId,
       type: 'progress',
       tenantId: 1,
     })
-    expect(pushA.reason).toBe('not_implemented')
+    expect(pushA.reason).toBe('mock')
 
     const pushB = await notificationService.tryPushSubscribeMessage({
       userId: user.userId,
@@ -167,6 +168,52 @@ describe('P5 · 订阅授权按租户隔离', () => {
       tenantId: tenantB,
     })
     expect(pushB.reason).toBe('not_subscribed')
+  })
+
+  it('推送报文按模板映射组装，模板 ID 与 data 一起下发', async () => {
+    const { n, projA } = await setupTwoTenantsWithProjects()
+    await setConfig(1, 'subscribe_template_progress', 'wx-tpl-payload')
+
+    const user = await mini.login(`p5-payload-${n}`)
+    await mini.addMember({ projectId: projA, userId: user.userId, role: 'foreman' })
+    await mini
+      .authed('post', '/notifications/subscriptions', user.token)
+      .send({ type: 'progress', tenantId: 1, status: 'accepted' })
+      .expect(200)
+
+    // 测试环境不能真的打微信接口，替换发送函数只捕获报文。
+    // 这里验证的是 notification.service 的组装逻辑，而不是 wx.service 的内部实现。
+    const wx = require('../../src/services/wx.service')
+    const original = wx.sendSubscribeMessage
+    let captured = null
+    wx.sendSubscribeMessage = async (payload) => {
+      captured = payload
+      return { ok: true }
+    }
+
+    try {
+      const result = await notificationService.tryPushSubscribeMessage({
+        userId: user.userId,
+        type: 'progress',
+        tenantId: 1,
+        projectId: projA,
+        title: '进度已更新',
+        content: '今天完成了水电验收',
+        refId: 99,
+      })
+      expect(result.pushed).toBe(true)
+    } finally {
+      wx.sendSubscribeMessage = original
+    }
+
+    // 默认映射（sysConfig.SUBSCRIBE_FIELD_DEFAULTS.progress）：
+    // thing1=项目名、thing2=标题、time3=发送时间
+    const openid = (await db.queryOne('SELECT openid FROM user WHERE id = ?', [user.userId])).openid
+    expect(captured.templateId).toBe('wx-tpl-payload')
+    expect(captured.openid).toBe(openid)
+    expect(captured.data.thing1.value).toBe(`A 项目 ${n}`)
+    expect(captured.data.thing2.value).toBe('进度已更新')
+    expect(captured.data.time3.value).toMatch(/^\d{4}年\d{2}月\d{2}日 \d{2}:\d{2}$/)
   })
 
   it('只属于一个租户时可以省略 tenantId；不属于任何租户则明确报错', async () => {
