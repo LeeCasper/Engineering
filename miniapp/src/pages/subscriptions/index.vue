@@ -15,7 +15,8 @@
         <view class="intro-main">
           <text class="intro-title">按业务场景授权</text>
           <text class="intro-text">
-            订阅消息由微信逐次询问。拒绝或关闭后，相关提醒仍会完整保留在消息中心。
+            微信订阅消息是一次性授权：每授权一次可接收一条提醒，收到后需再次授权。
+            拒绝或关闭后，相关提醒仍会完整保留在消息中心。
           </text>
         </view>
       </view>
@@ -59,7 +60,8 @@
       </view>
 
       <view class="footnote">
-        当前微信订阅消息是否可用取决于后端是否配置了模板 ID。未配置时，站内消息不受影响。
+        微信不提供剩余授权次数查询：显示「已授权」只代表上次授权成功，不代表还有可发送额度。
+        未配置模板或授权已用完时，站内消息仍会正常收到。
       </view>
     </view>
   </view>
@@ -123,7 +125,7 @@ function typeInitial(type) {
 
 function statusLabel(item) {
   if (!item.available) return '仅站内信'
-  if (item.status === 'accepted') return '已允许'
+  if (item.status === 'accepted') return '已授权'
   if (item.status === 'rejected') return '已拒绝'
   if (item.status === 'ban') return '已关闭'
   return '未授权'
@@ -139,7 +141,9 @@ function statusClass(item) {
 
 function statusHint(item) {
   if (!item.available) return '该类消息暂未开通订阅推送，站内消息仍会正常收到。'
-  if (item.status === 'accepted') return '已允许接收该类微信订阅消息。'
+  if (item.status === 'accepted') {
+    return '已授权（每次授权可接收 1 条）；收到后可在需要时再次授权。'
+  }
   if (item.status === 'rejected') return '上次授权被拒绝；可以在需要时重新授权。'
   if (item.status === 'ban') return '已勾选不再询问，需在微信小程序设置中重新开启。'
   return '尚未授权，点击右侧按钮在微信中开启。'

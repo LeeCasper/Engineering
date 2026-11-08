@@ -26,6 +26,14 @@
 
     <template v-else-if="detail">
       <view class="content gc-stagger">
+        <!-- 一次性订阅：点击后由微信拉起授权弹窗，不能自动调用 -->
+        <gc-subscribe-tip
+          :types="subscribeTypes"
+          :tenant-id="subscribeTenantId || undefined"
+          title="开启项目通知"
+          description="验收、付款与评论提醒可推送到微信，站内消息不受影响"
+        />
+
         <!-- 项目概览 -->
         <view class="card overview-card">
           <view class="overview-top">
@@ -675,6 +683,19 @@ const STATUS_CLASSES = {
 
 const id = ref(null)
 const safeTop = ref(12)
+
+// 订阅授权按角色给：业主关心验收 / 付款 / 进度，工长关心验收结果与评论
+const subscribeTypes = computed(() => {
+  const role = getCurrentProject()?.role
+  if (role === 'owner') return ['acceptance', 'payment', 'progress']
+  if (role === 'foreman') return ['acceptance', 'comment']
+  return ['acceptance']
+})
+
+const subscribeTenantId = computed(() => {
+  const current = getCurrentProject()
+  return current && current.tenantId ? Number(current.tenantId) : null
+})
 const loading = ref(true)
 const loadError = ref('')
 const detail = ref(null)

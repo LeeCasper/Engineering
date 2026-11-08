@@ -11,6 +11,15 @@
       </view>
     </view>
 
+    <!-- 付款提醒授权：一次性订阅，用户点击后才拉起微信授权弹窗 -->
+    <gc-subscribe-tip
+      v-if="current"
+      :types="['payment']"
+      :tenant-id="current.tenantId"
+      title="开启付款提醒"
+      description="付款节点解锁、大额支出与对账待办可推送到微信"
+    />
+
     <!-- 首次加载 -->
     <view v-if="loading && !detail" class="gc-loading-page">
       <gc-skeleton :rows="3" />
