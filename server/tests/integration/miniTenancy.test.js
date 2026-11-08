@@ -216,6 +216,56 @@ describe('P5 · 订阅授权按租户隔离', () => {
     expect(captured.data.time3.value).toMatch(/^\d{4}年\d{2}月\d{2}日 \d{2}:\d{2}$/)
   })
 
+  it('阶段名按 refType 反查，可映射到 phrase 关键词', async () => {
+    const { n, projA } = await setupTwoTenantsWithProjects()
+    await setConfig(1, 'subscribe_template_acceptance', 'wx-tpl-stage')
+    await setConfig(
+      1,
+      'subscribe_template_acceptance_fields',
+      '{"phrase1":"stageName","thing2":"projectName","time3":"time"}'
+    )
+
+    const user = await mini.login(`p5-stage-${n}`)
+    await mini.addMember({ projectId: projA, userId: user.userId, role: 'foreman' })
+    await mini
+      .authed('post', '/notifications/subscriptions', user.token)
+      .send({ type: 'acceptance', tenantId: 1, status: 'accepted' })
+      .expect(200)
+
+    const stageId = await mini.createStage({ projectId: projA, name: '水电验收' })
+    const inserted = await db.query(
+      `INSERT INTO acceptance (project_id, project_stage_id, type, status, submitter_id)
+       VALUES (?, ?, 'stage', 'pending_owner', ?)`,
+      [projA, stageId, user.userId]
+    )
+
+    const wx = require('../../src/services/wx.service')
+    const original = wx.sendSubscribeMessage
+    let captured = null
+    wx.sendSubscribeMessage = async (payload) => {
+      captured = payload
+      return { ok: true }
+    }
+
+    try {
+      const result = await notificationService.tryPushSubscribeMessage({
+        userId: user.userId,
+        type: 'acceptance',
+        tenantId: 1,
+        projectId: projA,
+        title: '验收已通过',
+        refType: 'acceptance',
+        refId: inserted.insertId,
+      })
+      expect(result.pushed).toBe(true)
+    } finally {
+      wx.sendSubscribeMessage = original
+    }
+
+    expect(captured.data.phrase1.value).toBe('水电验收')
+    expect(captured.data.thing2.value).toBe(`A 项目 ${n}`)
+  })
+
   it('只属于一个租户时可以省略 tenantId；不属于任何租户则明确报错', async () => {
     const { n, projA } = await setupTwoTenantsWithProjects()
     await setConfig(1, 'subscribe_template_progress', 'wx-tpl-solo')

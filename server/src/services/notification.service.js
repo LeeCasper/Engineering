@@ -215,6 +215,7 @@ async function notifyEach(userIds, params) {
 /** 微信订阅消息模板关键词 → 业务字段。新增来源时同步 sysConfig 的提示文案 */
 const SUBSCRIBE_DATA_SOURCES = new Set([
   'projectName',
+  'stageName',
   'title',
   'content',
   'typeLabel',
@@ -306,10 +307,18 @@ function parseFieldMap(type, raw) {
  * 微信的 time / date 关键词只接受固定格式，传 `2026-11-08 10:00:00` 也能识别，
  * 但这类模板通常按「2026年11月8日 10:00」展示，直接给最终文案更稳。
  */
-function buildTemplateValues({ projectName = '', title = '', content = '', type = '', refId = null }) {
+function buildTemplateValues({
+  projectName = '',
+  stageName = '',
+  title = '',
+  content = '',
+  type = '',
+  refId = null,
+}) {
   const now = datetime.now()
   return {
     projectName,
+    stageName,
     title,
     content,
     typeLabel: TYPE_LABELS[type] || type,
@@ -327,21 +336,98 @@ async function resolveTemplateFields(type) {
 }
 
 /**
+ * 按业务对象反查所属阶段名（如「水电验收」）。
+ *
+ * ── 为什么不在每个 notify 调用点手传 stageName ──
+ * 验收 / 结算 / 对账 / 记账有十几个通知点，逐个加参数一定会漏；
+ * 漏掉的表现还是「推送 47003」而不是明显的报错。这里按 refType 统一反查：
+ *   acceptance*             → 验收单（阶段级直接取；工序级取工序所属阶段）
+ *   stage_settlement / reconciliation → 阶段结算单
+ *   report                  → 进度汇报所属工序的阶段
+ *   ledger                  → 流水归属阶段
+ * 查不到或查询失败都返回空串：站内消息已经落库，不能因为模板数据缺一项就不推送。
+ */
+async function resolveStageName({ refType, refId }) {
+  if (!refType || !refId) return ''
+
+  try {
+    if (refType.startsWith('acceptance')) {
+      const row = await db.queryOne(
+        `SELECT COALESCE(ps.name, psi.name) AS stage_name
+           FROM acceptance a
+           LEFT JOIN project_stage ps ON ps.id = a.project_stage_id AND ps.deleted_at IS NULL
+           LEFT JOIN project_item pi ON pi.id = a.project_item_id AND pi.deleted_at IS NULL
+           LEFT JOIN project_stage psi ON psi.id = pi.project_stage_id AND psi.deleted_at IS NULL
+          WHERE a.id = ? AND a.deleted_at IS NULL`,
+        [refId]
+      )
+      return row?.stage_name || ''
+    }
+
+    if (refType === 'stage_settlement' || refType === 'reconciliation') {
+      const row = await db.queryOne(
+        `SELECT ps.name
+           FROM reconciliation r
+           JOIN project_stage ps ON ps.id = r.project_stage_id AND ps.deleted_at IS NULL
+          WHERE r.id = ? AND r.scope_type = 'stage' AND r.deleted_at IS NULL`,
+        [refId]
+      )
+      return row?.name || ''
+    }
+
+    if (refType === 'report') {
+      const row = await db.queryOne(
+        `SELECT ps.name
+           FROM progress_report pr
+           JOIN project_item pi ON pi.id = pr.project_item_id AND pi.deleted_at IS NULL
+           JOIN project_stage ps ON ps.id = pi.project_stage_id AND ps.deleted_at IS NULL
+          WHERE pr.id = ? AND pr.deleted_at IS NULL`,
+        [refId]
+      )
+      return row?.name || ''
+    }
+
+    if (refType === 'ledger') {
+      const row = await db.queryOne(
+        `SELECT ps.name
+           FROM ledger l
+           JOIN project_stage ps ON ps.id = l.project_stage_id AND ps.deleted_at IS NULL
+          WHERE l.id = ? AND l.deleted_at IS NULL`,
+        [refId]
+      )
+      return row?.name || ''
+    }
+  } catch (err) {
+    logger.warn('查询阶段名失败，订阅消息将不带阶段名', {
+      refType,
+      refId,
+      message: err.message,
+    })
+  }
+
+  return ''
+}
+
+/**
  * 把一条站内消息组装成微信订阅消息的 `data`。
  *
  * 没有映射到任何非空字段时返回 `{}`，调用方据此跳过推送 ——
  * 微信不接受空 data，发出去也只会得到错误码。
  */
-async function buildTemplateData(type, { projectId = null, title, content, refId }) {
+async function buildTemplateData(type, { projectId = null, title, content, refType, refId }) {
   const fields = await resolveTemplateFields(type)
+  const sources = Object.values(fields)
 
   let projectName = ''
-  if (projectId && Object.values(fields).includes('projectName')) {
+  if (projectId && sources.includes('projectName')) {
     const project = await db.queryOne('SELECT name FROM project WHERE id = ? AND deleted_at IS NULL', [projectId])
     projectName = project ? project.name : ''
   }
 
-  const values = buildTemplateValues({ projectName, title, content, type, refId })
+  // 只在实际用到时才查：多数模板不需要阶段名，没必要为每条推送多一次 JOIN
+  const stageName = sources.includes('stageName') ? await resolveStageName({ refType, refId }) : ''
+
+  const values = buildTemplateValues({ projectName, stageName, title, content, type, refId })
 
   const data = {}
   for (const [keyword, source] of Object.entries(fields)) {
@@ -369,6 +455,7 @@ async function tryPushSubscribeMessage({
   projectId = null,
   title,
   content,
+  refType,
   refId,
 }) {
   const templateId = await resolveTemplateId(tenantId, type)
@@ -398,7 +485,7 @@ async function tryPushSubscribeMessage({
     return { pushed: false, reason: 'not_subscribed' }
   }
 
-  const data = await buildTemplateData(type, { projectId, title, content, refId })
+  const data = await buildTemplateData(type, { projectId, title, content, refType, refId })
   if (Object.keys(data).length === 0) {
     logger.warn('订阅消息模板数据为空，跳过推送', { userId, type, templateId })
     return { pushed: false, reason: 'no_data' }

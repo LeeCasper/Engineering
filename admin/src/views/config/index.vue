@@ -427,9 +427,10 @@ onMounted(load);
                     />
                     <div class="subscribe-field__hint">{{ card.fields.note }}</div>
                     <div class="subscribe-field__hint subscribe-field__sources">
-                      可用来源：<code>projectName</code> 项目名称 · <code>title</code> 消息标题 ·
-                      <code>content</code> 消息内容 · <code>typeLabel</code> 分类名 ·
-                      <code>time</code> 发送时间 · <code>date</code> 日期 · <code>refId</code> 业务 ID
+                      可用来源：<code>projectName</code> 项目名称 · <code>stageName</code> 阶段名 ·
+                      <code>title</code> 消息标题 · <code>content</code> 消息内容 ·
+                      <code>typeLabel</code> 分类名 · <code>time</code> 发送时间 ·
+                      <code>date</code> 日期 · <code>refId</code> 业务 ID
                     </div>
                   </div>
                 </section>

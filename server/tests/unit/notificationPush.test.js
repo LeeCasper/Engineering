@@ -72,6 +72,7 @@ describe('订阅消息模板数据映射', () => {
   it('时间按微信可识别的中文格式生成，分类带出展示名', () => {
     const values = notificationService.buildTemplateValues({
       projectName: '阳光花园',
+      stageName: '水电验收',
       title: '验收已通过',
       content: '水电阶段验收通过',
       type: 'acceptance',
@@ -79,6 +80,7 @@ describe('订阅消息模板数据映射', () => {
     })
 
     expect(values.projectName).toBe('阳光花园')
+    expect(values.stageName).toBe('水电验收')
     expect(values.typeLabel).toBe('验收通知')
     expect(values.refId).toBe('42')
     expect(values.time).toMatch(/^\d{4}年\d{1,2}月\d{1,2}日 \d{2}:\d{2}$/)
