@@ -1007,7 +1007,7 @@ function stageVisual(stage) {
 }
 
 function acceptanceBadge(task) {
-  if (task.status === 'pending_supervisor') return '待您审核'
+  if (task.status === 'pending_supervisor') return '待您签字审核'
   return '待您签字'
 }
 
@@ -1027,17 +1027,17 @@ function lockText(stage) {
 }
 
 function taskActionLabel(task) {
-  if (task.status === 'pending_supervisor') return '去审核'
+  if (task.status === 'pending_supervisor') return '去签名审核'
   return '去签名'
 }
 
 function taskActionSuffix(task) {
-  return task.status === 'pending_supervisor' ? '待您审核' : '待您签名'
+  return task.status === 'pending_supervisor' ? '待您签字审核' : '待您签名'
 }
 
 function acceptanceNote(task) {
   if (task.status === 'pending_supervisor') {
-    return '审核通过后进入业主确认；驳回会退回工长整改并保留流转记录。'
+    return '审核通过时需签名；通过后进入业主确认，驳回会退回工长整改并保留流转记录。'
   }
   return '签字后解锁本阶段付款节点；下一阶段仍需结算后解锁。'
 }

@@ -443,7 +443,7 @@ function roundOf(item) {
 
 function signatureText(item) {
   if (item.esignStatus === 'signed') return '可靠电子签'
-  if (item.hasSignature) return '手写签名'
+  if (item.hasSignature) return '手写签名（业主）'
   return '未签名'
 }
 

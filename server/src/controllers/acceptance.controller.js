@@ -52,6 +52,28 @@ const resubmitSchema = z.object({
   items: z.array(itemResultSchema).max(200).optional(),
 })
 
+/**
+ * multipart 表单字段只能是字符串，`items` 会被序列化成 JSON。
+ * 只对字符串做解析；纯 JSON 请求里它已经是数组，原样返回。
+ */
+function parseJsonField(value, name) {
+  if (value === undefined || value === null || typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    throw AppError.badRequest(`${name}格式不正确`)
+  }
+}
+
+function normalizeCheckBody(body = {}) {
+  return { ...body, items: parseJsonField(body.items, '自检项') }
+}
+
+/** 字段名固定为 signature：工长 / 监理 / 业主三个环节共用 */
+function extractSignature(req) {
+  return normalizeFiles(req.files).find((file) => file.field === 'signature') || null
+}
+
 /** POST /projects/:id/acceptances —— 发起验收（C-3.2） */
 async function create(req, res) {
   const input = validate(createSchema, req.body)
@@ -91,8 +113,13 @@ async function saveDraft(req, res) {
 
 /** POST /acceptances/:id/self-check —— 提交自检（AC-A07/A09） */
 async function selfCheck(req, res) {
-  const input = validate(selfCheckSchema, req.body)
-  res.ok(await acceptanceService.submitSelfCheck(req.auth.id, Number(req.params.id), input))
+  const input = validate(selfCheckSchema, normalizeCheckBody(req.body))
+  res.ok(
+    await acceptanceService.submitSelfCheck(req.auth.id, Number(req.params.id), {
+      ...input,
+      signatureFile: extractSignature(req),
+    })
+  )
 }
 
 /** POST /acceptances/:id/approve —— 当前环节通过（监理或业主，界面层不区分） */
@@ -110,15 +137,21 @@ async function reject(req, res) {
   res.ok(
     await acceptanceService.reject(req.auth.id, Number(req.params.id), {
       reason: input.reason,
-      files: normalizeFiles(req.files),
+      // 驳回不需要签名；即使客户端误传了 signature，也不能把它当驳回凭证照片存下来
+      files: normalizeFiles(req.files).filter((file) => file.field !== 'signature'),
     })
   )
 }
 
 /** POST /acceptances/:id/resubmit —— 整改后重新提交（AC-A14） */
 async function resubmit(req, res) {
-  const input = validate(resubmitSchema, req.body)
-  res.ok(await acceptanceService.resubmit(req.auth.id, Number(req.params.id), input))
+  const input = validate(resubmitSchema, normalizeCheckBody(req.body))
+  res.ok(
+    await acceptanceService.resubmit(req.auth.id, Number(req.params.id), {
+      ...input,
+      signatureFile: extractSignature(req),
+    })
+  )
 }
 
 /** POST /acceptances/:id/report/retry —— PDF 生成失败后重试（AC-A19） */

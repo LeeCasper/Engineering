@@ -41,6 +41,26 @@ beforeEach(async () => {
 
 let seq = 0
 
+const sharp = require('sharp')
+
+/** 生成一张能被 pdfkit 正常嵌入的 JPEG 签名图 */
+async function makeSignature() {
+  return sharp({
+    create: { width: 300, height: 120, channels: 3, background: { r: 255, g: 255, b: 255 } },
+  })
+    .composite([
+      {
+        input: Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="120"><path d="M20 80 Q 80 20 140 80 T 280 60" stroke="#111" stroke-width="3" fill="none"/></svg>'
+        ),
+        top: 0,
+        left: 0,
+      },
+    ])
+    .jpeg()
+    .toBuffer()
+}
+
 async function createContext({ withTemporary = true } = {}) {
   seq += 1
   const foreman = await mini.login(`esign-foreman-${seq}`)
@@ -75,9 +95,11 @@ async function createContext({ withTemporary = true } = {}) {
     .send({ stageId, description: '水电验收' })
   const acceptanceId = created.body.data.id
   const items = created.body.data.items.map((item) => ({ id: item.id, result: 'pass' }))
+  const signature = await makeSignature()
   const submitted = await mini
     .authed('post', `/acceptances/${acceptanceId}/self-check`, foreman.token)
-    .send({ items })
+    .field('items', JSON.stringify(items))
+    .attach('signature', signature, { filename: 'sign.jpg', contentType: 'image/jpeg' })
   if (submitted.status !== 200) throw new Error(`提交自检失败：${JSON.stringify(submitted.body)}`)
 
   const detail = await mini.authed('get', `/acceptances/${acceptanceId}`, owner.token)

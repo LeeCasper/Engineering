@@ -105,7 +105,7 @@ function statusMeta(status: string) {
 
 function signatureLabel(item: AdminAcceptanceReport) {
   if (item.esignStatus === 'signed' || item.signatureMode === 'provider') return '可靠电子签';
-  if (item.hasSignature) return '手写签名';
+  if (item.hasSignature) return '手写签名（业主）';
   return '未签名';
 }
 

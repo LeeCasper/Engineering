@@ -183,6 +183,45 @@
             <text class="panel-count">只读</text>
           </view>
 
+          <!-- 三方签署摘要：工长 / 监理 / 业主 -->
+          <view v-if="signatureSummary" class="signature-summary">
+            <view class="signature-summary-head">
+              <text class="signature-summary-title">签署记录</text>
+              <text class="signature-summary-round">第 {{ signatureSummary.round }} 轮</text>
+            </view>
+            <view
+              v-for="role in SIGNATURE_ROLES"
+              :key="role"
+              class="signature-row"
+            >
+              <view class="signature-row-main">
+                <text class="signature-role">{{ signatureSummary[role].roleLabel }}</text>
+                <text
+                  class="signature-state"
+                  :class="{
+                    'signature-state--signed': signatureSummary[role].signed,
+                    'signature-state--skipped': signatureSummary[role].state === 'skipped',
+                  }"
+                >
+                  {{ signatureSummary[role].stateLabel }}
+                </text>
+              </view>
+              <text
+                v-if="signatureSummary[role].operator || signatureSummary[role].signedAt"
+                class="signature-meta"
+              >
+                {{ [signatureSummary[role].operator, signatureSummary[role].signedAt].filter(Boolean).join(' · ') }}
+              </text>
+              <image
+                v-if="signatureSummary[role].signatureUrl"
+                class="signature-thumb"
+                :src="signatureSummary[role].signatureUrl"
+                mode="aspectFit"
+                @tap="previewSignature(role)"
+              />
+            </view>
+          </view>
+
           <view v-if="!flowRounds.length" class="panel-empty">暂无流转记录</view>
           <view v-for="round in flowRounds" :key="round.round" class="flow-round">
             <text class="flow-round-title">第 {{ round.round }} 轮</text>
@@ -194,6 +233,7 @@
                   <text class="flow-action" :class="flowActionClass(entry)">{{ entry.actionLabel }}</text>
                   <text class="flow-operator">{{ entry.operator }}</text>
                   <text class="flow-time">{{ formatTime(entry.operatedAt) }}</text>
+                  <text v-if="entry.signatureUrl" class="flow-signed">已签名</text>
                 </view>
                 <text v-if="entry.reason" class="flow-reason">{{ entry.reason }}</text>
                 <view v-if="entry.images && entry.images.length" class="flow-images">
@@ -222,8 +262,8 @@
             <text class="report-text">
               {{
                 isEsignSigned
-                  ? '已由电子签服务商完成实名核验、数字签名与可信时间戳，可下载已签 PDF 与证据报告。'
-                  : '包含验收项、现场照片、审核意见与主业主手写签名。'
+                  ? '已由电子签服务商完成业主实名核验、数字签名与可信时间戳，工长 / 监理手写签名一并归档。'
+                  : '包含验收项、现场照片、审核意见与工长 / 监理 / 业主三方手写签名。'
               }}
             </text>
             <button class="report-btn" @tap="openReport">
@@ -253,8 +293,8 @@
             <text class="report-text">
               {{
                 detail.esign && detail.esign.required
-                  ? '主业主完成可靠电子签名后，系统会归档已签确认书与证据报告。'
-                  : '主业主确认并签名后，系统会自动生成 PDF 验收报告。'
+                  ? '工长、监理完成手写签名后，主业主完成可靠电子签名，系统会归档已签确认书与证据报告。'
+                  : '工长、监理、主业主依次签名后，系统会自动生成 PDF 验收报告。'
               }}
             </text>
           </view>
@@ -287,7 +327,7 @@
           {{ approveLabel }}
         </button>
         <button v-if="canSubmit || canResubmit" class="action-primary" :disabled="submitting" @tap="submitCheck">
-          {{ canResubmit ? '重新提交' : '提交自检' }}
+          {{ canResubmit ? '签名并重新提交' : '签名并提交自检' }}
         </button>
         <button v-if="canOpenSettlement" class="action-primary" @tap="goSettlement">
           {{ detail.stageGateStatus === 'disputed' ? '处理阶段结算' : '去阶段结算' }}
@@ -324,12 +364,12 @@
     <view v-if="signatureOpen" class="signature-mask">
       <view class="signature-sheet">
         <view class="signature-head">
-          <text class="signature-title">主业主签名</text>
+          <text class="signature-title">{{ signatureTitle }}</text>
           <view class="signature-close" @tap="closeSignature">
             <image class="signature-close-icon" src="/static/images/icon-close.png" mode="aspectFit" />
           </view>
         </view>
-        <text class="signature-desc">请在下方手写签名。该签名仅作为项目内部验收确认记录，不具备法律效力。</text>
+        <text class="signature-desc">{{ signatureDescription }}</text>
         <view class="signature-pad" :style="{ height: `${canvasHeight}px` }">
           <canvas
             id="signatureCanvas"
@@ -404,10 +444,10 @@ import {
   createEsignTask,
   fetchAcceptanceDetail,
   rejectAcceptance,
-  resubmitAcceptance,
+  resubmitAcceptanceWithSignature,
   retryAcceptanceReport,
   saveAcceptanceDraft,
-  submitSelfCheck,
+  submitSelfCheckWithSignature,
   syncEsignTask,
 } from '../../api/acceptance'
 import { resolveMediaUrl } from '../../api/request'
@@ -427,6 +467,8 @@ const TABS = [
   { key: 'report', label: '验收报告' },
 ]
 
+const SIGNATURE_ROLES = ['foreman', 'supervisor', 'owner']
+
 const instance = getCurrentInstance()
 
 const id = ref(0)
@@ -444,6 +486,36 @@ const draftResults = ref({})
 const signatureOpen = ref(false)
 const signatureTouched = ref(false)
 const signing = ref(false)
+// 同一个画布服务三个角色：owner / supervisor / foreman_submit / foreman_resubmit
+const signatureTarget = ref('owner')
+const pendingCheckItems = ref([])
+
+const signatureTitle = computed(
+  () =>
+    ({
+      owner: '主业主签名',
+      supervisor: '监理签名',
+      foreman_submit: '工长签名',
+      foreman_resubmit: '工长签名',
+    })[signatureTarget.value] || '签名'
+)
+
+const signatureDescription = computed(() => {
+  if (signatureTarget.value === 'owner') {
+    return '请在下方手写签名。该签名仅作为项目内部验收确认记录，不具备法律效力。'
+  }
+  if (signatureTarget.value === 'supervisor') {
+    return '请监理手写签名后确认审核通过。该签名仅作为项目内部验收确认记录，不具备法律效力。'
+  }
+  return '请工长逐项确认后手写签名并提交自检。该签名仅作为项目内部验收确认记录，不具备法律效力。'
+})
+
+const signatureSummary = computed(() => (detail.value && detail.value.signatures) || null)
+const needsSupervisorSignature = computed(() => {
+  // 旧后端没有 signatures 字段；此时按需要签名处理（旧后端会忽略监理签名字段）
+  if (!signatureSummary.value) return true
+  return Boolean(signatureSummary.value.supervisor && signatureSummary.value.supervisor.required)
+})
 const canvasWidth = ref(310)
 const canvasHeight = ref(180)
 let canvasCtx = null
@@ -524,7 +596,8 @@ const hasActions = computed(
 
 const approveLabel = computed(() => {
   if (!detail.value) return '通过'
-  return detail.value.currentStep === 'owner' ? '通过并签名' : '通过'
+  if (detail.value.currentStep === 'owner') return '通过并签名'
+  return needsSupervisorSignature.value ? '审核通过并签名' : '通过'
 })
 
 const displayTitle = computed(() => {
@@ -540,7 +613,7 @@ const overviewStatusLabel = computed(() => {
   const labels = {
     draft: '草稿',
     pending_supervisor: '待监理审核',
-    pending_owner: '待主业主签字',
+    pending_owner: '待业主签署',
     pending_rectify: '待整改',
     passed: '已通过',
   }
@@ -723,18 +796,22 @@ function computeSteps() {
   const gate = detail.value.stageGateStatus
   const lastReject = lastRejectStep.value
 
+  const sig = signatureSummary.value
+  const signedLabel = (role, fallback) =>
+    sig && sig[role] && sig[role].signed ? '已签署' : fallback
+
   const selfCheck = {
     key: 'self_check',
-    label: '自检',
+    label: '工长自检',
     state: 'pending',
-    stateLabel: '待提交',
+    stateLabel: '待签名提交',
     lineState: 'pending',
   }
   const supervisor = {
     key: 'supervisor',
     label: '监理审核',
     state: hasSupervisor ? 'pending' : 'skipped',
-    stateLabel: hasSupervisor ? '待审核' : '已跳过',
+    stateLabel: hasSupervisor ? '待签名审核' : '已跳过',
     lineState: 'pending',
   }
   const owner = {
@@ -761,34 +838,34 @@ function computeSteps() {
 
   if (status === 'draft') {
     selfCheck.state = 'active'
-    selfCheck.stateLabel = '待提交'
+    selfCheck.stateLabel = '待签名提交'
   }
 
   if (status === 'pending_supervisor') {
     selfCheck.state = 'done'
-    selfCheck.stateLabel = '已完成'
+    selfCheck.stateLabel = signedLabel('foreman', '已完成')
     supervisor.state = 'active'
-    supervisor.stateLabel = '待审核'
+    supervisor.stateLabel = '待签名审核'
   }
 
   if (status === 'pending_owner') {
     selfCheck.state = 'done'
-    selfCheck.stateLabel = '已完成'
+    selfCheck.stateLabel = signedLabel('foreman', '已完成')
     supervisor.state = hasSupervisor ? 'done' : 'skipped'
-    supervisor.stateLabel = hasSupervisor ? '已完成' : '已跳过'
+    supervisor.stateLabel = hasSupervisor ? signedLabel('supervisor', '已完成') : '已跳过'
     owner.state = 'active'
-    owner.stateLabel = '待确认'
+    owner.stateLabel = '待确认并签名'
   }
 
   if (status === 'pending_rectify') {
     selfCheck.state = 'active'
-    selfCheck.stateLabel = '待整改'
+    selfCheck.stateLabel = '待整改并签名'
     if (lastReject === 'supervisor') {
       supervisor.state = 'rejected'
       supervisor.stateLabel = '已驳回'
     } else if (lastReject === 'owner') {
       supervisor.state = hasSupervisor ? 'done' : 'skipped'
-      supervisor.stateLabel = hasSupervisor ? '已完成' : '已跳过'
+      supervisor.stateLabel = hasSupervisor ? signedLabel('supervisor', '已完成') : '已跳过'
       owner.state = 'rejected'
       owner.stateLabel = '已驳回'
     }
@@ -796,11 +873,11 @@ function computeSteps() {
 
   if (status === 'passed') {
     selfCheck.state = 'done'
-    selfCheck.stateLabel = '已完成'
+    selfCheck.stateLabel = signedLabel('foreman', '已完成')
     supervisor.state = hasSupervisor ? 'done' : 'skipped'
-    supervisor.stateLabel = hasSupervisor ? '已完成' : '已跳过'
+    supervisor.stateLabel = hasSupervisor ? signedLabel('supervisor', '已完成') : '已跳过'
     owner.state = 'done'
-    owner.stateLabel = '已签名'
+    owner.stateLabel = signedLabel('owner', '已签署')
     passed.state = 'done'
     passed.stateLabel = '已通过'
     if (gate === 'settled') {
@@ -836,18 +913,18 @@ function computeNotice() {
     return '项目已归档，验收记录只读，不能再提交或审核。'
   }
   if (status === 'draft') {
-    return '验收单尚未提交，请主工长完成自检后提交。'
+    return '验收单尚未提交，请主工长完成自检并签名后提交。'
   }
   if (status === 'pending_supervisor') {
-    return '工长已完成自检，等待监理审核。审核通过后由主业主确认并签名。'
+    return '工长已签署并提交自检，等待监理签署审核。审核通过后由主业主签署确认。'
   }
   if (status === 'pending_owner') {
     return hasSupervisor
-      ? '本阶段已通过监理审核，等待主业主确认并签名。签名后解锁付款节点，完成结算后解锁下一阶段。'
-      : '本项目未配置监理，工长已完成自检，等待主业主确认并签名。签名后解锁付款节点，完成结算后解锁下一阶段。'
+      ? '监理已签署通过，等待主业主签署确认。签名后解锁付款节点，完成结算后解锁下一阶段。'
+      : '本项目未配置监理，工长已签署自检，等待主业主签署确认。签名后解锁付款节点，完成结算后解锁下一阶段。'
   }
   if (status === 'pending_rectify') {
-    return '验收被驳回，等待工长整改后重新提交。整改过程与多轮记录会完整保留。'
+    return '验收被驳回，等待工长整改后重新签名提交。整改过程与多轮记录会完整保留。'
   }
   if (status === 'passed') {
     if (gate === 'settled') return '本阶段已结清，下一阶段已解锁。'
@@ -901,7 +978,7 @@ function buildItemsPayload() {
   }))
 }
 
-async function submitCheck() {
+function submitCheck() {
   if (submitting.value) return
   const items = buildItemsPayload()
   const missing = items.filter((item) => !item.result)
@@ -915,20 +992,9 @@ async function submitCheck() {
     return
   }
 
-  submitting.value = true
-  try {
-    if (canResubmit.value) {
-      await resubmitAcceptance(id.value, { items })
-    } else {
-      await submitSelfCheck(id.value, { items })
-    }
-    uni.showToast({ title: '已提交自检', icon: 'success' })
-    await load()
-  } catch (err) {
-    uni.showToast({ title: err.message || '提交失败', icon: 'none' })
-  } finally {
-    submitting.value = false
-  }
+  // 工长签名与提交必须是一次动作：先收起校验结果，签名成功后再提交
+  pendingCheckItems.value = items
+  openSignature(canResubmit.value ? 'foreman_resubmit' : 'foreman_submit')
 }
 
 async function saveDraft() {
@@ -1039,7 +1105,11 @@ function cancelEsignConfirm() {
 function onApprove() {
   if (!detail.value) return
   if (detail.value.currentStep === 'owner') {
-    openSignature()
+    openSignature('owner')
+    return
+  }
+  if (needsSupervisorSignature.value) {
+    openSignature('supervisor')
     return
   }
   approveSupervisor()
@@ -1104,7 +1174,8 @@ async function submitReject() {
 
 // ── 业主签名 ──
 
-function openSignature() {
+function openSignature(target = 'owner') {
+  signatureTarget.value = target
   signatureOpen.value = true
   signatureTouched.value = false
   const info = uni.getSystemInfoSync()
@@ -1225,9 +1296,27 @@ function confirmSignature() {
       canvasId: 'signatureCanvas',
       success: async (res) => {
         try {
-          await approveAcceptanceWithSignature(id.value, res.tempFilePath)
+          const target = signatureTarget.value
+          if (target === 'foreman_submit') {
+            await submitSelfCheckWithSignature(
+              id.value,
+              { items: pendingCheckItems.value },
+              res.tempFilePath
+            )
+          } else if (target === 'foreman_resubmit') {
+            await resubmitAcceptanceWithSignature(
+              id.value,
+              { items: pendingCheckItems.value },
+              res.tempFilePath
+            )
+          } else {
+            // 监理 / 业主共用 approve 端点，后端按当前状态判定角色
+            await approveAcceptanceWithSignature(id.value, res.tempFilePath)
+          }
           signatureOpen.value = false
-          uni.showToast({ title: '验收已通过', icon: 'success' })
+          const doneText =
+            target === 'owner' ? '验收已通过' : target === 'supervisor' ? '已签名并通过' : '已签名并提交'
+          uni.showToast({ title: doneText, icon: 'success' })
           await load()
         } catch (err) {
           uni.showToast({ title: err.message || '提交失败', icon: 'none' })
@@ -1253,6 +1342,13 @@ function previewPhoto(index) {
 function previewFlowImage(images, index) {
   const urls = images.map((image) => resolveMediaUrl(image.url))
   uni.previewImage({ urls, current: urls[index] })
+}
+
+function previewSignature(role) {
+  const summary = signatureSummary.value
+  const url = summary && summary[role] ? summary[role].signatureUrl : null
+  if (!url) return
+  uni.previewImage({ urls: [url], current: url })
 }
 
 function openReport() {
@@ -1948,6 +2044,92 @@ function closeActiveSheet() {
   height: dp(100);
   border-radius: dp(8);
   background: #f3efea;
+}
+
+.signature-summary {
+  padding: dp(12);
+  margin-bottom: dp(14);
+  background: #fff7f1;
+  border: 1px solid rgba(235, 92, 32, 0.16);
+  border-radius: dp(12);
+}
+
+.signature-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: dp(8);
+}
+
+.signature-summary-title {
+  color: #241c17;
+  font-size: dp(13);
+  font-weight: 600;
+}
+
+.signature-summary-round {
+  color: #86909c;
+  font-size: dp(11);
+}
+
+.signature-row {
+  padding: dp(8) 0;
+  border-top: 1px solid rgba(36, 28, 23, 0.05);
+}
+
+.signature-row:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.signature-row-main {
+  display: flex;
+  align-items: center;
+  gap: dp(8);
+}
+
+.signature-role {
+  color: #241c17;
+  font-size: dp(13);
+  font-weight: 500;
+}
+
+.signature-state {
+  color: #86909c;
+  font-size: dp(11);
+}
+
+.signature-state--signed {
+  color: #00b42a;
+}
+
+.signature-state--skipped {
+  color: #86909c;
+}
+
+.signature-meta {
+  display: block;
+  margin-top: dp(2);
+  color: #86909c;
+  font-size: dp(11);
+}
+
+.signature-thumb {
+  width: dp(96);
+  height: dp(38);
+  margin-top: dp(6);
+  background: #ffffff;
+  border: 1px solid #f0e6de;
+  border-radius: dp(6);
+}
+
+.flow-signed {
+  margin-left: dp(6);
+  padding: 0 dp(5);
+  color: #00b42a;
+  font-size: dp(10);
+  background: rgba(0, 180, 42, 0.08);
+  border-radius: dp(4);
 }
 
 .flow-round {

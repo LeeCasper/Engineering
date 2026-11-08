@@ -11,6 +11,17 @@
 const sharp = require('sharp')
 const fs = require('node:fs')
 const path = require('node:path')
+const { execFileSync } = require('node:child_process')
+
+/** PDF 文本断言依赖 poppler-utils；没有安装时跳过，不把环境依赖变成测试失败 */
+const hasPdftotext = (() => {
+  try {
+    execFileSync('pdftotext', ['-v'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+})()
 
 const db = require('../../src/db/pool')
 const cache = require('../../src/cache')
@@ -157,23 +168,47 @@ function initiate(ctx, token, fields = {}, files = []) {
   return req
 }
 
+/** 给 supertest 请求附加一张手写签名（三方签名改造后，正向动作都必须带） */
+async function attachSignature(req) {
+  const signature = await makeSignature()
+  return req.attach('signature', signature, { filename: 'sign.png', contentType: 'image/png' })
+}
+
+/** 工长签名并提交自检 / 重新提交 */
+async function selfCheckSigned(id, token, items) {
+  return attachSignature(
+    mini.authed('post', `/acceptances/${id}/self-check`, token).field('items', JSON.stringify(items))
+  )
+}
+
+async function resubmitSigned(id, token, items) {
+  return attachSignature(
+    mini.authed('post', `/acceptances/${id}/resubmit`, token).field('items', JSON.stringify(items))
+  )
+}
+
+/** 监理 / 业主签名并通过 */
+async function approveSigned(id, token) {
+  return attachSignature(mini.authed('post', `/acceptances/${id}/approve`, token))
+}
+
 /** 走完整条通过流程，返回验收单 id */
 async function passThrough(ctx, { signature = true } = {}) {
   const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId, description: '申请验收' })
   const id = created.body.data.id
 
   const items = created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
-  await mini.authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token).send({ items })
+  await selfCheckSigned(id, ctx.foreman.token, items)
 
   if (ctx.supervisor) {
-    await mini.authed('post', `/acceptances/${id}/approve`, ctx.supervisor.token)
+    await approveSigned(id, ctx.supervisor.token)
   }
 
-  const req = mini.authed('post', `/acceptances/${id}/approve`, ctx.owner.token)
   if (signature) {
-    req.attach('signature', await makeSignature(), { filename: 'sign.png', contentType: 'image/png' })
+    await approveSigned(id, ctx.owner.token)
+  } else {
+    await mini.authed('post', `/acceptances/${id}/approve`, ctx.owner.token)
   }
-  await req
 
   return id
 }
@@ -333,13 +368,13 @@ describe('AC-A03 / AC-A04 / AC-A06 状态机边界', () => {
   it('待监理审核时业主不能越过监理直接确认', async () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
-    const res = await mini
-      .authed('post', `/acceptances/${created.body.data.id}/approve`, ctx.owner.token)
-      .attach('signature', await makeSignature(), { filename: 'sign.png', contentType: 'image/png' })
+    const res = await approveSigned(created.body.data.id, ctx.owner.token)
     expect(res.status).toBe(403)
   })
 
@@ -366,9 +401,11 @@ describe('AC-A05 / AC-A09 监理环节的跳过', () => {
     const ctx = await setup({ withSupervisor: false })
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
 
-    const res = await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    const res = await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     expect(res.status).toBe(200)
     expect(res.body.data.status).toBe('pending_owner')
@@ -383,9 +420,11 @@ describe('AC-A05 / AC-A09 监理环节的跳过', () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
 
-    const res = await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    const res = await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     expect(res.body.data.status).toBe('pending_supervisor')
     expect(res.body.data.currentStep).toBe('supervisor')
@@ -400,9 +439,11 @@ describe('AC-A05 / AC-A09 监理环节的跳过', () => {
     )
 
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    const res = await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    const res = await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     // pending 的监理还没确认邀请，若把他算进去，单子会卡在一个永远不会有人处理的状态
     expect(res.body.data.status).toBe('pending_owner')
@@ -415,9 +456,9 @@ describe('AC-A07 / AC-A08 自检与草稿', () => {
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     const items = created.body.data.items
 
-    const partial = await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: [{ id: items[0].id, result: 'pass' }] })
+    const partial = await selfCheckSigned(created.body.data.id, ctx.foreman.token, [
+      { id: items[0].id, result: 'pass' },
+    ])
 
     expect(partial.status).toBe(400)
     expect(partial.body.message).toContain('未勾选')
@@ -430,9 +471,10 @@ describe('AC-A07 / AC-A08 自检与草稿', () => {
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     const items = created.body.data.items
 
-    const res = await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: [{ id: items[0].id, result: 'pass' }, { id: items[1].id, result: 'fail' }] })
+    const res = await selfCheckSigned(created.body.data.id, ctx.foreman.token, [
+      { id: items[0].id, result: 'pass' },
+      { id: items[1].id, result: 'fail' },
+    ])
 
     expect(res.status).toBe(409)
     expect(res.body.message).toContain('未通过')
@@ -460,9 +502,11 @@ describe('AC-A10 ~ AC-A15 审核、驳回与整改', () => {
   it('AC-A11 驳回原因必填', async () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     const empty = await mini
       .authed('post', `/acceptances/${created.body.data.id}/reject`, ctx.supervisor.token)
@@ -474,9 +518,11 @@ describe('AC-A10 ~ AC-A15 审核、驳回与整改', () => {
   it('AC-A10 监理只能处理待监理审核的单，对业主环节的单返回 403', async () => {
     const ctx = await setup({ withSupervisor: false })
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     const lone = await mini.login('code-lone-supervisor')
     await db.query(
@@ -493,9 +539,11 @@ describe('AC-A10 ~ AC-A15 审核、驳回与整改', () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     const id = created.body.data.id
-    await mini
-      .authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     const rejected = await mini
       .authed('post', `/acceptances/${id}/reject`, ctx.supervisor.token)
@@ -520,12 +568,10 @@ describe('AC-A10 ~ AC-A15 审核、驳回与整改', () => {
     const id = created.body.data.id
     const items = created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
 
-    await mini.authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token).send({ items })
+    await selfCheckSigned(id, ctx.foreman.token, items)
     await mini.authed('post', `/acceptances/${id}/reject`, ctx.supervisor.token).send({ reason: '不合格' })
 
-    const resubmitted = await mini
-      .authed('post', `/acceptances/${id}/resubmit`, ctx.foreman.token)
-      .send({ items, description: '已整改' })
+    const resubmitted = await resubmitSigned(id, ctx.foreman.token, items)
 
     expect(resubmitted.status).toBe(200)
     expect(resubmitted.body.data.status).toBe('pending_supervisor')
@@ -547,9 +593,11 @@ describe('AC-A10 ~ AC-A15 审核、驳回与整改', () => {
   it('AC-A15 业主可驳回待业主确认的单', async () => {
     const ctx = await setup({ withSupervisor: false })
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     const res = await mini
       .authed('post', `/acceptances/${created.body.data.id}/reject`, ctx.owner.token)
@@ -564,9 +612,11 @@ describe('AC-A16 / AC-A17 电子签名', () => {
   it('AC-A16 业主确认未带签名时拒绝', async () => {
     const ctx = await setup({ withSupervisor: false })
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     const res = await mini.authed('post', `/acceptances/${created.body.data.id}/approve`, ctx.owner.token)
     expect(res.status).toBe(400)
@@ -577,13 +627,13 @@ describe('AC-A16 / AC-A17 电子签名', () => {
     const ctx = await setup({ withSupervisor: false })
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     const id = created.body.data.id
-    await mini
-      .authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
-    const approved = await mini
-      .authed('post', `/acceptances/${id}/approve`, ctx.owner.token)
-      .attach('signature', await makeSignature(), { filename: 'sign.png', contentType: 'image/png' })
+    const approved = await approveSigned(id, ctx.owner.token)
 
     expect(approved.status).toBe(200)
     expect(approved.body.data.status).toBe('passed')
@@ -594,16 +644,148 @@ describe('AC-A16 / AC-A17 电子签名', () => {
     expect(fs.existsSync(path.join(config.upload.dir, key))).toBe(true)
   })
 
-  it('监理环节通过不需要签名', async () => {
+  it('监理环节通过必须签名', async () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    const id = created.body.data.id
+    await selfCheckSigned(
+      id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
-    const res = await mini.authed('post', `/acceptances/${created.body.data.id}/approve`, ctx.supervisor.token)
+    const unsigned = await mini.authed('post', `/acceptances/${id}/approve`, ctx.supervisor.token)
+    expect(unsigned.status).toBe(400)
+    expect(unsigned.body.message).toContain('签名')
+
+    const res = await approveSigned(id, ctx.supervisor.token)
     expect(res.status).toBe(200)
     expect(res.body.data.status).toBe('pending_owner')
+  })
+})
+
+describe('三方签署（工长 / 监理 / 业主）', () => {
+  it('工长提交与监理通过都必须签名', async () => {
+    const ctx = await setup()
+    const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
+    const id = created.body.data.id
+    const items = created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+
+    const unsignedSelf = await mini
+      .authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token)
+      .send({ items })
+    expect(unsignedSelf.status).toBe(400)
+    expect(unsignedSelf.body.message).toContain('签名')
+
+    const signedSelf = await selfCheckSigned(id, ctx.foreman.token, items)
+    expect(signedSelf.status).toBe(200)
+    expect(signedSelf.body.data.status).toBe('pending_supervisor')
+
+    const unsignedSupervisor = await mini
+      .authed('post', `/acceptances/${id}/approve`, ctx.supervisor.token)
+    expect(unsignedSupervisor.status).toBe(400)
+    expect(unsignedSupervisor.body.message).toContain('签名')
+
+    const signedSupervisor = await approveSigned(id, ctx.supervisor.token)
+    expect(signedSupervisor.status).toBe(200)
+    expect(signedSupervisor.body.data.status).toBe('pending_owner')
+  })
+
+  it('通过后详情返回三方签署状态与每一步的签名', async () => {
+    const ctx = await setup()
+    const id = await passThrough(ctx)
+
+    const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
+    const signatures = detail.body.data.signatures
+
+    expect(signatures.mode).toBe('legacy')
+    expect(signatures.foreman).toMatchObject({ state: 'signed', signed: true })
+    expect(signatures.supervisor).toMatchObject({ state: 'signed', signed: true })
+    expect(signatures.owner).toMatchObject({ state: 'signed', signed: true })
+
+    for (const step of ['self_check', 'supervisor', 'owner']) {
+      const entry = detail.body.data.flow.find((item) => item.step === step)
+      expect(entry.signatureUrl).toContain('/uploads/signatures/')
+    }
+  })
+
+  it.skipIf(!hasPdftotext)('PDF 验收确认书包含三方签署区块与签名图片', async () => {
+    const ctx = await setup()
+    const id = await passThrough(ctx)
+
+    const row = await db.queryOne(
+      'SELECT report_pdf_url, report_pdf_status FROM acceptance WHERE id = ?',
+      [id]
+    )
+    expect(row.report_pdf_status).toBe('success')
+
+    const key = row.report_pdf_url.split('/uploads/')[1]
+    const pdfPath = path.join(config.upload.dir, key)
+    const text = execFileSync('pdftotext', [pdfPath, '-'], { encoding: 'utf8' })
+
+    expect(text).toContain('签署区')
+    expect(text).toContain('工长签名')
+    expect(text).toContain('监理签名')
+    expect(text).toContain('业主签名')
+    expect(text).toContain('已签署')
+    expect(text).not.toContain('签名图片加载失败')
+  })
+
+  it('无监理项目：监理显示已跳过，工长与业主签署', async () => {
+    const ctx = await setup({ withSupervisor: false })
+    const id = await passThrough(ctx)
+
+    const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
+    expect(detail.body.data.signatures.supervisor.state).toBe('skipped')
+    expect(detail.body.data.signatures.supervisor.stateLabel).toContain('未配置监理')
+    expect(detail.body.data.signatures.foreman.signed).toBe(true)
+    expect(detail.body.data.signatures.owner.signed).toBe(true)
+  })
+
+  it('重新提交要求新一轮工长签名，旧轮次签名保留', async () => {
+    const ctx = await setup()
+    const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
+    const id = created.body.data.id
+    const items = created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+
+    await selfCheckSigned(id, ctx.foreman.token, items)
+    await mini.authed('post', `/acceptances/${id}/reject`, ctx.supervisor.token).send({ reason: '整改' })
+
+    const unsignedResubmit = await mini
+      .authed('post', `/acceptances/${id}/resubmit`, ctx.foreman.token)
+      .send({ items })
+    expect(unsignedResubmit.status).toBe(400)
+    expect(unsignedResubmit.body.message).toContain('签名')
+
+    const signedResubmit = await resubmitSigned(id, ctx.foreman.token, items)
+    expect(signedResubmit.status).toBe(200)
+
+    const submitRows = await db.query(
+      "SELECT round, signature_url FROM acceptance_flow WHERE acceptance_id = ? AND action = 'submit' ORDER BY id",
+      [id]
+    )
+    expect(submitRows.map((row) => row.round)).toEqual([1, 2])
+    expect(submitRows[0].signature_url).toBeTruthy()
+    expect(submitRows[1].signature_url).toBeTruthy()
+    expect(submitRows[0].signature_url).not.toBe(submitRows[1].signature_url)
+
+    const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
+    expect(detail.body.data.signatures.round).toBe(2)
+    expect(detail.body.data.signatures.foreman.signed).toBe(true)
+  })
+
+  it('历史单据缺少 flow 签名时，业主回退到 acceptance.signature_url', async () => {
+    const ctx = await setup({ withSupervisor: false })
+    const id = await passThrough(ctx)
+
+    await db.query('UPDATE acceptance_flow SET signature_url = NULL WHERE acceptance_id = ?', [id])
+
+    const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
+    const signatures = detail.body.data.signatures
+    expect(signatures.owner.signed).toBe(true)
+    expect(signatures.owner.source).toBe('acceptance')
+    expect(signatures.foreman.state).toBe('missing')
+    expect(signatures.foreman.stateLabel).toBe('未采集')
   })
 })
 
@@ -835,9 +1017,11 @@ describe('AC-A22 验收超时提醒', () => {
   it('超过配置时长未处理时向当前环节负责人推送一次', async () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     // 把进入环节的时间改到 49 小时前
     const datetime = require('../../src/utils/datetime')
@@ -861,9 +1045,11 @@ describe('AC-A22 验收超时提醒', () => {
   it('未超时不提醒；重复扫描不重复推送', async () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     // 未超时
     expect((await acceptanceTimeoutJob.runOnce()).reminded).toBe(0)
@@ -882,9 +1068,11 @@ describe('AC-A22 验收超时提醒', () => {
   it('超时时长可通过系统配置调整（B-5.3）', async () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     const datetime = require('../../src/utils/datetime')
     await db.query('UPDATE acceptance SET step_entered_at = ? WHERE id = ?', [
@@ -909,7 +1097,7 @@ describe('AC-A22 验收超时提醒', () => {
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     const id = created.body.data.id
     const items = created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
-    await mini.authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token).send({ items })
+    await selfCheckSigned(id, ctx.foreman.token, items)
 
     const datetime = require('../../src/utils/datetime')
     const old = datetime.now().subtract(49, 'hour').format('YYYY-MM-DD HH:mm:ss')
@@ -918,7 +1106,7 @@ describe('AC-A22 验收超时提醒', () => {
 
     // 被驳回 → 重新提交 → 又进入待监理审核
     await mini.authed('post', `/acceptances/${id}/reject`, ctx.supervisor.token).send({ reason: '重做' })
-    await mini.authed('post', `/acceptances/${id}/resubmit`, ctx.foreman.token).send({ items })
+    await resubmitSigned(id, ctx.foreman.token, items)
 
     // 第二次等待同样超时
     await db.query('UPDATE acceptance SET step_entered_at = ? WHERE id = ?', [old, id])
@@ -939,9 +1127,11 @@ describe('AC-A23 验收列表分组', () => {
 
     // 一张走到待监理审核
     const one = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${one.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: one.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      one.body.data.id,
+      ctx.foreman.token,
+      one.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     // 监理视角：待我处理 1
     const asSupervisor = await mini.authed('get', `/projects/${ctx.projectId}/acceptances`, ctx.supervisor.token)
@@ -960,7 +1150,7 @@ describe('AC-A23 验收列表分组', () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     const items = created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
-    await mini.authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token).send({ items })
+    await selfCheckSigned(created.body.data.id, ctx.foreman.token, items)
 
     await mini.authed('post', `/acceptances/${created.body.data.id}/reject`, ctx.supervisor.token).send({ reason: '整改' })
 
@@ -971,11 +1161,9 @@ describe('AC-A23 验收列表分组', () => {
     expect(todo.items[0].status).toBe('pending_rectify')
 
     // 走完整条通过流程后进入已完成
-    await mini.authed('post', `/acceptances/${created.body.data.id}/resubmit`, ctx.foreman.token).send({ items })
-    await mini.authed('post', `/acceptances/${created.body.data.id}/approve`, ctx.supervisor.token)
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/approve`, ctx.owner.token)
-      .attach('signature', await makeSignature(), { filename: 'sign.png', contentType: 'image/png' })
+    await resubmitSigned(created.body.data.id, ctx.foreman.token, items)
+    await approveSigned(created.body.data.id, ctx.supervisor.token)
+    await approveSigned(created.body.data.id, ctx.owner.token)
 
     const after = await mini.authed('get', `/projects/${ctx.projectId}/acceptances`, ctx.owner.token)
     const done = after.body.data.groups.find((g) => g.key === 'done')
@@ -996,9 +1184,11 @@ describe('AC-A23 验收列表分组', () => {
     const asSupervisor = await mini.authed('get', `/acceptances/${created.body.data.id}`, ctx.supervisor.token)
     expect(asSupervisor.body.data.myActions).toEqual([])
 
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     const asSupervisor2 = await mini.authed('get', `/acceptances/${created.body.data.id}`, ctx.supervisor.token)
     expect(asSupervisor2.body.data.myActions).toEqual(expect.arrayContaining(['approve', 'reject']))
@@ -1021,9 +1211,11 @@ describe('AC-A25 / AC-A26 跨项目与只读', () => {
   it('AC-A25 别的项目的监理不能处理本项目验收单', async () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     // 另一个项目的监理
     const otherAdmin = await auth.createAndLogin({ username: 'admin2', role: 'owner' })
@@ -1105,18 +1297,16 @@ describe('验收流程的完整闭环', () => {
     const id = created.body.data.id
     const items = created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
 
-    await mini.authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token).send({ items })
+    await selfCheckSigned(id, ctx.foreman.token, items)
     await mini.authed('post', `/acceptances/${id}/reject`, ctx.supervisor.token).send({ reason: '线管松动' })
-    await mini.authed('post', `/acceptances/${id}/resubmit`, ctx.foreman.token).send({ items })
-    await mini.authed('post', `/acceptances/${id}/approve`, ctx.supervisor.token)
+    await resubmitSigned(id, ctx.foreman.token, items)
+    await approveSigned(id, ctx.supervisor.token)
 
     // 业主这一步也驳回一次
     await mini.authed('post', `/acceptances/${id}/reject`, ctx.owner.token).send({ reason: '开关位置不对' })
-    await mini.authed('post', `/acceptances/${id}/resubmit`, ctx.foreman.token).send({ items })
-    await mini.authed('post', `/acceptances/${id}/approve`, ctx.supervisor.token)
-    await mini
-      .authed('post', `/acceptances/${id}/approve`, ctx.owner.token)
-      .attach('signature', await makeSignature(), { filename: 'sign.png', contentType: 'image/png' })
+    await resubmitSigned(id, ctx.foreman.token, items)
+    await approveSigned(id, ctx.supervisor.token)
+    await approveSigned(id, ctx.owner.token)
 
     const flow = await mini.authed('get', `/acceptances/${id}/flow`, ctx.foreman.token)
     const rounds = flow.body.data.rounds
@@ -1147,17 +1337,15 @@ describe('验收流程的完整闭环', () => {
     const id = created.body.data.id
     const items = created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
 
-    await mini.authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token).send({ items })
+    await selfCheckSigned(id, ctx.foreman.token, items)
     await mini.authed('post', `/acceptances/${id}/reject`, ctx.owner.token).send({ reason: '没做闭水试验' })
-    await mini.authed('post', `/acceptances/${id}/resubmit`, ctx.foreman.token).send({ items })
+    await resubmitSigned(id, ctx.foreman.token, items)
 
     // 无监理，重新提交后直接回到业主手上
     const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
     expect(detail.body.data.status).toBe('pending_owner')
 
-    const done = await mini
-      .authed('post', `/acceptances/${id}/approve`, ctx.owner.token)
-      .attach('signature', await makeSignature(), { filename: 'sign.png', contentType: 'image/png' })
+    const done = await approveSigned(id, ctx.owner.token)
     expect(done.body.data.status).toBe('passed')
   })
 
@@ -1203,10 +1391,12 @@ describe('C-3.1 跨项目验收收件箱（验收 tab）', () => {
     // 项目 A：走到待业主确认
     const createdA = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     const idA = createdA.body.data.id
-    await mini
-      .authed('post', `/acceptances/${idA}/self-check`, ctx.foreman.token)
-      .send({ items: createdA.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
-    await mini.authed('post', `/acceptances/${idA}/approve`, ctx.supervisor.token)
+    await selfCheckSigned(
+      idA,
+      ctx.foreman.token,
+      createdA.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
+    await approveSigned(idA, ctx.supervisor.token)
 
     // 项目 B：只走到待监理审核
     const createdB = await initiate(
@@ -1215,9 +1405,11 @@ describe('C-3.1 跨项目验收收件箱（验收 tab）', () => {
       { stageId: second.stageId }
     )
     const idB = createdB.body.data.id
-    await mini
-      .authed('post', `/acceptances/${idB}/self-check`, ctx.foreman.token)
-      .send({ items: createdB.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
+    await selfCheckSigned(
+      idB,
+      ctx.foreman.token,
+      createdB.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
 
     const ownerInbox = await mini.authed('get', '/acceptances', ctx.owner.token)
     expect(ownerInbox.status).toBe(200)
@@ -1262,10 +1454,12 @@ describe('C-3.1 跨项目验收收件箱（验收 tab）', () => {
     const ctx = await setup()
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
     const id = created.body.data.id
-    await mini
-      .authed('post', `/acceptances/${id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
-    await mini.authed('post', `/acceptances/${id}/approve`, ctx.supervisor.token)
+    await selfCheckSigned(
+      id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
+    await approveSigned(id, ctx.supervisor.token)
 
     const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
     expect(detail.status).toBe(200)
@@ -1303,10 +1497,12 @@ describe('主业主 / 临时业主（v2.12）', () => {
 
   async function toPendingOwner(ctx) {
     const created = await initiate(ctx, ctx.foreman.token, { stageId: ctx.stageId })
-    await mini
-      .authed('post', `/acceptances/${created.body.data.id}/self-check`, ctx.foreman.token)
-      .send({ items: created.body.data.items.map((i) => ({ id: i.id, result: 'pass' })) })
-    await mini.authed('post', `/acceptances/${created.body.data.id}/approve`, ctx.supervisor.token)
+    await selfCheckSigned(
+      created.body.data.id,
+      ctx.foreman.token,
+      created.body.data.items.map((i) => ({ id: i.id, result: 'pass' }))
+    )
+    await approveSigned(created.body.data.id, ctx.supervisor.token)
     return created.body.data.id
   }
 

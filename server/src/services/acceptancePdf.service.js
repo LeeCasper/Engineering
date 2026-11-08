@@ -25,8 +25,10 @@ const logger = require('../utils/logger')
 const storage = require('../storage')
 const acceptanceModel = require('../models/acceptance.model')
 const { buildAcceptanceReportNo } = require('../utils/acceptanceReportNo')
+const { collectRoundSignatures } = require('../utils/acceptanceSignatures')
 const projectModel = require('../models/project.model')
 const projectStageModel = require('../models/projectStage.model')
+const projectMemberModel = require('../models/projectMember.model')
 
 /** A4 页边距与可用宽度 */
 const MARGIN = 50
@@ -65,11 +67,12 @@ async function generate(acceptanceId) {
   await acceptanceModel.updatePdfState(acceptanceId, { status: 'pending', url: null, error: null })
 
   try {
-    const [items, flow, project, stage] = await Promise.all([
+    const [items, flow, project, stage, supervisorCount] = await Promise.all([
       acceptanceModel.listItems(acceptanceId),
       acceptanceModel.listFlow(acceptanceId),
       projectModel.findByIdUnscoped(acceptance.project_id),
       acceptance.project_stage_id ? projectStageModel.findById(acceptance.project_stage_id) : null,
+      projectMemberModel.countByRole(acceptance.project_id, 'supervisor'),
     ])
 
     const photos = parseJson(acceptance.photos) || []
@@ -86,7 +89,7 @@ async function generate(acceptanceId) {
       project,
       stage,
       photoUrls: photosWithWatermark,
-      signatureUrl: acceptance.signature_url,
+      hasSupervisor: supervisorCount > 0,
       reportNo,
     })
 
@@ -124,11 +127,12 @@ async function buildForSign(acceptanceId) {
   const acceptance = await acceptanceModel.findById(acceptanceId)
   if (!acceptance) throw new Error(`验收单 ${acceptanceId} 不存在`)
 
-  const [items, flow, project, stage] = await Promise.all([
+  const [items, flow, project, stage, supervisorCount] = await Promise.all([
     acceptanceModel.listItems(acceptanceId),
     acceptanceModel.listFlow(acceptanceId),
     projectModel.findByIdUnscoped(acceptance.project_id),
     acceptance.project_stage_id ? projectStageModel.findById(acceptance.project_stage_id) : null,
+    projectMemberModel.countByRole(acceptance.project_id, 'supervisor'),
   ])
 
   const photos = parseJson(acceptance.photos) || []
@@ -160,15 +164,26 @@ async function buildForSign(acceptanceId) {
       round: row.round,
       step: row.step,
       action: row.action,
-      operator: row.nickname || `用户${row.operator_id}`,
+      operator: row.real_name || row.nickname || `用户${row.operator_id}`,
       reason: row.reason,
       operatedAt: row.operated_at,
+      // 服务商签署的 PDF 里也要保留工长 / 监理的手写签名
+      signatureUrl: row.signature_url || null,
     })),
     photos: photoUrls,
   }
 
   const snapshotHash = sha256(stableStringify(snapshot))
-  const signaturePage = await renderSigningDocument({ ...snapshot, acceptance, project, stage, items, flow: snapshot.flow, photoUrls })
+  const signaturePage = await renderSigningDocument({
+    ...snapshot,
+    acceptance,
+    project,
+    stage,
+    items,
+    flow: snapshot.flow,
+    photoUrls,
+    hasSupervisor: supervisorCount > 0,
+  })
   const buffer = signaturePage.buffer
 
   if (buffer.length > config.esign.maxDocumentMb * 1024 * 1024) {
@@ -245,7 +260,18 @@ function stableStringify(value) {
  * 复用 legacy 的版式工具，但标题、声明与签署区不同；不嵌入业主签名图，
  * 签名由服务商在 PDF 上完成。
  */
-function renderSigningDocument({ documentId, generatedAt, acceptance, project, stage, items, flow, photoUrls }) {
+function renderSigningDocument({
+  documentId,
+  generatedAt,
+  round,
+  acceptance,
+  project,
+  stage,
+  items,
+  flow,
+  photoUrls,
+  hasSupervisor,
+}) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true })
     const chunks = []
@@ -316,7 +342,23 @@ function renderSigningDocument({ documentId, generatedAt, acceptance, project, s
         }
       }
 
-      doc.moveDown(1)
+      // 工长 / 监理在提交与审核时已经完成手写签名；把它们冻结进签署前的
+      // 文档，最终服务商签署的 PDF 才会同时包含三方签署记录。
+      const signatures = collectRoundSignatures(flow, {
+        round,
+        hasSupervisor,
+        providerMode: true,
+        providerSigned: false,
+        status: 'pending_owner',
+      })
+      doc.moveDown(0.8)
+      sectionTitle(doc, '工长 / 监理签署')
+      renderSignatureBlock(doc, signatures.foreman)
+      renderSignatureBlock(doc, signatures.supervisor)
+
+      // 服务商在最后一页的固定坐标放置业主签名；显式换页，避免业主签署区
+      // 被前面的内容挤到半页，导致签名坐标落错位置。
+      doc.addPage()
       sectionTitle(doc, '验收确认与电子签名')
       doc
         .fontSize(10)
@@ -371,7 +413,7 @@ async function retry(acceptanceId) {
  * 用 Promise 包住 pdfkit 的流式 API —— 它本身是事件式的，
  * 而调用方（HTTP 请求）需要的是一个结果。
  */
-function render({ acceptance, items, flow, project, stage, photoUrls, signatureUrl, reportNo }) {
+function render({ acceptance, items, flow, project, stage, photoUrls, hasSupervisor, reportNo }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true })
     const chunks = []
@@ -450,9 +492,12 @@ function render({ acceptance, items, flow, project, stage, photoUrls, signatureU
           const stepLabel = { self_check: '自检', supervisor: '监理审核', owner: '业主确认' }[entry.step] || entry.step
           doc
             .fontSize(10)
-            .text(`${entry.operated_at}　${stepLabel}　${entry.operator || '用户' + entry.operator_id}　${actionLabel}`, {
-              width: CONTENT_WIDTH,
-            })
+            .text(
+              `${entry.operated_at}　${stepLabel}　${
+                entry.real_name || entry.nickname || `用户${entry.operator_id}`
+              }　${actionLabel}`,
+              { width: CONTENT_WIDTH }
+            )
           if (entry.reason) {
             doc.fontSize(9).fillColor('#666666').text(`　　意见：${entry.reason}`, { width: CONTENT_WIDTH })
             doc.fillColor('#000000')
@@ -460,21 +505,38 @@ function render({ acceptance, items, flow, project, stage, photoUrls, signatureU
         }
       }
 
-      // ── 业主签名 ──
+      // ── 三方签署 ──
+      const finalRound = Math.max(
+        1,
+        Number(acceptance.resubmit_count || 0) + 1,
+        ...flow.map((entry) => Number(entry.round) || 0)
+      )
+      const signatures = collectRoundSignatures(flow, {
+        round: finalRound,
+        hasSupervisor,
+        providerMode:
+          acceptance.signature_mode === 'provider' || acceptance.esign_status === 'signed',
+        providerSigned: acceptance.esign_status === 'signed',
+        ownerFallback: acceptance.signature_url
+          ? { signatureUrl: acceptance.signature_url, signedAt: acceptance.finished_at }
+          : null,
+        status: acceptance.status,
+      })
+
       doc.moveDown(0.8)
-      sectionTitle(doc, '业主手写签名')
-      if (signatureUrl) {
-        renderImages(doc, [signatureUrl], '签名图片加载失败', { maxHeight: 140 })
-        doc
-          .fontSize(8)
-          .fillColor('#999999')
-          .text('本签名为项目内部验收确认记录，不具备《电子签名法》意义上的可靠电子签名效力。', {
-            width: CONTENT_WIDTH,
-          })
-        doc.fillColor('#000000')
-      } else {
-        doc.fontSize(10).text('本次验收未采集业主手写签名。')
-      }
+      sectionTitle(doc, `签署区（第 ${finalRound} 轮）`)
+      renderSignatureBlock(doc, signatures.foreman)
+      renderSignatureBlock(doc, signatures.supervisor)
+      renderSignatureBlock(doc, signatures.owner)
+      doc.moveDown(0.4)
+      doc
+        .fontSize(8)
+        .fillColor('#999999')
+        .text(
+          '以上手写签名仅作为项目内部验收确认记录，不具备《电子签名法》意义上的可靠电子签名效力。',
+          { width: CONTENT_WIDTH }
+        )
+      doc.fillColor('#000000')
 
       // ── 页脚页码 ──
       // bufferPages 让 pdfkit 把页对象留到最后再输出，这样才知道总页数
@@ -497,6 +559,46 @@ function render({ acceptance, items, flow, project, stage, photoUrls, signatureU
       reject(err)
     }
   })
+}
+
+/**
+ * 渲染一方的签署区块。
+ *
+ * 图片可能把内容顶到页底，pdfkit 的 text 不会自动换页，
+ * 因此先判断剩余空间再决定是否换页；签名图本身由 renderImages 处理分页。
+ */
+function renderSignatureBlock(doc, signature) {
+  if (!signature) return
+
+  if (doc.y > doc.page.height - 170) doc.addPage()
+
+  doc.moveDown(0.4)
+  doc
+    .fontSize(11)
+    .fillColor('#1a1a1a')
+    .text(`${signature.roleLabel}签名：${signature.stateLabel}`, { width: CONTENT_WIDTH })
+
+  if (signature.operator || signature.signedAt) {
+    doc
+      .fontSize(9)
+      .fillColor('#666666')
+      .text([signature.operator, signature.signedAt].filter(Boolean).join('　'), {
+        width: CONTENT_WIDTH,
+      })
+    doc.fillColor('#000000')
+  }
+
+  if (signature.signatureUrl) {
+    renderImages(doc, [signature.signatureUrl], '签名图片加载失败', { maxHeight: 80 })
+  } else if (signature.state === 'provider') {
+    doc
+      .fontSize(9)
+      .fillColor('#666666')
+      .text('业主已通过电子签服务商完成签署，签名与证据见已签确认书。', {
+        width: CONTENT_WIDTH,
+      })
+    doc.fillColor('#000000')
+  }
 }
 
 function sectionTitle(doc, text) {

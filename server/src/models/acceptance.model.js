@@ -241,13 +241,13 @@ async function saveItemResults(acceptanceId, results, tx) {
  * 数据库层管不了这件事（MySQL 没有表级只读约束），只能靠这里不提供入口。
  */
 async function appendFlow(
-  { acceptanceId, round, step, operatorId, action, reason, images, esignTaskId },
+  { acceptanceId, round, step, operatorId, action, reason, images, esignTaskId, signatureUrl },
   tx = db
 ) {
   const result = await tx.query(
     `INSERT INTO acceptance_flow
-       (acceptance_id, round, step, operator_id, action, reason, images, esign_task_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (acceptance_id, round, step, operator_id, action, reason, images, esign_task_id, signature_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       acceptanceId,
       round,
@@ -257,6 +257,7 @@ async function appendFlow(
       reason ?? null,
       images ? JSON.stringify(images) : null,
       esignTaskId ?? null,
+      signatureUrl ?? null,
     ]
   )
   return result.insertId
@@ -283,7 +284,7 @@ async function listPostPassPending(limit = 100) {
 async function listFlow(acceptanceId) {
   return db.query(
     `SELECT f.id, f.round, f.step, f.operator_id, f.action, f.reason, f.images, f.esign_task_id,
-            f.operated_at, u.nickname, u.real_name
+            f.signature_url, f.operated_at, u.nickname, u.real_name
        FROM acceptance_flow f
        LEFT JOIN user u ON u.id = f.operator_id
       WHERE f.acceptance_id = ?

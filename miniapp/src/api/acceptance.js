@@ -51,17 +51,45 @@ export function resubmitAcceptance(id, data) {
   return request({ url: `/acceptances/${id}/resubmit`, method: 'POST', data })
 }
 
-/** 监理通过（不需要签名） */
+/** 兼容旧客户端的监理通过（新版本监理也必须签名，页面不再调用它） */
 export function approveAcceptance(id) {
   return request({ url: `/acceptances/${id}/approve`, method: 'POST' })
 }
 
-/** 业主通过并签名：signature 字段名是后端约定的，不能改 */
+/**
+ * 监理 / 业主签名并通过。
+ * 后端按验收单当前状态判断操作人角色，两个环节共用同一个端点。
+ * signature 字段名是后端约定的，不能改。
+ */
 export function approveAcceptanceWithSignature(id, filePath) {
   return uploadFile({
     url: `/acceptances/${id}/approve`,
     filePath,
     name: 'signature',
+  })
+}
+
+/** 工长签名并提交自检：items 是 JSON 字符串，multipart 只接受字符串字段 */
+export function submitSelfCheckWithSignature(id, data, filePath) {
+  const formData = { items: JSON.stringify(data.items || []) }
+  if (data.description) formData.description = data.description
+  return uploadFile({
+    url: `/acceptances/${id}/self-check`,
+    filePath,
+    name: 'signature',
+    formData,
+  })
+}
+
+/** 工长签名并重新提交（整改后） */
+export function resubmitAcceptanceWithSignature(id, data, filePath) {
+  const formData = { items: JSON.stringify(data.items || []) }
+  if (data.description) formData.description = data.description
+  return uploadFile({
+    url: `/acceptances/${id}/resubmit`,
+    filePath,
+    name: 'signature',
+    formData,
   })
 }
 

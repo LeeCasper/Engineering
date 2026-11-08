@@ -288,7 +288,7 @@
         </view>
 
         <text class="create-stage">{{ createTarget.projectName }} · {{ createTarget.stageName }}</text>
-        <text class="create-hint">提交后由监理审核，业主确认并签名。</text>
+        <text class="create-hint">工长提交时签名，监理审核通过时签名，业主确认时签名。</text>
 
         <textarea
           v-model="createDescription"

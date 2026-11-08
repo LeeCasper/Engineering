@@ -29,6 +29,7 @@ const storage = require('../storage')
 const watermark = require('../utils/watermark')
 const signedUrl = require('../utils/signedUrl')
 const { buildAcceptanceReportNo } = require('../utils/acceptanceReportNo')
+const { collectRoundSignatures } = require('../utils/acceptanceSignatures')
 const { OWNER_TYPE, assertPrimaryOwner, isPrimaryOwner } = require('../utils/ownerType')
 const notificationService = require('./notification.service')
 const sysConfigService = require('./sysConfig.service')
@@ -151,6 +152,19 @@ async function assertProjectWritable(projectId, tx) {
   if (!project) throw AppError.notFound('项目不存在')
   if (project.status === 'archived') throw AppError.forbidden('项目已归档，全部数据只读')
   return project
+}
+
+/**
+ * 保存手写签名图片。
+ *
+ * 签名与流转记录一一对应，因此和业主签名使用同一个存储分类；
+ * 图片是普通公开上传（与现有业主签名一致），PDF 渲染器可以直接读取。
+ */
+async function saveSignature(file) {
+  if (!file) return null
+  if (file.type !== 'image') throw AppError.badRequest('签名必须是图片')
+  const saved = await storage.save(file.buffer, { category: 'signatures', ext: file.ext })
+  return saved.url
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -369,6 +383,10 @@ async function submitSelfCheck(userId, acceptanceId, input) {
   assertTransition(acceptance.status, 'submit')
   await loadWritableProject(acceptance.project_id)
 
+  // 工长是三方签署的第一方：提交自检就是「我确认现场已按清单完成」。
+  // 缺少签名时在进事务前就拒绝，避免为一个必然失败的请求跑完整个事务。
+  if (!input.signatureFile) throw AppError.badRequest('请先完成工长签名再提交自检')
+
   const trimmedDescription = input.description !== undefined ? input.description : acceptance.description
 
   return db.withTransaction(async (tx) => {
@@ -403,6 +421,9 @@ async function submitSelfCheck(userId, acceptanceId, input) {
     const nextStatus = await nextStatusAfterSubmit(tx, acceptance.project_id)
     const round = acceptanceModel.currentRound(acceptance)
 
+    // 自检项全部通过后才写文件：校验失败时不留下孤立签名
+    const signatureUrl = await saveSignature(input.signatureFile)
+
     await acceptanceModel.appendFlow(
       {
         acceptanceId,
@@ -411,6 +432,7 @@ async function submitSelfCheck(userId, acceptanceId, input) {
         operatorId: userId,
         action: 'submit',
         reason: trimmedDescription ? '工长自检完成' : null,
+        signatureUrl,
       },
       tx
     )
@@ -475,11 +497,13 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
 
   const step = expectedRole === 'supervisor' ? STEP.SUPERVISOR : STEP.OWNER
 
-  // 业主确认通过时必须完成一种签名：
-  // - 启用可靠电子签：只接受服务商签署，手写图片一律拒绝；
-  // - 未启用可靠电子签：接受手写签名（仅项目内部确认，不具备法律效力）。
-  let signatureUrl = null
-  if (step === STEP.OWNER) {
+  // 监理 / 业主的「通过」都必须是签名与确认同一个动作。
+  // - 监理：始终手写签名（即使启用了可靠电子签，监理也保留手写确认）；
+  // - 业主：启用可靠电子签时只接受服务商签署，手写图片一律拒绝；
+  //         未启用时接受手写签名（仅项目内部确认，不具备法律效力）。
+  if (step === STEP.SUPERVISOR) {
+    if (!signatureFile) throw AppError.badRequest('请先完成监理签名再确认审核')
+  } else {
     if (esignConfig.isRequired()) {
       throw AppError.conflict('请使用可靠电子签名完成验收')
     }
@@ -488,8 +512,6 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
     }
     await esignService.assertNoActiveTask(acceptanceId)
     if (!signatureFile) throw AppError.badRequest('请先完成业主签名再确认验收')
-    const saved = await storage.save(signatureFile.buffer, { category: 'signatures', ext: signatureFile.ext })
-    signatureUrl = saved.url
   }
 
   const isFinal = step === STEP.OWNER
@@ -504,8 +526,11 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
     }
     const round = acceptanceModel.currentRound(acceptance)
 
+    // 锁行并复核状态后再写文件，避免并发竞争失败时留下孤立签名
+    const signatureUrl = await saveSignature(signatureFile)
+
     await acceptanceModel.appendFlow(
-      { acceptanceId, round, step, operatorId: userId, action: 'approve' },
+      { acceptanceId, round, step, operatorId: userId, action: 'approve', signatureUrl },
       tx
     )
 
@@ -638,6 +663,9 @@ async function resubmit(userId, acceptanceId, input = {}) {
   assertTransition(acceptance.status, 'resubmit')
   await loadWritableProject(acceptance.project_id)
 
+  // 新一轮仍然要工长签名：旧轮次的签名不能沿用到整改后的结果上
+  if (!input.signatureFile) throw AppError.badRequest('请先完成工长签名再重新提交')
+
   const nextStatus = await db.withTransaction(async (tx) => {
     await assertProjectWritable(acceptance.project_id, tx)
     if (input.description !== undefined) {
@@ -660,8 +688,18 @@ async function resubmit(userId, acceptanceId, input = {}) {
     // 错误地归到上一轮里，流程记录读起来就像没重新提交过
     const round = acceptanceModel.currentRound(acceptance) + 1
 
+    const signatureUrl = await saveSignature(input.signatureFile)
+
     await acceptanceModel.appendFlow(
-      { acceptanceId, round, step: STEP.SELF_CHECK, operatorId: userId, action: 'submit', reason: '工长整改完成，重新提交' },
+      {
+        acceptanceId,
+        round,
+        step: STEP.SELF_CHECK,
+        operatorId: userId,
+        action: 'submit',
+        reason: '工长整改完成，重新提交',
+        signatureUrl,
+      },
       tx
     )
 
@@ -776,6 +814,19 @@ async function getDetail(userId, acceptanceId) {
 
   const photos = parseJson(acceptance.photos) || []
   const esign = await esignService.describe(acceptance, viewer)
+  const currentRound = acceptanceModel.currentRound(acceptance)
+
+  // 三方签署摘要：详情与 PDF 共用同一个纯函数，避免「详情说签了、PDF 说没签」
+  const signatures = collectRoundSignatures(flow, {
+    round: currentRound,
+    hasSupervisor: supervisorCount > 0,
+    providerMode: acceptance.signature_mode === 'provider' || Boolean(esign && esign.required),
+    providerSigned: acceptance.esign_status === 'signed',
+    ownerFallback: acceptance.signature_url
+      ? { signatureUrl: acceptance.signature_url, signedAt: acceptance.finished_at }
+      : null,
+    status: acceptance.status,
+  })
 
   return {
     id: acceptance.id,
@@ -805,7 +856,7 @@ async function getDetail(userId, acceptanceId) {
     itemName: item ? item.name : null,
     // 无监理时前端要把「监理审核」显示为「已跳过」，不能画成一个真实环节
     hasSupervisor: supervisorCount > 0,
-    round: acceptanceModel.currentRound(acceptance),
+    round: currentRound,
     description: acceptance.description,
     photos: photos.map((p) => ({ url: p.watermarkUrl || p.url, originalUrl: p.watermarkUrl ? p.url : null })),
     submitterId: acceptance.submitter_id,
@@ -844,6 +895,8 @@ async function getDetail(userId, acceptanceId) {
     ownerType: viewer.owner_type ?? null,
     isPrimaryOwner: isPrimaryOwner(viewer),
     esign,
+    // 当前轮次的三方签署状态（工长 / 监理 / 业主）
+    signatures,
     // 当前访问者在这张单子上能做什么 —— 前端据此决定按钮的可用性，
     // 但**服务端仍然独立校验**（AC-A10/A15/A24），前端只是体验层的提示
     myActions: buildMyActions(acceptance, viewer, esign),
@@ -862,6 +915,7 @@ function toFlowView(row) {
     actionLabel: { submit: '提交', approve: '通过', reject: '驳回' }[row.action] || row.action,
     reason: row.reason,
     esignTaskId: row.esign_task_id ?? null,
+    signatureUrl: row.signature_url || null,
     images: (parseJson(row.images) || []).map((img) => ({
       url: img.watermarkUrl || img.url,
       originalUrl: img.watermarkUrl ? img.url : null,
