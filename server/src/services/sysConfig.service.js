@@ -296,6 +296,15 @@ const SCHEMA = {
  */
 const SUBSCRIBE_TEMPLATE_TYPES = ['acceptance', 'progress', 'payment', 'comment', 'system']
 
+/** 配置页与错误提示里的中文分类名 */
+const SUBSCRIBE_TYPE_LABELS = {
+  acceptance: '验收通知',
+  progress: '进度提醒',
+  payment: '付款提醒',
+  comment: '评论回复',
+  system: '系统通知',
+}
+
 /**
  * 模板关键词 → 业务字段的内置映射。
  *
@@ -317,7 +326,7 @@ for (const type of SUBSCRIBE_TEMPLATE_TYPES) {
   SCHEMA[`subscribe_template_${type}`] = {
     type: 'string',
     maxLength: 64,
-    label: `订阅消息模板 ID（${type}）`,
+    label: `订阅消息模板 ID（${SUBSCRIBE_TYPE_LABELS[type]}）`,
     requirement: 'B-5.7',
     // ── 平台统一配置，租户只读 ──
     // 模板 ID 来自微信公众平台的小程序后台。本项目是**一个小程序服务多个租户**，
@@ -337,11 +346,10 @@ for (const type of SUBSCRIBE_TEMPLATE_TYPES) {
     // json：保存时校验语法，避免「保存成功但推送时回落到默认映射」这种无声失败
     type: 'json',
     maxLength: 500,
-    label: `订阅消息数据映射（${type}）`,
+    label: `订阅消息数据映射（${SUBSCRIBE_TYPE_LABELS[type]}）`,
     requirement: 'B-5.7',
     platformOnly: true,
-    note:
-      'JSON，键为模板关键词、值为数据来源；可用来源：projectName / title / content / typeLabel / time / date / refId。留空使用内置映射',
+    note: 'JSON 对象：键为模板关键词（如 thing1），值为数据来源；留空使用内置映射',
   }
 
   // 默认值由注册表补全，而不是要求改代码的人记得去上面那个 DEFAULTS 字面量里再写一行。

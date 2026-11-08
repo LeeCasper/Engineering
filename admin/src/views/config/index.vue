@@ -119,6 +119,70 @@ const groups = computed(() => {
   return [...buckets, other].filter(bucket => bucket.items.length);
 });
 
+interface SubscribeTypeDef {
+  type: string;
+  title: string;
+  description: string;
+}
+
+/**
+ * 订阅消息的五个业务分类。
+ *
+ * 配置项在接口里是 10 条平铺的 key（5 个模板 ID + 5 个数据映射），
+ * 直接按通用网格渲染会让「ID 和它的映射」被拆到两张卡片里 ——
+ * 运营改完 ID 还要去别处找对应的映射。这里按 type 重新配对成一张卡片。
+ */
+const SUBSCRIBE_TYPES: SubscribeTypeDef[] = [
+  {
+    type: 'acceptance',
+    title: '验收通知',
+    description: '验收待处理、驳回整改、验收通过、验收超时提醒'
+  },
+  {
+    type: 'progress',
+    title: '进度提醒',
+    description: '项目连续多日没有进度汇报'
+  },
+  {
+    type: 'payment',
+    title: '付款提醒',
+    description: '付款节点解锁、大额支出、对账与阶段结算待确认'
+  },
+  {
+    type: 'comment',
+    title: '评论回复',
+    description: '有人评论了你的进度汇报'
+  },
+  {
+    type: 'system',
+    title: '系统通知',
+    description: '异常签到、门锁风险等系统类提醒'
+  }
+];
+
+interface SubscribeCard extends SubscribeTypeDef {
+  template?: SysConfigItem;
+  fields?: SysConfigItem;
+}
+
+const subscribeCards = computed<SubscribeCard[]>(() =>
+  SUBSCRIBE_TYPES.map(def => ({
+    ...def,
+    template: list.value.find(item => item.key === `subscribe_template_${def.type}`),
+    fields: list.value.find(item => item.key === `subscribe_template_${def.type}_fields`)
+  })).filter(card => card.template || card.fields)
+);
+
+function cardDirty(card: SubscribeCard) {
+  return [card.template, card.fields].some(item => Boolean(item && changed(item)));
+}
+
+function cardConfigured(card: SubscribeCard) {
+  // 以输入框里的值为准：刚粘贴模板 ID 还没保存时，状态应立刻从「未配置」变成「待保存」
+  const value = card.template ? String(drafts[card.template.key] ?? card.template.value ?? '') : '';
+  return Boolean(value.trim());
+}
+
 function canEditItem(item: SysConfigItem) {
   // 平台专属项（订阅消息模板 ID）在租户后台只读：
   // 模板 ID 来自小程序主体，租户申请不到，配了也不会生效。
@@ -279,10 +343,100 @@ onMounted(load);
           <div class="pb-2px">
             <div class="mb-12px flex flex-wrap items-center gap-8px text-13px leading-20px text-#4e5969">
               <span>{{ group.description }}</span>
-              <span class="text-12px text-#86909c">共 {{ group.items.length }} 项</span>
+              <span class="text-12px text-#86909c">
+                {{ group.key === 'subscribe' ? `共 ${subscribeCards.length} 类` : `共 ${group.items.length} 项` }}
+              </span>
             </div>
 
-            <div class="settings-grid">
+            <!-- 订阅消息：按业务分类成组，模板 ID 与数据映射放在同一张卡片里 -->
+            <template v-if="group.key === 'subscribe'">
+              <div class="subscribe-list">
+                <section v-for="card in subscribeCards" :key="card.type" class="subscribe-card">
+                  <header class="subscribe-card__head">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-8px">
+                        <span class="subscribe-card__title">{{ card.title }}</span>
+                        <ElTag v-if="cardDirty(card)" size="small" type="warning">未保存</ElTag>
+                        <ElTag v-else-if="!cardConfigured(card)" size="small" type="info">
+                          未配置模板 ID
+                        </ElTag>
+                        <ElTag v-else size="small" type="success">已配置</ElTag>
+                      </div>
+                      <div class="subscribe-card__desc">{{ card.description }}</div>
+                    </div>
+                    <ElTag size="small" type="info">B-5.7</ElTag>
+                  </header>
+
+                  <div v-if="card.template" class="subscribe-field">
+                    <div class="subscribe-field__label">
+                      <span>模板 ID</span>
+                      <span class="subscribe-field__key">{{ card.template.key }}</span>
+                      <template v-if="!isPlatformScope && card.template.platformOnly">
+                        <ElTag size="small" type="info">平台统一配置</ElTag>
+                      </template>
+                      <template v-else-if="card.template.source === 'default'">
+                        <ElTag size="small" type="info">出厂值</ElTag>
+                      </template>
+                      <template v-else-if="card.template.source === 'platform'">
+                        <ElTag size="small" type="success">
+                          {{ isPlatformScope ? '平台已配置' : '继承平台' }}
+                        </ElTag>
+                      </template>
+                      <template v-else>
+                        <ElTag size="small" type="warning">租户覆盖</ElTag>
+                      </template>
+                    </div>
+                    <ElInput
+                      v-model="drafts[card.template.key]"
+                      class="subscribe-id"
+                      clearable
+                      :disabled="!canEditItem(card.template)"
+                      :maxlength="card.template.maxLength || undefined"
+                      placeholder="粘贴微信公众平台生成的模板 ID；留空表示该类消息只发站内信"
+                    />
+                    <div class="subscribe-field__hint">{{ card.template.note }}</div>
+                  </div>
+
+                  <div v-if="card.fields" class="subscribe-field">
+                    <div class="subscribe-field__label">
+                      <span>数据映射（JSON）</span>
+                      <span class="subscribe-field__key">{{ card.fields.key }}</span>
+                      <template v-if="!isPlatformScope && card.fields.platformOnly">
+                        <ElTag size="small" type="info">平台统一配置</ElTag>
+                      </template>
+                      <template v-else-if="card.fields.source === 'default'">
+                        <ElTag size="small" type="info">出厂值</ElTag>
+                      </template>
+                      <template v-else-if="card.fields.source === 'platform'">
+                        <ElTag size="small" type="success">
+                          {{ isPlatformScope ? '平台已配置' : '继承平台' }}
+                        </ElTag>
+                      </template>
+                      <template v-else>
+                        <ElTag size="small" type="warning">租户覆盖</ElTag>
+                      </template>
+                    </div>
+                    <ElInput
+                      v-model="drafts[card.fields.key]"
+                      class="subscribe-json"
+                      type="textarea"
+                      :autosize="{ minRows: 4 }"
+                      :disabled="!canEditItem(card.fields)"
+                      :maxlength="card.fields.maxLength || undefined"
+                      placeholder='{"thing1":"projectName","thing2":"title","time3":"time"}'
+                    />
+                    <div class="subscribe-field__hint">{{ card.fields.note }}</div>
+                    <div class="subscribe-field__hint subscribe-field__sources">
+                      可用来源：<code>projectName</code> 项目名称 · <code>title</code> 消息标题 ·
+                      <code>content</code> 消息内容 · <code>typeLabel</code> 分类名 ·
+                      <code>time</code> 发送时间 · <code>date</code> 日期 · <code>refId</code> 业务 ID
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </template>
+
+            <div v-else class="settings-grid">
               <div v-for="item in group.items" :key="item.key" class="setting-item">
                 <div class="flex flex-wrap items-center gap-6px">
                   <span class="setting-label">{{ item.label }}</span>
@@ -419,6 +573,97 @@ onMounted(load);
   font-size: 12px;
   line-height: 18px;
   color: #86909c;
+}
+
+/* ── 订阅消息：每个业务分类一张卡片 ── */
+.subscribe-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.subscribe-card {
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #e5e6eb;
+  border-left: 3px solid #165dff;
+  border-radius: 8px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.subscribe-card:hover {
+  border-color: #c9cdd4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.subscribe-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.subscribe-card__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d2129;
+}
+
+.subscribe-card__desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #86909c;
+}
+
+.subscribe-field + .subscribe-field {
+  margin-top: 16px;
+}
+
+.subscribe-field__label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1d2129;
+}
+
+.subscribe-field__key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  color: #86909c;
+}
+
+.subscribe-field__hint {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #86909c;
+}
+
+.subscribe-field__hint code {
+  padding: 0 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #4e5969;
+  background: #f2f3f5;
+  border-radius: 3px;
+}
+
+.subscribe-json :deep(.el-textarea__inner),
+.subscribe-id :deep(.el-input__inner) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.subscribe-json :deep(.el-textarea__inner) {
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 @media (max-width: 900px) {
