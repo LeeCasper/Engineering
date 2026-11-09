@@ -423,89 +423,10 @@ function render({ acceptance, items, flow, project, stage, photoUrls, hasSupervi
     doc.on('error', reject)
 
     try {
-      // ── 标题 ──
       // 第三个参数是 TTC 集合内的 postscript 名，不是字体族名（见 config 的说明）
       doc.registerFont('cn', config.acceptancePdf.fontPath, config.acceptancePdf.fontName)
       doc.font('cn')
 
-      doc.fontSize(20).text('验收报告', { align: 'center' })
-      doc.moveDown(0.3)
-      doc
-        .fontSize(9)
-        .fillColor('#888888')
-        .text(`报告编号：${reportNo}　生成时间：${datetime.format()}`, {
-          align: 'center',
-        })
-      doc.fillColor('#000000').moveDown(1.2)
-
-      // ── 项目信息 ──
-      sectionTitle(doc, '项目信息')
-      kv(doc, '项目名称', project ? project.name : '—')
-      kv(doc, '项目地址', project ? project.address : '—')
-      kv(doc, '验收对象', stage ? `阶段：${stage.name}` : '—')
-      kv(doc, '验收结论', '通过')
-      if (acceptance.submitted_at) kv(doc, '首次提交', acceptance.submitted_at)
-      if (acceptance.finished_at) kv(doc, '通过时间', acceptance.finished_at)
-      if (acceptance.resubmit_count > 0) kv(doc, '整改重提次数', String(acceptance.resubmit_count))
-      if (acceptance.description) kv(doc, '验收说明', acceptance.description)
-
-      // ── 验收项 ──
-      doc.moveDown(0.8)
-      sectionTitle(doc, `验收项（共 ${items.length} 项）`)
-      if (items.length === 0) {
-        doc.fontSize(10).text('本次验收未配置验收项清单。')
-      } else {
-        for (const item of items) {
-          const mark = item.result === 'pass' ? '☑' : item.result === 'fail' ? '☒' : '☐'
-          doc.fontSize(10).text(`${mark}  ${item.seq}. ${item.name}`, { width: CONTENT_WIDTH })
-          if (item.remark) {
-            doc.fontSize(9).fillColor('#666666').text(`　　备注：${item.remark}`, { width: CONTENT_WIDTH })
-            doc.fillColor('#000000')
-          }
-        }
-      }
-
-      // ── 现场照片 ──
-      doc.moveDown(0.8)
-      sectionTitle(doc, `现场照片（共 ${photoUrls.length} 张）`)
-      if (photoUrls.length === 0) {
-        doc.fontSize(10).text('本次验收未上传现场照片。')
-      } else {
-        renderImages(doc, photoUrls, '照片加载失败，该图片已损坏或不存在')
-      }
-
-      // ── 各级审核意见 ──
-      doc.moveDown(0.8)
-      sectionTitle(doc, '审核与流转记录')
-      if (flow.length === 0) {
-        doc.fontSize(10).text('暂无流转记录。')
-      } else {
-        let lastRound = null
-        for (const entry of flow) {
-          if (entry.round !== lastRound) {
-            lastRound = entry.round
-            doc.moveDown(0.3)
-            doc.fontSize(11).fillColor('#333333').text(`第 ${entry.round} 轮`)
-            doc.fillColor('#000000')
-          }
-          const actionLabel = { submit: '提交', approve: '通过', reject: '驳回' }[entry.action] || entry.action
-          const stepLabel = { self_check: '自检', supervisor: '监理审核', owner: '业主确认' }[entry.step] || entry.step
-          doc
-            .fontSize(10)
-            .text(
-              `${entry.operated_at}　${stepLabel}　${
-                entry.real_name || entry.nickname || `用户${entry.operator_id}`
-              }　${actionLabel}`,
-              { width: CONTENT_WIDTH }
-            )
-          if (entry.reason) {
-            doc.fontSize(9).fillColor('#666666').text(`　　意见：${entry.reason}`, { width: CONTENT_WIDTH })
-            doc.fillColor('#000000')
-          }
-        }
-      }
-
-      // ── 三方签署 ──
       const finalRound = Math.max(
         1,
         Number(acceptance.resubmit_count || 0) + 1,
@@ -523,42 +444,597 @@ function render({ acceptance, items, flow, project, stage, photoUrls, hasSupervi
         status: acceptance.status,
       })
 
-      doc.moveDown(0.8)
-      sectionTitle(doc, `签署区（第 ${finalRound} 轮）`)
-      renderSignatureBlock(doc, signatures.foreman)
-      renderSignatureBlock(doc, signatures.supervisor)
-      renderSignatureBlock(doc, signatures.owner)
-      doc.moveDown(0.4)
-      doc
-        .fontSize(8)
-        .fillColor('#999999')
-        .text(
-          '以上手写签名仅作为项目内部验收确认记录，不具备《电子签名法》意义上的可靠电子签名效力。',
-          { width: CONTENT_WIDTH }
-        )
-      doc.fillColor('#000000')
-
-      // ── 页脚页码 ──
-      // bufferPages 让 pdfkit 把页对象留到最后再输出，这样才知道总页数
-      const range = doc.bufferedPageRange()
-      for (let i = range.start; i < range.start + range.count; i += 1) {
-        doc.switchToPage(i)
-        doc
-          .fontSize(8)
-          .fillColor('#999999')
-          .text(
-            `第 ${i - range.start + 1} / ${range.count} 页　本报告由工程宝自动生成`,
-            MARGIN,
-            doc.page.height - MARGIN / 2,
-            { align: 'center', width: CONTENT_WIDTH }
-          )
+      const addPage = () => {
+        doc.addPage()
+        drawRunningHeader(doc, reportNo)
       }
 
+      // ── 封面 ──
+      drawCover(doc, { acceptance, project, stage, signatures, reportNo, items, photoUrls })
+
+      // ── 正文 ──
+      doc.addPage()
+      drawRunningHeader(doc, reportNo)
+
+      ensureSpace(doc, 260, addPage)
+      drawSectionTitle(doc, '01', '项目信息', addPage)
+      drawInfoGrid(doc, [
+        ['项目名称', project ? project.name : '—'],
+        ['验收对象', stage ? `阶段 · ${stage.name}` : '工序验收'],
+        ['项目地址', project ? project.address : '—'],
+        ['验收结论', '通过'],
+        ['首次提交', acceptance.submitted_at || '—'],
+        ['通过时间', acceptance.finished_at || '—'],
+        ['整改重提', `${Number(acceptance.resubmit_count || 0)} 次`],
+        ['验收轮次', `第 ${finalRound} 轮`],
+      ])
+      if (acceptance.description) drawDescription(doc, acceptance.description, addPage)
+
+      ensureSpace(doc, 130, addPage)
+      drawSectionTitle(doc, '02', `验收项（共 ${items.length} 项）`, addPage)
+      drawItemsTable(doc, items, addPage)
+
+      ensureSpace(doc, 240, addPage)
+      drawSectionTitle(doc, '03', `现场照片（共 ${photoUrls.length} 张）`, addPage)
+      drawPhotoGrid(doc, photoUrls, addPage)
+
+      ensureSpace(doc, 140, addPage)
+      drawSectionTitle(doc, '04', '审核与流转', addPage)
+      drawFlowTimeline(doc, flow, addPage)
+
+      ensureSpace(doc, 210, addPage)
+      drawSectionTitle(doc, '05', `签署区（第 ${finalRound} 轮）`, addPage)
+      drawSignatureCards(doc, signatures, addPage)
+
+      // 签署说明：让单独的签署页有完整语义，而不是三张卡片后大片留白
+      ensureSpace(doc, 120, addPage)
+      const explainY = doc.y
+      doc.roundedRect(MARGIN, explainY, CONTENT_WIDTH, 96, 8).fill(COLORS.soft)
+      doc.fillColor(COLORS.ink).fontSize(10).text('签署说明', MARGIN + 16, explainY + 14)
+      doc
+        .fillColor(COLORS.muted)
+        .fontSize(8)
+        .text(
+          '工长对施工完成度与自检结果负责；监理对现场质量审核结论负责；主业主对验收确认及后续付款负责。' +
+            '三方签名按轮次归档，整改重提不会覆盖上一轮签署记录。',
+          MARGIN + 16,
+          explainY + 34,
+          { width: CONTENT_WIDTH - 32, lineGap: 4 }
+        )
+      doc.y = explainY + 106
+
+      const disclaimer =
+        '以上手写签名仅作为项目内部验收确认记录，不具备《电子签名法》意义上的可靠电子签名效力。'
+      ensureSpace(doc, 48, addPage)
+      const noteY = doc.y
+      doc.roundedRect(MARGIN, noteY, CONTENT_WIDTH, 36, 6).fill(COLORS.brandSoft)
+      doc.fillColor(COLORS.brandDark).fontSize(8).text(disclaimer, MARGIN + 12, noteY + 13, {
+        width: CONTENT_WIDTH - 24,
+        align: 'center',
+      })
+      doc.y = noteY + 46
+
+      drawFooters(doc)
       doc.end()
     } catch (err) {
       reject(err)
     }
   })
+}
+
+// ─────────────────────────────────────────────────────────────
+// PDF 版式：封面 / 分节 / 表格 / 照片 / 时间线 / 签署卡片
+// ─────────────────────────────────────────────────────────────
+
+const COLORS = {
+  brand: '#EB5C20',
+  brandDark: '#B8430F',
+  brandSoft: '#FFF3EC',
+  ink: '#1F2937',
+  muted: '#6B7280',
+  line: '#E5E7EB',
+  soft: '#F9FAFB',
+  success: '#00B42A',
+  successSoft: '#E8F8ED',
+  danger: '#F53F3F',
+  dangerSoft: '#FEECEC',
+}
+
+/** 正文页的顶部页眉；封面不调用 */
+function drawRunningHeader(doc, reportNo) {
+  const y = 28
+  doc.fillColor(COLORS.muted).fontSize(8).text('柏总管 · 验收报告', MARGIN, y)
+  doc
+    .fillColor(COLORS.muted)
+    .fontSize(8)
+    .text(reportNo || '', MARGIN, y, { width: CONTENT_WIDTH, align: 'right' })
+  doc.moveTo(MARGIN, 42).lineTo(MARGIN + CONTENT_WIDTH, 42).lineWidth(0.5).strokeColor(COLORS.line).stroke()
+  doc.fillColor(COLORS.ink)
+  doc.y = 62
+}
+
+/** 封面：品牌色块 + 白色信息卡 + 四个统计格 */
+function drawCover(doc, { acceptance, project, stage, signatures, reportNo, items, photoUrls }) {
+  const page = doc.page
+  const required = [signatures.foreman, signatures.supervisor, signatures.owner].filter(
+    (item) => item && item.required
+  )
+  const signed = required.filter((item) => item.signed).length
+
+  doc.rect(0, 0, page.width, page.height).fill('#FFFFFF')
+  doc.rect(0, 0, page.width, 250).fill(COLORS.brand)
+
+  // 右上角的柔光圆
+  doc.save()
+  doc.fillOpacity(0.08)
+  doc.circle(page.width - 70, 40, 130).fill('#FFFFFF')
+  doc.circle(page.width - 10, 215, 70).fill('#FFFFFF')
+  doc.restore()
+  doc.fillOpacity(1)
+
+  doc.fillColor('#FFFFFF').fontSize(17).text('柏总管', MARGIN, 42)
+  doc.fillColor('#FFFFFF').fillOpacity(0.85).fontSize(9).text('装修工程管理 · 验收报告', MARGIN, 66)
+  doc.fillOpacity(1)
+  doc.fillColor('#FFFFFF').fontSize(30).text('验收报告', MARGIN, 118)
+  doc.fillColor('#FFFFFF').fillOpacity(0.75).fontSize(9).text('ACCEPTANCE REPORT', MARGIN, 158)
+  doc.fillOpacity(1)
+
+  const cardX = 40
+  const cardY = 205
+  const cardW = page.width - 80
+  const cardH = 300
+
+  doc.roundedRect(cardX + 2, cardY + 4, cardW, cardH, 14).fill('#F3F4F6')
+  doc.roundedRect(cardX, cardY, cardW, cardH, 14).fill('#FFFFFF')
+
+  doc.fillColor(COLORS.muted).fontSize(8).text('验收项目', cardX + 24, cardY + 24)
+  doc
+    .fillColor(COLORS.ink)
+    .fontSize(20)
+    .text(project ? project.name : '—', cardX + 24, cardY + 40, { width: cardW - 190 })
+  doc
+    .fillColor(COLORS.muted)
+    .fontSize(9)
+    .text(
+      `${stage ? stage.name : '工序验收'}　|　${acceptance.type === 'item' ? '工序验收' : '阶段验收'}`,
+      cardX + 24,
+      cardY + 70,
+      { width: cardW - 190 }
+    )
+  drawPill(doc, cardX + cardW - 122, cardY + 26, 94, 26, '验收通过', COLORS.successSoft, COLORS.success)
+
+  doc
+    .moveTo(cardX + 24, cardY + 100)
+    .lineTo(cardX + cardW - 24, cardY + 100)
+    .lineWidth(1)
+    .strokeColor(COLORS.line)
+    .stroke()
+
+  drawMeta(doc, cardX + 24, cardY + 116, '报告编号', reportNo)
+  drawMeta(doc, cardX + 24, cardY + 150, '生成时间', datetime.format())
+  drawMeta(doc, cardX + 260, cardY + 116, '首次提交', acceptance.submitted_at || '—')
+  drawMeta(doc, cardX + 260, cardY + 150, '通过时间', acceptance.finished_at || '—')
+
+  const statsY = cardY + 198
+  const stats = [
+    ['验收项', String(items.length), '项'],
+    ['现场照片', String(photoUrls.length), '张'],
+    ['签署完成', `${signed}/${required.length}`, '方'],
+    ['整改重提', String(Number(acceptance.resubmit_count || 0)), '次'],
+  ]
+  const statW = (cardW - 48 - 30) / 4
+  stats.forEach(([label, value, unit], index) => {
+    const x = cardX + 24 + index * (statW + 10)
+    doc.roundedRect(x, statsY, statW, 64, 8).fill(COLORS.brandSoft)
+    doc.fillColor(COLORS.muted).fontSize(8).text(label, x + 10, statsY + 10)
+    doc.fillColor(COLORS.ink).fontSize(18).text(value, x + 10, statsY + 24)
+    const valueWidth = doc.widthOfString(value)
+    doc
+      .fillColor(COLORS.muted)
+      .fontSize(8)
+      .text(unit, x + 14 + valueWidth, statsY + 34)
+  })
+
+  doc
+    .fillColor(COLORS.muted)
+    .fontSize(9)
+    .text(
+      '本报告由柏总管系统自动生成；验收项、现场照片、流转意见与三方签名共同构成本次验收记录。',
+      MARGIN,
+      page.height - 92,
+      { width: CONTENT_WIDTH, align: 'center' }
+    )
+}
+
+function drawMeta(doc, x, y, label, value) {
+  doc.fillColor(COLORS.muted).fontSize(8).text(label, x, y, { width: 150 })
+  doc
+    .fillColor(COLORS.ink)
+    .fontSize(10)
+    .text(String(value || '—'), x, y + 12, { width: 180, height: 16, ellipsis: true })
+}
+
+/** 分节标题：编号 + 标题 + 细分隔线 */
+function drawSectionTitle(doc, index, title, addPage) {
+  ensureSpace(doc, 54, addPage)
+  const y = doc.y
+  doc.fillColor(COLORS.brand).fontSize(9).text(index, MARGIN, y + 3)
+  doc.fillColor(COLORS.ink).fontSize(14).text(title, MARGIN + 26, y)
+  doc
+    .moveTo(MARGIN, y + 24)
+    .lineTo(MARGIN + CONTENT_WIDTH, y + 24)
+    .lineWidth(0.8)
+    .strokeColor(COLORS.line)
+    .stroke()
+  doc.fillColor(COLORS.ink)
+  doc.y = y + 36
+}
+
+function ensureSpace(doc, height, addPage) {
+  if (doc.y + height > doc.page.height - 58) addPage()
+}
+
+function drawPill(doc, x, y, width, height, text, background, foreground) {
+  doc.roundedRect(x, y, width, height, height / 2).fill(background)
+  doc
+    .fillColor(foreground)
+    .fontSize(8)
+    .text(text, x, y + (height - 9) / 2, { width, align: 'center' })
+}
+
+function drawInfoGrid(doc, rows) {
+  const gap = 10
+  const cellW = (CONTENT_WIDTH - gap) / 2
+  let y = doc.y
+  for (let i = 0; i < rows.length; i += 2) {
+    drawField(doc, MARGIN, y, cellW, rows[i][0], rows[i][1])
+    if (rows[i + 1]) drawField(doc, MARGIN + cellW + gap, y, cellW, rows[i + 1][0], rows[i + 1][1])
+    y += 52
+  }
+  doc.y = y
+}
+
+function drawField(doc, x, y, width, label, value) {
+  doc.roundedRect(x, y, width, 44, 6).fill(COLORS.soft)
+  doc.fillColor(COLORS.muted).fontSize(8).text(label, x + 12, y + 8, { width: width - 24 })
+  doc
+    .fillColor(COLORS.ink)
+    .fontSize(10)
+    .text(String(value === null || value === undefined ? '—' : value), x + 12, y + 21, {
+      width: width - 24,
+      height: 16,
+      ellipsis: true,
+    })
+}
+
+function drawDescription(doc, text, addPage) {
+  const innerWidth = CONTENT_WIDTH - 24
+  doc.fontSize(9)
+  const textHeight = doc.heightOfString(String(text), { width: innerWidth })
+  const boxHeight = Math.max(52, textHeight + 34)
+  ensureSpace(doc, boxHeight + 12, addPage)
+  const y = doc.y
+  doc.roundedRect(MARGIN, y, CONTENT_WIDTH, boxHeight, 8).fill('#FFFFFF')
+  doc
+    .roundedRect(MARGIN, y, CONTENT_WIDTH, boxHeight, 8)
+    .lineWidth(0.6)
+    .strokeColor(COLORS.line)
+    .stroke()
+  doc.fillColor(COLORS.muted).fontSize(8).text('验收说明', MARGIN + 12, y + 12)
+  doc.fillColor(COLORS.ink).fontSize(9).text(String(text), MARGIN + 12, y + 26, {
+    width: innerWidth,
+    height: boxHeight - 32,
+    ellipsis: true,
+  })
+  doc.y = y + boxHeight + 12
+}
+
+function drawItemsTable(doc, items, addPage) {
+  if (!items.length) {
+    drawEmptyCard(doc, '本次验收未配置验收项清单。', addPage)
+    return
+  }
+
+  const cols = { seq: 28, name: 250, result: 58 }
+  const remarkWidth = CONTENT_WIDTH - cols.seq - cols.name - cols.result
+
+  const drawHeader = (y) => {
+    doc.roundedRect(MARGIN, y, CONTENT_WIDTH, 24, 4).fill('#F3F4F6')
+    doc.fillColor(COLORS.muted).fontSize(8)
+    doc.text('序号', MARGIN + 10, y + 7, { width: cols.seq })
+    doc.text('验收项', MARGIN + cols.seq + 10, y + 7, { width: cols.name - 10 })
+    doc.text('结果', MARGIN + cols.seq + cols.name + 10, y + 7, { width: cols.result - 8 })
+    doc.text('备注', MARGIN + cols.seq + cols.name + cols.result + 10, y + 7, {
+      width: remarkWidth - 12,
+    })
+    doc.y = y + 24
+  }
+
+  drawHeader(doc.y)
+
+  items.forEach((item, index) => {
+    doc.fontSize(9)
+    const nameHeight = doc.heightOfString(String(item.name || ''), { width: cols.name - 10 })
+    doc.fontSize(8)
+    const remarkHeight = doc.heightOfString(String(item.remark || ''), { width: remarkWidth - 12 })
+    const rowHeight = Math.max(32, Math.max(nameHeight, remarkHeight) + 16)
+
+    if (doc.y + rowHeight > doc.page.height - 58) {
+      addPage()
+      drawHeader(doc.y)
+    }
+
+    const rowY = doc.y
+    if (index % 2 === 1) doc.rect(MARGIN, rowY, CONTENT_WIDTH, rowHeight).fill('#FAFAFA')
+
+    doc
+      .fillColor(COLORS.muted)
+      .fontSize(9)
+      .text(String(item.seq === null || item.seq === undefined ? index + 1 : item.seq), MARGIN + 10, rowY + 9, {
+        width: cols.seq - 4,
+      })
+    doc.fillColor(COLORS.ink).fontSize(9).text(String(item.name || '—'), MARGIN + cols.seq + 10, rowY + 9, {
+      width: cols.name - 10,
+    })
+    drawResultPill(doc, MARGIN + cols.seq + cols.name + 10, rowY + 7, item.result)
+    doc
+      .fillColor(COLORS.muted)
+      .fontSize(8)
+      .text(item.remark || '—', MARGIN + cols.seq + cols.name + cols.result + 10, rowY + 9, {
+        width: remarkWidth - 12,
+      })
+    doc
+      .moveTo(MARGIN, rowY + rowHeight)
+      .lineTo(MARGIN + CONTENT_WIDTH, rowY + rowHeight)
+      .lineWidth(0.5)
+      .strokeColor(COLORS.line)
+      .stroke()
+    doc.y = rowY + rowHeight
+  })
+
+  doc.y += 10
+}
+
+function drawResultPill(doc, x, y, result) {
+  if (result === 'pass') drawPill(doc, x, y, 42, 18, '通过', COLORS.successSoft, COLORS.success)
+  else if (result === 'fail') drawPill(doc, x, y, 46, 18, '不通过', COLORS.dangerSoft, COLORS.danger)
+  else drawPill(doc, x, y, 42, 18, '未填', COLORS.soft, COLORS.muted)
+}
+
+function drawEmptyCard(doc, text, addPage) {
+  ensureSpace(doc, 56, addPage)
+  const y = doc.y
+  doc.roundedRect(MARGIN, y, CONTENT_WIDTH, 44, 6).fill(COLORS.soft)
+  doc.fillColor(COLORS.muted).fontSize(9).text(text, MARGIN + 14, y + 16, {
+    width: CONTENT_WIDTH - 28,
+    align: 'center',
+  })
+  doc.y = y + 54
+}
+
+function drawPhotoGrid(doc, urls, addPage) {
+  if (!urls.length) {
+    drawEmptyCard(doc, '本次验收未上传现场照片。', addPage)
+    return
+  }
+
+  const gap = 12
+  const cardWidth = (CONTENT_WIDTH - gap) / 2
+  const imageHeight = 140
+  const cardHeight = imageHeight + 28
+
+  for (let i = 0; i < urls.length; i += 2) {
+    ensureSpace(doc, cardHeight + 12, addPage)
+    const y = doc.y
+    for (let j = 0; j < 2 && i + j < urls.length; j += 1) {
+      drawPhotoCard(doc, urls[i + j], MARGIN + j * (cardWidth + gap), y, cardWidth, imageHeight, i + j + 1)
+    }
+    doc.y = y + cardHeight + 12
+  }
+}
+
+function drawPhotoCard(doc, url, x, y, width, height, index) {
+  doc.roundedRect(x, y, width, height + 28, 8).fill('#F9FAFB')
+  const buffer = storageBufferSync(url)
+  if (buffer) {
+    doc.save()
+    doc.roundedRect(x + 6, y + 6, width - 12, height - 6, 6).clip()
+    doc.image(buffer, x + 6, y + 6, {
+      cover: [width - 12, height - 6],
+      align: 'center',
+      valign: 'center',
+    })
+    doc.restore()
+  } else {
+    doc
+      .roundedRect(x + 6, y + 6, width - 12, height - 6, 6)
+      .lineWidth(0.8)
+      .strokeColor(COLORS.line)
+      .stroke()
+    doc
+      .fillColor(COLORS.muted)
+      .fontSize(8)
+      .text('照片加载失败', x + 6, y + height / 2 - 4, { width: width - 12, align: 'center' })
+  }
+  doc.fillColor(COLORS.muted).fontSize(8).text(`现场照片 ${index}`, x + 10, y + height + 9)
+}
+
+function drawFlowTimeline(doc, flow, addPage) {
+  if (!flow.length) {
+    drawEmptyCard(doc, '暂无流转记录。', addPage)
+    return
+  }
+
+  let lastRound = null
+  flow.forEach((entry, index) => {
+    ensureSpace(doc, entry.reason ? 66 : 44, addPage)
+
+    if (entry.round !== lastRound) {
+      lastRound = entry.round
+      if (index > 0) doc.y += 4
+      const pillY = doc.y
+      drawPill(doc, MARGIN, pillY, 54, 18, `第 ${entry.round} 轮`, COLORS.brandSoft, COLORS.brandDark)
+      doc.y = pillY + 26
+    }
+
+    const top = doc.y
+    const dotColor =
+      entry.action === 'reject'
+        ? COLORS.danger
+        : entry.action === 'approve'
+          ? COLORS.success
+          : COLORS.brand
+    doc.circle(MARGIN + 5, top + 7, 3.5).fill(dotColor)
+    if (index < flow.length - 1) {
+      doc
+        .moveTo(MARGIN + 5, top + 13)
+        .lineTo(MARGIN + 5, top + (entry.reason ? 52 : 32))
+        .lineWidth(1)
+        .strokeColor(COLORS.line)
+        .stroke()
+    }
+
+    const actionLabel =
+      { submit: '提交', approve: '通过', reject: '驳回' }[entry.action] || entry.action
+    const stepLabel =
+      { self_check: '工长自检', supervisor: '监理审核', owner: '业主确认' }[entry.step] || entry.step
+
+    doc.fillColor(COLORS.ink).fontSize(10).text(`${stepLabel} · ${actionLabel}`, MARGIN + 20, top)
+    doc
+      .fillColor(COLORS.muted)
+      .fontSize(8)
+      .text(
+        `${entry.real_name || entry.nickname || `用户${entry.operator_id}`}　${entry.operated_at || ''}`,
+        MARGIN + 20,
+        top + 14
+      )
+
+    if (entry.reason) {
+      const boxY = top + 28
+      doc.roundedRect(MARGIN + 20, boxY, CONTENT_WIDTH - 20, 22, 4).fill('#F9FAFB')
+      doc.fillColor(COLORS.muted).fontSize(8).text(`意见：${entry.reason}`, MARGIN + 26, boxY + 7, {
+        width: CONTENT_WIDTH - 32,
+        height: 10,
+        ellipsis: true,
+      })
+      doc.y = boxY + 30
+    } else {
+      doc.y = top + 32
+    }
+  })
+  doc.y += 8
+}
+
+function drawSignatureCards(doc, signatures, addPage) {
+  const list = [signatures.foreman, signatures.supervisor, signatures.owner].filter(Boolean)
+  const gap = 10
+  const cardWidth = (CONTENT_WIDTH - gap * 2) / 3
+  const cardHeight = 136
+
+  ensureSpace(doc, cardHeight + 12, addPage)
+  const top = doc.y
+
+  list.forEach((signature, index) => {
+    const x = MARGIN + index * (cardWidth + gap)
+    doc.roundedRect(x, top, cardWidth, cardHeight, 8).fill('#FAFAFA')
+    doc
+      .roundedRect(x, top, cardWidth, cardHeight, 8)
+      .lineWidth(0.6)
+      .strokeColor(COLORS.line)
+      .stroke()
+
+    doc.fillColor(COLORS.ink).fontSize(9).text(`${signature.roleLabel}签名`, x + 12, top + 10)
+    const stateColor = signature.signed
+      ? COLORS.success
+      : signature.state === 'skipped'
+        ? COLORS.muted
+        : COLORS.danger
+    doc.fillColor(stateColor).fontSize(8).text(signature.stateLabel, x + 12, top + 25)
+
+    const imageX = x + 12
+    const imageY = top + 42
+    const imageWidth = cardWidth - 24
+    const imageHeight = 50
+
+    if (signature.signatureUrl) {
+      const buffer = storageBufferSync(signature.signatureUrl)
+      if (buffer) {
+        doc.image(buffer, imageX, imageY, {
+          fit: [imageWidth, imageHeight],
+          align: 'center',
+          valign: 'center',
+        })
+      } else {
+        doc
+          .fillColor(COLORS.muted)
+          .fontSize(8)
+          .text('签名图片加载失败', imageX, imageY + 18, { width: imageWidth, align: 'center' })
+      }
+    } else if (signature.state === 'provider') {
+      doc
+        .fillColor(COLORS.muted)
+        .fontSize(8)
+        .text('服务商电子签', imageX, imageY + 18, { width: imageWidth, align: 'center' })
+    } else {
+      doc.dash(2, { space: 2 })
+      doc
+        .roundedRect(imageX, imageY, imageWidth, imageHeight, 4)
+        .lineWidth(0.6)
+        .strokeColor(COLORS.line)
+        .stroke()
+      doc.undash()
+      doc
+        .fillColor(COLORS.muted)
+        .fontSize(8)
+        .text(signature.state === 'skipped' ? '未配置监理' : '未采集', imageX, imageY + 18, {
+          width: imageWidth,
+          align: 'center',
+        })
+    }
+
+    doc
+      .fillColor(COLORS.muted)
+      .fontSize(7)
+      .text(
+        [signature.operator, signature.signedAt].filter(Boolean).join('　') || '—',
+        x + 12,
+        top + 102,
+        { width: cardWidth - 24, height: 24, ellipsis: true }
+      )
+  })
+
+  doc.y = top + cardHeight + 12
+}
+
+function drawFooters(doc) {
+  const range = doc.bufferedPageRange()
+  // 封面不画页脚；正文页码从 1 开始
+  for (let i = range.start + 1; i < range.start + range.count; i += 1) {
+    doc.switchToPage(i)
+    const page = doc.page
+    // 页脚画在底部页边距内。PDFKit 的 text 在 y 超过「页高 - 下边距」时会
+    // 自动加一页，导致每页页脚变成一张空白页；临时把下边距设为 0 避开这个行为。
+    const bottomMargin = page.margins.bottom
+    page.margins.bottom = 0
+
+    const y = page.height - 40
+    doc
+      .moveTo(MARGIN, y)
+      .lineTo(MARGIN + CONTENT_WIDTH, y)
+      .lineWidth(0.5)
+      .strokeColor(COLORS.line)
+      .stroke()
+    doc.fillColor(COLORS.muted).fontSize(7).text('柏总管 · 工程宝', MARGIN, y + 8)
+    doc
+      .fillColor(COLORS.muted)
+      .fontSize(7)
+      .text(`第 ${i - range.start} / ${range.count - 1} 页`, MARGIN, y + 8, {
+        width: CONTENT_WIDTH,
+        align: 'right',
+      })
+
+    page.margins.bottom = bottomMargin
+  }
 }
 
 /**
