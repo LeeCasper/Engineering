@@ -1325,7 +1325,9 @@ async function confirmNode(node) {
   uni.showModal({
     title: '确认收款',
     content: `确认已向「${node.name}」支付 ¥ ${formatMoney(node.amount)}？系统只记录状态，不进行资金划转。`,
-    confirmText: '确认已支付',
+    // 微信规定 confirmText / cancelText 最多 4 个字符。写「确认已支付」时
+    // showModal 既不弹窗也不触发 fail，表现为点按钮毫无反应 —— 文案不能超长。
+    confirmText: '确认支付',
     success: async (res) => {
       if (!res.confirm) return
       try {
@@ -1336,6 +1338,7 @@ async function confirmNode(node) {
         uni.showToast({ title: err.message || '确认失败', icon: 'none' })
       }
     },
+    fail: () => uni.showToast({ title: '无法打开确认弹窗，请重试', icon: 'none' }),
   })
 }
 
