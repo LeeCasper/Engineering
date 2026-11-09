@@ -21,11 +21,13 @@
     </view>
 
     <!-- 订阅授权必须由点击触发：微信不允许在 onShow 中自动拉起授权弹窗 -->
-    <gc-subscribe-tip
-      :types="['acceptance']"
-      title="开启验收通知"
-      description="验收待办、驳回与通过结果可推送到微信，站内消息不受影响"
-    />
+    <view class="sub-tip-slot">
+      <gc-subscribe-tip
+        :types="['acceptance']"
+        title="开启验收通知"
+        description="验收待办、驳回与通过结果可推送到微信，站内消息不受影响"
+      />
+    </view>
 
     <!-- 搜索 + 分类：与项目页一致的吸顶搜索栏 -->
     <view
@@ -1137,6 +1139,11 @@ function closeActiveSheet() {
   flex-direction: column;
   gap: dp(14);
   padding: dp(10) dp(14) 0;
+}
+
+/* 订阅提示卡与验收卡片同宽（卡片统一内缩 dp(14)） */
+.sub-tip-slot {
+  padding: 0 dp(14);
 }
 
 .card {

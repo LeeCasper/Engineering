@@ -12,13 +12,15 @@
     </view>
 
     <!-- 付款提醒授权：一次性订阅，用户点击后才拉起微信授权弹窗 -->
-    <gc-subscribe-tip
-      v-if="current"
-      :types="['payment']"
-      :tenant-id="current.tenantId"
-      title="开启付款提醒"
-      description="付款节点解锁、大额支出与对账待办可推送到微信"
-    />
+    <view class="sub-tip-slot">
+      <gc-subscribe-tip
+        v-if="current"
+        :types="['payment']"
+        :tenant-id="current.tenantId"
+        title="开启付款提醒"
+        description="付款节点解锁、大额支出与对账待办可推送到微信"
+      />
+    </view>
 
     <!-- 首次加载 -->
     <view v-if="loading && !detail" class="gc-loading-page">
@@ -2122,6 +2124,11 @@ onPullDownRefresh(async () => {
 /* #endif */
 
 .content {
+  padding: 0 dp(14);
+}
+
+/* 订阅提示卡与下方业务卡片同宽（卡片统一内缩 dp(14)） */
+.sub-tip-slot {
   padding: 0 dp(14);
 }
 

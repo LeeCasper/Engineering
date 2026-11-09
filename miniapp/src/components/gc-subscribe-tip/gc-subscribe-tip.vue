@@ -166,11 +166,12 @@ watch(
   display: flex;
   align-items: center;
   gap: dp(10);
-  margin: dp(12) dp(16);
+  // 左右不留边距：由所在页面的内容容器统一控制卡片宽度，
+  // 避免提示卡比其他卡片窄一圈（各页卡片内缩都是 dp(14)）
+  margin: dp(12) 0;
   padding: dp(12) dp(14);
-  background: #fff7f1;
-  border: 1px solid rgba(235, 92, 32, 0.18);
-  border-radius: dp(14);
+  /* 与其他业务卡片保持同一套液态玻璃材质：暖白半透明 + 顶光 + 细边框 */
+  @include glass-surface(dp(14), 20px);
 }
 
 .sub-tip-main {
@@ -184,13 +185,13 @@ watch(
 .sub-tip-title {
   font-size: dp(14);
   font-weight: 600;
-  color: #1d2129;
+  color: #2b2119;
 }
 
 .sub-tip-text {
   font-size: dp(12);
   line-height: 1.45;
-  color: #86909c;
+  color: #8b8179;
 }
 
 .sub-tip-btn {
@@ -226,6 +227,6 @@ watch(
 .sub-tip-close-text {
   font-size: dp(18);
   line-height: 1;
-  color: #c9cdd4;
+  color: #b3a89f;
 }
 </style>
