@@ -1853,13 +1853,28 @@ function closeActiveSheet() {
   gap: dp(8);
 }
 
+/* 主行动做成暖橙玻璃胶囊：与页内「签到 / 导航」pill 同一套液态玻璃语言 */
 .feed-report-btn {
   padding: dp(4) dp(10);
+  border: 1px solid rgba(235, 92, 32, 0.22);
   border-radius: dp(999);
-  background: #eb5c20;
-  color: #fff;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 246, 241, 0.92) 0%,
+    rgba(255, 225, 208, 0.66) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
+  color: #eb5c20;
   font-size: dp(10);
   font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 dp(1) dp(4) rgba(235, 92, 32, 0.08);
+}
+
+.feed-report-btn:active {
+  background: rgba(255, 238, 228, 0.92);
 }
 
 .link--accent {

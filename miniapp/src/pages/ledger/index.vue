@@ -3212,18 +3212,37 @@ onPullDownRefresh(async () => {
   margin-bottom: dp(10);
 }
 
+/* 登记流水 / 发起对账：暖橙玻璃胶囊，与项目页的行动按钮同一套材质 */
 .tab-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   height: dp(32);
   padding: 0 dp(14);
-  border: 1px solid #f2b99f;
+  border: 1px solid rgba(235, 92, 32, 0.22);
   border-radius: dp(999);
-  background: #fff;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 246, 241, 0.92) 0%,
+    rgba(255, 225, 208, 0.66) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
   color: #eb5c20;
   font-size: dp(11);
   font-weight: 600;
+  line-height: 1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 dp(1) dp(4) rgba(235, 92, 32, 0.08);
+}
+
+.tab-action-btn::after {
+  border: none;
+}
+
+.tab-action-btn:active {
+  background: rgba(255, 238, 228, 0.92);
 }
 
 /* ── 登记流水 / 发起对账表单 ── */

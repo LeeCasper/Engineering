@@ -194,21 +194,39 @@ watch(
   color: #8b8179;
 }
 
+/* 与「汇报进度」按钮同一套暖橙玻璃：半透明底 + 模糊 + 橙色发丝边 */
 .sub-tip-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   margin: 0;
   padding: 0 dp(14);
   height: dp(32);
-  line-height: dp(32);
+  line-height: 1;
   font-size: dp(12);
   font-weight: 600;
-  color: #fff;
-  background: #eb5c20;
+  color: #eb5c20;
+  border: 1px solid rgba(235, 92, 32, 0.22);
   border-radius: dp(16);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 246, 241, 0.92) 0%,
+    rgba(255, 225, 208, 0.66) 100%
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  backdrop-filter: blur(14px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 dp(1) dp(4) rgba(235, 92, 32, 0.08);
 }
 
 .sub-tip-btn::after {
   border: none;
+}
+
+.sub-tip-btn:active {
+  background: rgba(255, 238, 228, 0.92);
 }
 
 .sub-tip-btn[disabled] {
