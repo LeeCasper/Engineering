@@ -110,6 +110,27 @@ describe('配置注册表自身的自洽性', () => {
     expect(sysConfig.normalizeValue('miniapp_logo', '')).toBe('')
   })
 
+  it('管理后台品牌配置也是平台专属，并允许 ICO 图标', () => {
+    for (const key of ['admin_name', 'admin_logo', 'admin_favicon']) {
+      expect(sysConfig.SCHEMA).toHaveProperty(key)
+      expect(sysConfig.SCHEMA[key].platformOnly).toBe(true)
+      expect(sysConfig.DEFAULTS).toHaveProperty(key)
+    }
+
+    expect(sysConfig.normalizeValue('admin_name', '  工程宝管理后台  ')).toBe('工程宝管理后台')
+    expect(() => sysConfig.normalizeValue('admin_name', 'x'.repeat(31))).toThrow(AppError)
+    expect(sysConfig.normalizeValue('admin_logo', '')).toBe('')
+    expect(sysConfig.normalizeValue('admin_favicon', '')).toBe('')
+    expect(() => sysConfig.normalizeValue('admin_favicon', `/${'x'.repeat(501)}`)).toThrow(AppError)
+
+    // ICO 只在 favicon 上传入口放行，不扩大普通图片上传白名单
+    expect(upload.FAVICON_MIME.has('image/x-icon')).toBe(true)
+    expect(upload.FAVICON_MIME.has('image/vnd.microsoft.icon')).toBe(true)
+    expect(upload.EXTENSION_BY_MIME['image/x-icon']).toBe('ico')
+    expect(upload.EXTENSION_BY_MIME['image/vnd.microsoft.icon']).toBe('ico')
+    expect(require('../../src/storage').ALLOWED_EXTENSIONS.has('ico')).toBe(true)
+  })
+
   it('可配置的附件上限不得超过传输层的文件数硬上限', () => {
     const imageMax = sysConfig.SCHEMA.report_max_images.max
     const videoMax = sysConfig.SCHEMA.report_max_videos.max

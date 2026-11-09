@@ -3,12 +3,14 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { getPaletteColorByNumber, mixColor } from '@sa/color';
 import { useThemeStore } from '@/store/modules/theme';
+import { useBrandingStore } from '@/store/modules/branding';
 import PwdLogin from './modules/pwd-login.vue';
 
 defineOptions({ name: 'LoginPage' });
 
 const route = useRoute();
 const themeStore = useThemeStore();
+const branding = useBrandingStore();
 
 /**
  * 租户专属登录地址 `/t/:tenantCode/login` 与平台入口 `/login`
@@ -43,8 +45,10 @@ const bgColor = computed(() => {
             class="absolute right-0 top-0 text-20px"
             @switch="themeStore.toggleThemeScheme"
           />
-          <SystemLogo class="size-64px lt-sm:size-52px" />
-          <h2 class="pt-10px text-26px text-primary font-600 lt-sm:text-22px">工程宝</h2>
+          <SystemLogo class="size-64px lt-sm:size-52px" :src="branding.logoUrl" />
+          <h2 class="max-w-full truncate px-4 pt-10px text-26px text-primary font-600 lt-sm:text-22px">
+            {{ branding.name }}
+          </h2>
           <p class="pt-4px text-13px text-#86909c">
             {{ isTenantPortal ? '租户管理员登录' : '平台运营登录' }}
           </p>
@@ -58,7 +62,7 @@ const bgColor = computed(() => {
         </main>
 
         <footer class="pt-20px text-center text-12px text-#86909c">
-          工程宝 · 让装修工程更透明、更可控
+          {{ branding.name }} · 让装修工程更透明、更可控
         </footer>
       </div>
     </ElCard>

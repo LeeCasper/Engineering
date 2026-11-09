@@ -13,6 +13,7 @@
 
 const db = require('../../src/db/pool')
 const cache = require('../../src/cache')
+const config = require('../../config')
 const sysConfigService = require('../../src/services/sysConfig.service')
 const operationLog = require('../../src/services/operationLog.service')
 const { prepareDatabase } = require('./helpers/db')
@@ -370,6 +371,83 @@ describe('小程序品牌：平台名称与 Logo', () => {
     const denied = await request
       .authed('post', '/admin/platform/branding/logo', owner.token)
       .attach('logo', PNG_1PX, { filename: 'logo.png', contentType: 'image/png' })
+    expect(denied.status).toBe(403)
+  })
+})
+
+describe('管理后台品牌：名称 / Logo / 浏览器图标', () => {
+  const PNG_1PX = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  )
+
+  it('未配置时公开接口返回默认名称与空素材，且不缓存', async () => {
+    const res = await request.get('/branding/admin')
+
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual({
+      name: '工程宝管理后台',
+      logoUrl: null,
+      faviconUrl: null,
+    })
+    expect(res.headers['cache-control']).toContain('no-store')
+  })
+
+  it('平台修改名称、Logo、图标后，登录前的公开接口立即生效', async () => {
+    const platform = await platformLogin()
+
+    await request
+      .authed('put', '/admin/platform/sys-configs/admin_name', platform.token)
+      .send({ value: '我的装修后台' })
+      .expect(200)
+    await request
+      .authed('put', '/admin/platform/sys-configs/admin_logo', platform.token)
+      .send({ value: 'https://cdn.example.com/admin-logo.png' })
+      .expect(200)
+    await request
+      .authed('put', '/admin/platform/sys-configs/admin_favicon', platform.token)
+      .send({ value: '/uploads/branding/favicon.ico' })
+      .expect(200)
+
+    const res = await request.get('/branding/admin')
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual({
+      name: '我的装修后台',
+      logoUrl: 'https://cdn.example.com/admin-logo.png',
+      // 只有 /uploads 会补成 API 域名的绝对地址
+      faviconUrl: `${config.upload.publicBaseUrl}/uploads/branding/favicon.ico`,
+    })
+  })
+
+  it('后台品牌配置是平台专属，租户不能修改', async () => {
+    const owner = await tenantOwner()
+
+    const res = await request
+      .authed('put', '/admin/sys-configs/admin_name', owner.token)
+      .send({ value: '租户自定义' })
+
+    expect(res.status).toBe(403)
+  })
+
+  it('平台可以上传后台 Logo 与 ICO 图标；租户无上传权限', async () => {
+    const platform = await platformLogin()
+
+    const logo = await request
+      .authed('post', '/admin/platform/branding/admin-logo', platform.token)
+      .attach('logo', PNG_1PX, { filename: 'admin-logo.png', contentType: 'image/png' })
+    expect(logo.status).toBe(200)
+    expect(logo.body.data.url).toMatch(/\/uploads\/branding\//)
+
+    const favicon = await request
+      .authed('post', '/admin/platform/branding/favicon', platform.token)
+      .attach('favicon', PNG_1PX, { filename: 'favicon.ico', contentType: 'image/x-icon' })
+    expect(favicon.status).toBe(200)
+    expect(favicon.body.data.url).toMatch(/\.ico$/)
+
+    const owner = await tenantOwner()
+    const denied = await request
+      .authed('post', '/admin/platform/branding/favicon', owner.token)
+      .attach('favicon', PNG_1PX, { filename: 'favicon.ico', contentType: 'image/x-icon' })
     expect(denied.status).toBe(403)
   })
 })

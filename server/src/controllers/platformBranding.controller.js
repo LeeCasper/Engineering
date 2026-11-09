@@ -12,6 +12,7 @@ const { normalizeFiles } = require('../middlewares/upload')
 const storage = require('../storage')
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024
+const MAX_FAVICON_BYTES = 1024 * 1024
 
 /** POST /admin/platform/branding/logo（multipart，字段名 logo） */
 async function uploadLogo(req, res) {
@@ -26,4 +27,22 @@ async function uploadLogo(req, res) {
   res.ok({ url: saved.url, key: saved.key, sizeBytes: saved.sizeBytes })
 }
 
-module.exports = { uploadLogo }
+/**
+ * POST /admin/platform/branding/favicon（multipart，字段名 favicon）
+ *
+ * 使用专门的 singleUploader，因此文件在 `req.file` 而不是 `req.files`。
+ * 只接受 ICO / PNG：SVG favicon 同源提供，存在脚本执行风险，刻意不支持。
+ */
+async function uploadFavicon(req, res) {
+  const files = normalizeFiles(req.file ? [req.file] : [])
+  const favicon = files.find((file) => file.field === 'favicon')
+
+  if (!favicon) throw AppError.badRequest('请选择要上传的浏览器图标')
+  if (favicon.type !== 'image') throw AppError.badRequest('浏览器图标必须是 ICO / PNG 图片')
+  if (favicon.sizeBytes > MAX_FAVICON_BYTES) throw AppError.badRequest('浏览器图标不得超过 1MB')
+
+  const saved = await storage.save(favicon.buffer, { category: 'branding', ext: favicon.ext })
+  res.ok({ url: saved.url, key: saved.key, sizeBytes: saved.sizeBytes })
+}
+
+module.exports = { uploadLogo, uploadFavicon }

@@ -5,7 +5,7 @@ v1.4（MIT）：Vue 3 + Vite + TypeScript + Element Plus + UnoCSS。
 只保留布局、主题、路由与请求基础设施，模板自带的 demo 页面已删除。
 
 当前已交付：**平台 / 租户双登录入口、首登强制改密、工作台、项目管理、平台租户管理、
-平台运营数据看板、平台小程序品牌、平台基础配置 / 基础内容页 / 平台日志中心、阶段模板、账号管理、系统配置、
+平台运营数据看板、平台品牌设置（小程序 + 后台管理端）、平台基础配置 / 基础内容页 / 平台日志中心、阶段模板、账号管理、系统配置、
 操作/登录日志、内容页、意见反馈、排障授权**。
 租户侧的项目数据看板（AC-AD36~43）按约定属于 V1.2，不在本轮。
 
@@ -99,7 +99,7 @@ node -e "const b=require('bcryptjs'),d=require('./src/db/pool');(async()=>{await
 | 工作台 | `/home` | 租户账号：项目计数与最近项目；平台账号：租户计数与运营入口 |
 | 平台 · 租户管理 | `/platform/tenant` | 租户列表 / 详情、开通（**省 / 市必填**，生成专属地址）、调整配额、到期与地区、停用 / 恢复 / 退租；租户授予窗口后可从「更多 → 只读进入（排障）」进入该租户 |
 | 平台 · 数据看板 | `/platform/dashboard` | `GET /admin/platform/dashboard/{overview,region,tenants}`；中国地图省 → 市下钻、未分配地区、地区租户列表 |
-| 平台 · 小程序品牌 | `/platform/branding` | 平台设置小程序名称与 Logo；`POST /admin/platform/branding/logo` 上传 Logo，保存到 `miniapp_name` / `miniapp_logo` 配置 |
+| 平台 · 品牌设置 | `/platform/branding` | 平台设置小程序名称 / Logo，以及管理后台名称 / Logo / 浏览器图标（ICO / PNG）；上传接口 `POST /admin/platform/branding/{logo,admin-logo,favicon}`，保存到 `miniapp_*` / `admin_*` 配置；后台公开接口 `GET /branding/admin` |
 | 项目列表 | `/project/list` | 列表、筛选、分页、新建、编辑、状态流转、归档、解除归档、软删除、批量归档 / 分配工长、导出 Excel；新建 / 编辑内置地图定位（服务端静态地图，可拖动 / 缩放，Key 不下发前端）与项目封面上传（`POST /admin/projects/cover`，列表显示缩略图） |
 | 项目详情 · 概览 | `/project/detail/:id` | 项目详情、阶段概况、付款节点概况、坐标手工拾取（AC-AD54）；项目「已完工 / 已归档」后可生成并下载竣工总报告 |
 | 项目详情 · 阶段工序 | 同上 | 阶段 / 工序增删改（**不提供改完成度的入口**） |
@@ -240,4 +240,5 @@ src/
   直接访问 `/grant` 被拦到 403；
 - 平台数据看板：全国热力图、广东省城市边界下钻、深圳市汇总、未分配地区列表与租户表格；
 - 开通租户时省 / 市必选，调整租户可补录或清空地区，列表与详情同步显示；
-- 小程序品牌：修改名称、上传 Logo、预览并保存，公开 `/branding` 立即返回新值。
+- 小程序品牌：修改名称、上传 Logo、预览并保存，公开 `/branding` 立即返回新值；
+- 后台品牌：修改后台名称、上传 Logo 与 ICO / PNG 浏览器图标，保存后侧边栏、登录页、页签标题与 favicon 立即更新；刷新后仍生效；租户后台对应配置只读。

@@ -58,6 +58,9 @@ const DEFAULT_CONFIGS = [
   ['support_contact', '', 'C 端未分配项目时展示的管理员联系方式，C-1.5'],
   ['miniapp_name', '柏总管', '小程序名称（平台统一维护），B-7.12'],
   ['miniapp_logo', '', '小程序 Logo 地址（平台统一维护），B-7.12'],
+  ['admin_name', '工程宝管理后台', '管理后台名称（平台统一维护），B-7.13'],
+  ['admin_logo', '', '管理后台 Logo 地址（平台统一维护），B-7.13'],
+  ['admin_favicon', '', '管理后台浏览器图标地址（平台统一维护），B-7.13'],
 ]
 
 /**

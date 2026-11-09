@@ -253,8 +253,8 @@ const appRoutes = [
         path: '/platform/branding',
         component: 'view.platform_branding',
         meta: {
-          title: '小程序品牌',
-          icon: 'mdi:cellphone-cog',
+          title: '品牌设置',
+          icon: 'mdi:palette-outline',
           order: 3,
           roles: ['platform']
         }

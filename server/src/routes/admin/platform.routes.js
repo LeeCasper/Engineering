@@ -21,7 +21,7 @@ const operationLogController = require('../../controllers/adminLog.controller')
 const loginLogController = require('../../controllers/adminLoginLog.controller')
 const dashboardController = require('../../controllers/platformDashboard.controller')
 const brandingController = require('../../controllers/platformBranding.controller')
-const { uploadAny } = require('../../middlewares/upload')
+const { uploadAny, uploadFavicon } = require('../../middlewares/upload')
 
 const router = express.Router()
 
@@ -39,9 +39,12 @@ router.get('/tenants/:id', asyncHandler(controller.detail))
 router.put('/tenants/:id', asyncHandler(controller.update))
 router.put('/tenants/:id/status', asyncHandler(controller.updateStatus))
 
-// ── 平台小程序品牌 ──
-// Logo 先上传拿 URL，再由前端写入 sys_config 的 miniapp_logo。
+// ── 平台品牌素材 ──
+// 上传只负责返回 URL，具体写到哪个配置键由前端决定：
+// miniapp_logo / admin_logo / admin_favicon。
 router.post('/branding/logo', uploadAny, asyncHandler(brandingController.uploadLogo))
+router.post('/branding/admin-logo', uploadAny, asyncHandler(brandingController.uploadLogo))
+router.post('/branding/favicon', uploadFavicon, asyncHandler(brandingController.uploadFavicon))
 
 // ── 平台基础配置（tenant_id IS NULL） ──
 // 这不是「平台替租户改配置」：改的是所有租户未覆盖时继承的基线。

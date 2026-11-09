@@ -9,4 +9,7 @@ export function setupStore(app: App) {
   store.use(resetSetupStore);
 
   app.use(store);
+
+  // 返回 pinia，便于在组件外（main.ts 启动阶段）使用 store
+  return store;
 }

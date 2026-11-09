@@ -44,6 +44,10 @@ const DEFAULTS = {
   // Logo 存 storage.urlFor 生成的绝对 URL；留空时小程序回落到内置 Logo。
   miniapp_name: '柏总管',
   miniapp_logo: '',
+  // 管理后台品牌：同样是平台专属；后台是一个 SPA 服务所有租户。
+  admin_name: '工程宝管理后台',
+  admin_logo: '',
+  admin_favicon: '',
 }
 
 /**
@@ -276,6 +280,30 @@ const SCHEMA = {
     requirement: 'B-7.12',
     platformOnly: true,
     note: '建议上传正方形 PNG / JPG；留空时使用小程序内置 Logo',
+  },
+  admin_name: {
+    type: 'string',
+    maxLength: 30,
+    label: '管理后台名称',
+    requirement: 'B-7.13',
+    platformOnly: true,
+    note: '显示在管理后台登录页、侧边栏与浏览器页签；平台统一维护',
+  },
+  admin_logo: {
+    type: 'string',
+    maxLength: 500,
+    label: '管理后台 Logo',
+    requirement: 'B-7.13',
+    platformOnly: true,
+    note: '上传后保存绝对 URL；留空时使用内置 Logo',
+  },
+  admin_favicon: {
+    type: 'string',
+    maxLength: 500,
+    label: '管理后台浏览器图标',
+    requirement: 'B-7.13',
+    platformOnly: true,
+    note: '支持 ICO / PNG；留空时使用内置 favicon.svg',
   },
 }
 

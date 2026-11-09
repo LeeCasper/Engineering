@@ -63,8 +63,15 @@ const GROUP_DEFS: GroupDef[] = [
     key: 'brand',
     title: '小程序品牌',
     description:
-      '小程序名称与 Logo 由平台统一维护；建议在「小程序品牌」页面设置，这里显示底层配置值。',
+      '小程序名称与 Logo 由平台统一维护；建议在「品牌设置」页面设置，这里显示底层配置值。',
     keys: ['miniapp_name', 'miniapp_logo']
+  },
+  {
+    key: 'adminBrand',
+    title: '后台管理端品牌',
+    description:
+      '管理后台的名称、Logo 与浏览器图标由平台统一维护；建议在「品牌设置」页面上传，这里显示底层配置值。',
+    keys: ['admin_name', 'admin_logo', 'admin_favicon']
   },
   {
     key: 'remind',

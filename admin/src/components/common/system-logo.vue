@@ -1,6 +1,27 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue';
+
+defineOptions({ name: 'SystemLogo' });
+
+const props = defineProps<{
+  /** 平台后台上传的 Logo；为空或加载失败时回落到内置 SVG */
+  src?: string;
+}>();
+
+const failed = ref(false);
+
+watch(
+  () => props.src,
+  () => {
+    failed.value = false;
+  }
+);
+</script>
+
 <template>
   <div class="app-logo">
-    <svg width="100%" height="100%" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+    <img v-if="src && !failed" :src="src" class="app-logo-img" alt="" @error="failed = true" />
+    <svg v-else width="100%" height="100%" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="gc-logo-gradient" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stop-color="#2575FC" />
@@ -22,5 +43,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.app-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
 }
 </style>

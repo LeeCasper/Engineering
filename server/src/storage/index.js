@@ -30,7 +30,7 @@ const logger = require('../utils/logger')
  * 「保存自己刚生成的 PDF」上，只会逼着后来者往白名单里加 pdf，
  * 顺带把 pdf 也变成了可上传类型。
  */
-const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov'])
+const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'ico'])
 
 /**
  * 服务端生成物的扩展名白名单。范围窄且都是归档格式。

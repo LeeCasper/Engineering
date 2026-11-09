@@ -20,11 +20,21 @@ const AppError = require('../utils/AppError')
 /** 图片与视频的 MIME 白名单。白名单能穷举，黑名单不能 */
 const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const VIDEO_MIME = new Set(['video/mp4', 'video/quicktime'])
+/** 浏览器图标单独一组：只给 favicon 上传入口，不扩大普通图片上传的白名单 */
+const FAVICON_MIME = new Set([
+  'image/x-icon',
+  'image/vnd.microsoft.icon',
+  'image/ico',
+  'image/png',
+])
 
 const EXTENSION_BY_MIME = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+  'image/ico': 'ico',
   'video/mp4': 'mp4',
   'video/quicktime': 'mov',
 }
@@ -67,7 +77,7 @@ const uploader = multer({
  * 的内存上限缓冲，一个 5MB 的头像请求可以被迫分配 120MB。这里把 multer 的
  * files 上限降到 1，并按业务上限设置单文件大小。
  */
-function singleUploader({ field = 'avatar', maxSizeMb = 5 } = {}) {
+function singleUploader({ field = 'avatar', maxSizeMb = 5, mimeSet = IMAGE_MIME } = {}) {
   return multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -77,14 +87,14 @@ function singleUploader({ field = 'avatar', maxSizeMb = 5 } = {}) {
       fieldSize: 1024 * 100,
     },
     fileFilter(req, file, cb) {
-      if (IMAGE_MIME.has(file.mimetype)) return cb(null, true)
+      if (mimeSet.has(file.mimetype)) return cb(null, true)
       cb(AppError.badRequest(`不支持的文件类型：${file.mimetype}`))
     },
   }).single(field)
 }
 
-function handleSingleUpload({ field = 'avatar', maxSizeMb = 5 } = {}) {
-  const handler = singleUploader({ field, maxSizeMb })
+function handleSingleUpload({ field = 'avatar', maxSizeMb = 5, mimeSet = IMAGE_MIME } = {}) {
+  const handler = singleUploader({ field, maxSizeMb, mimeSet })
   return (req, res, next) => {
     handler(req, res, (err) => {
       if (!err) return next()
@@ -150,7 +160,9 @@ module.exports = {
   VIDEO_MIME,
   EXTENSION_BY_MIME,
   MAX_FILES,
+  FAVICON_MIME,
   uploadAny: handleUploadErrors,
   uploadAvatar: handleSingleUpload({ field: 'avatar', maxSizeMb: 5 }),
+  uploadFavicon: handleSingleUpload({ field: 'favicon', maxSizeMb: 1, mimeSet: FAVICON_MIME }),
   normalizeFiles,
 }

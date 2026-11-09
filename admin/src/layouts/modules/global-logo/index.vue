@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { $t } from '@/locales';
+import { useBrandingStore } from '@/store/modules/branding';
 
 defineOptions({ name: 'GlobalLogo' });
+
+const branding = useBrandingStore();
 
 interface Props {
   /** Whether to show the title */
@@ -15,9 +17,13 @@ withDefaults(defineProps<Props>(), {
 
 <template>
   <RouterLink to="/" class="w-full flex-center nowrap-hidden">
-    <SystemLogo class="size-32px" />
-    <h2 v-show="showTitle" class="pl-8px text-16px text-primary font-bold transition duration-300 ease-in-out">
-      {{ $t('system.title') }}
+    <SystemLogo class="size-32px" :src="branding.logoUrl" />
+    <h2
+      v-show="showTitle"
+      class="min-w-0 truncate pl-8px text-16px text-primary font-bold transition duration-300 ease-in-out"
+      :title="branding.name"
+    >
+      {{ branding.name }}
     </h2>
   </RouterLink>
 </template>
