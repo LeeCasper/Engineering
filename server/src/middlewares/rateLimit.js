@@ -29,6 +29,14 @@ const WINDOW_SECONDS = 60
  * identity 返回 null 表示该请求不参与限流。
  */
 function createRateLimit({ scope, max, identity, message }) {
+  // max <= 0 表示关闭该类限流（集成测试会在 vitest.config.mjs 里显式置 0）：
+  // 测试文件经常用同一个账号连打上百个请求，限流会把功能测试变成随机的 429。
+  if (!Number.isFinite(max) || max <= 0) {
+    return function disabledRateLimit(req, res, next) {
+      return next()
+    }
+  }
+
   return async function rateLimitMiddleware(req, res, next) {
     try {
       const id = identity(req)
@@ -73,9 +81,9 @@ const globalRateLimit = createRateLimit({
 /** 登录用户限流，§8.2 的 60 次/分钟 */
 const userRateLimit = createRateLimit({
   scope: 'user',
-  max: config.rateLimit.perMinute,
+  max: config.rateLimit.perUserPerMinute,
   identity: (req) => (req.auth ? `${req.auth.type}:${req.auth.id}` : null),
-  message: `请求过于频繁，请稍后再试（上限 ${config.rateLimit.perMinute} 次/分钟）`,
+  message: `请求过于频繁，请稍后再试（上限 ${config.rateLimit.perUserPerMinute} 次/分钟）`,
 })
 
 module.exports = { createRateLimit, globalRateLimit, userRateLimit, WINDOW_SECONDS }

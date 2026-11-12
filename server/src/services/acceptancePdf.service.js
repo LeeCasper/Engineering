@@ -93,12 +93,15 @@ async function generate(acceptanceId) {
       reportNo,
     })
 
-    // saveGenerated 而非 save：这份 PDF 是服务端渲染出来的，不是用户上传的，
-    // 不该受「上传类型白名单」约束（见 storage/index.js 的说明）
-    const saved = await storage.saveGenerated(buffer, { category: 'acceptance-reports', ext: 'pdf' })
+    // 走**私有存储**：报告含现场照片、三方签名与金额，绝不能被 express.static
+    // 直接公开访问。下载只通过 2 小时签名的 `/acceptances/:id/report.pdf`。
+    // 历史数据里 report_pdf_private = 0 的旧报告仍按公开 URL 读取，见 controller。
+    const saved = await storage.savePrivate(buffer, { category: 'acceptance-reports', ext: 'pdf' })
     await acceptanceModel.updatePdfState(acceptanceId, {
       status: 'success',
-      url: saved.url,
+      url: null,
+      key: saved.key,
+      private: true,
       error: null,
       reportNo,
     })

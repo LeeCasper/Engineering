@@ -17,7 +17,8 @@ const COLUMNS = `
   r.id, r.project_id, r.scope_type, r.project_stage_id, r.period_start, r.period_end,
   r.status, r.total_amount, r.income_amount, r.expense_amount,
   r.submitted_by, r.submitted_at, r.confirmed_by, r.confirmed_at, r.remark,
-  r.settlement_pdf_url, r.settlement_generated_at, r.created_at
+  r.settlement_pdf_url, r.settlement_pdf_key, r.settlement_pdf_private,
+  r.settlement_generated_at, r.created_at
 `
 
 async function create(data, tx) {
@@ -129,12 +130,20 @@ async function updateStatus(id, { status, submittedBy, submittedAt, confirmedBy,
   await tx.query(`UPDATE reconciliation SET ${columns.join(', ')} WHERE id = ?`, params)
 }
 
-async function updatePdf(id, { url, generatedAt }) {
-  await db.query('UPDATE reconciliation SET settlement_pdf_url = ?, settlement_generated_at = ? WHERE id = ?', [
-    url,
-    generatedAt,
-    id,
-  ])
+/**
+ * 记录结算单 PDF。
+ *
+ * `key` / `private` 用于私有存储（新数据）；`url` 只保留给历史公开文件。
+ * 两者互斥：写私有存储时必须把 url 清成 NULL，否则旧链接仍可绕过签名访问。
+ */
+async function updatePdf(id, { url, key, private: isPrivate, generatedAt }) {
+  await db.query(
+    `UPDATE reconciliation
+        SET settlement_pdf_url = ?, settlement_pdf_key = ?,
+            settlement_pdf_private = ?, settlement_generated_at = ?
+      WHERE id = ?`,
+    [url ?? null, key ?? null, isPrivate ? 1 : 0, generatedAt, id]
+  )
 }
 
 async function listByProject(projectId, { scopeType } = {}) {

@@ -714,13 +714,15 @@ describe('三方签署（工长 / 监理 / 业主）', () => {
     const id = await passThrough(ctx)
 
     const row = await db.queryOne(
-      'SELECT report_pdf_url, report_pdf_status FROM acceptance WHERE id = ?',
+      'SELECT report_pdf_key, report_pdf_private, report_pdf_status FROM acceptance WHERE id = ?',
       [id]
     )
     expect(row.report_pdf_status).toBe('success')
+    // 报告必须落在私有目录：含照片、签名与金额，不能公开直链
+    expect(row.report_pdf_private).toBe(1)
+    expect(row.report_pdf_key).toContain('acceptance-reports/')
 
-    const key = row.report_pdf_url.split('/uploads/')[1]
-    const pdfPath = path.join(config.upload.dir, key)
+    const pdfPath = path.join(config.esign.privateDir, row.report_pdf_key)
     const text = execFileSync('pdftotext', [pdfPath, '-'], { encoding: 'utf8' })
 
     expect(text).toContain('签署区')
@@ -854,12 +856,17 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
     const ctx = await setup()
     const id = await passThrough(ctx)
 
-    const row = await db.queryOne('SELECT report_pdf_status, report_pdf_url FROM acceptance WHERE id = ?', [id])
+    const row = await db.queryOne(
+      'SELECT report_pdf_status, report_pdf_key, report_pdf_private, report_pdf_url FROM acceptance WHERE id = ?',
+      [id]
+    )
     expect(row.report_pdf_status).toBe('success')
-    expect(row.report_pdf_url).toContain('/uploads/acceptance-reports/')
+    expect(row.report_pdf_private).toBe(1)
+    // 私有存储下不能再写公开 URL，否则签名 URL 的时效可被绕过
+    expect(row.report_pdf_url).toBeNull()
+    expect(row.report_pdf_key).toContain('acceptance-reports/')
 
-    const key = row.report_pdf_url.split('/uploads/')[1]
-    const fullPath = path.join(config.upload.dir, key)
+    const fullPath = path.join(config.esign.privateDir, row.report_pdf_key)
     expect(fs.existsSync(fullPath)).toBe(true)
 
     const pdf = fs.readFileSync(fullPath)
@@ -926,8 +933,9 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
     // 替换 generate 就绕过了它内部的 try/catch，report_pdf_status 会停在默认值上，
     // 测不到「失败被记录成 failed」这个真正要验的行为。
     // 打桩打在 render 之后的落盘步骤上，才能走完真实的失败路径
-    const originalSaveGenerated = storage.saveGenerated
-    storage.saveGenerated = async () => {
+    // 报告已改私有存储，落盘走 savePrivate，因此打桩点也必须是它
+    const originalSavePrivate = storage.savePrivate
+    storage.savePrivate = async () => {
       throw new Error('模拟的磁盘写入失败')
     }
 
@@ -944,12 +952,12 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
       expect(row.report_pdf_error).toContain('模拟的磁盘写入失败')
 
       // 恢复后可以通过重试入口补生成（AC-A19 的「提供可重试入口」）
-      storage.saveGenerated = originalSaveGenerated
+      storage.savePrivate = originalSavePrivate
       const retried = await mini.authed('post', `/acceptances/${id}/report/retry`, ctx.owner.token)
       expect(retried.status).toBe(200)
       expect(retried.body.data.reportPdf.status).toBe('success')
     } finally {
-      storage.saveGenerated = originalSaveGenerated
+      storage.savePrivate = originalSavePrivate
     }
   })
 

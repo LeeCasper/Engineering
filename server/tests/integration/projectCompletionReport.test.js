@@ -126,7 +126,9 @@ describe('项目竣工总报告', () => {
       [projectId]
     )
     expect(row.status).toBe('success')
-    expect(row.file_url).toContain('/uploads/project-completion-reports/')
+    // 总报告含账务，已改私有存储：不再写公开 URL
+    expect(row.file_url).toBeNull()
+    expect(row.file_key).toContain('project-completion-reports/')
     expect(row.sha256).toMatch(/^[0-9a-f]{64}$/)
 
     const pdf = await request.raw('get', generated.body.data.signedPath)

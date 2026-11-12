@@ -493,8 +493,9 @@ async function buildDetail(reconciliation, viewer, { project } = {}) {
     confirmedBy: reconciliation.confirmed_by,
     confirmedAt: reconciliation.confirmed_at,
     remark: reconciliation.remark,
-    settlementPdfUrl: reconciliation.settlement_pdf_url,
-    settlementPdfSignedPath: reconciliation.settlement_pdf_url
+    // 不再下发永久公开 URL；历史数据同样只给签名路径
+    settlementPdfSignedPath:
+      reconciliation.settlement_pdf_key || reconciliation.settlement_pdf_url
       ? signedUrl.buildPath({
           resource: 'reconciliation-settlement',
           id: reconciliation.id,

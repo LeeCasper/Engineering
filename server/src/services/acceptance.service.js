@@ -868,7 +868,8 @@ async function getDetail(userId, acceptanceId) {
     signatureUrl: acceptance.signature_url,
     reportPdf: {
       status: acceptance.report_pdf_status,
-      url: acceptance.report_pdf_url,
+      // 不再下发 `url`：报告已改私有存储，这里如果继续返回永久公开地址，
+      // 签名 URL 的 2 小时时效就形同虚设（历史旧报告仍可由签名路径下载）。
       source: acceptance.report_pdf_source || 'generated',
       sha256: acceptance.report_pdf_sha256 || null,
       error: acceptance.report_pdf_error,

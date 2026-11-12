@@ -34,7 +34,17 @@ export default defineConfig({
     // 地图 Key 必须显式清空：本地 .env 可能为了联调配了真实 AMAP_KEY，
     // 不清空的话测试会打真实地图接口（慢、消耗配额，且结果随网络变化）。
     // 空字符串在 dotenv 眼里也是「已设置」，因此不会被 .env 覆盖。
-    env: { NODE_ENV: 'test', WX_MOCK: 'true', AMAP_KEY: '', TENCENT_MAP_KEY: '', MAP_PROVIDER: 'auto' },
+    // 只关闭**按用户**的限流：集成测试常用同一个账号连打上百个请求，
+    // 真实限额会把功能用例变成随机的 429。
+    // 按 IP 的全局限流保留默认值 —— foundation 用例要靠它验证 429 与配额响应头。
+    env: {
+      NODE_ENV: 'test',
+      WX_MOCK: 'true',
+      AMAP_KEY: '',
+      TENCENT_MAP_KEY: '',
+      MAP_PROVIDER: 'auto',
+      RATE_LIMIT_PER_USER_PER_MINUTE: '0',
+    },
     // globals 必须开启：本项目源码是 CommonJS，测试文件也写成 CJS，
     // 而 vitest 包本身是 ESM-only，`require('vitest')` 会失败。
     // 开启后 describe/it/expect 直接可用，测试文件与源码风格保持一致。

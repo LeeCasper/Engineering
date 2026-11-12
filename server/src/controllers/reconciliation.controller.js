@@ -138,9 +138,14 @@ async function downloadSettlement(req, res) {
   })
 
   const row = await reconciliationModel.findById(id)
-  if (!row || !row.settlement_pdf_url) throw AppError.notFound('结算单尚未生成')
+  if (!row || (!row.settlement_pdf_url && !row.settlement_pdf_key)) {
+    throw AppError.notFound('结算单尚未生成')
+  }
 
-  const buffer = await storage.read(row.settlement_pdf_url)
+  // 新数据走私有存储；历史数据 settlement_pdf_private = 0，仍读公开文件
+  const buffer = row.settlement_pdf_private
+    ? await storage.readPrivate(row.settlement_pdf_key)
+    : await storage.read(row.settlement_pdf_url)
   res.setHeader('Content-Type', 'application/pdf')
   res.setHeader('Content-Disposition', `inline; filename="settlement-${id}.pdf"`)
   res.send(buffer)
