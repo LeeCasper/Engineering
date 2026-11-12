@@ -211,6 +211,55 @@ async function updateStatus(id, status) {
   await db.query('UPDATE admin_user SET status = ?, token_version = token_version + 1 WHERE id = ?', [status, id])
 }
 
+/**
+ * 修改用户名（B-1.3 的「编辑」）。
+ *
+ * 不动 token_version：token 里只有 `sub`，用户名每次请求都从库里读，
+ * 改完下一个请求就生效，没有「旧 token 还带着旧名字」的问题。
+ * 唯一键冲突交给上层捕获 ER_DUP_ENTRY 后转成 409 —— 这里的预检与
+ * 数据库索引之间总有并发窗口，索引才是最终依据。
+ */
+async function updateUsername(id, username) {
+  await db.query('UPDATE admin_user SET username = ? WHERE id = ? AND deleted_at IS NULL', [username, id])
+}
+
+/**
+ * 修改角色（B-1.3 / B-1.10）。
+ *
+ * 同样不动 token_version：`requireAdmin` 每次请求都回库读角色，
+ * 降级在下一次请求立即生效。反倒是自增 token_version 会把对方踢下线，
+ * 而「项目管理员被降成……」这一步并不需要中断对方正在做的事。
+ */
+async function updateRole(id, role) {
+  await db.query('UPDATE admin_user SET role = ? WHERE id = ? AND deleted_at IS NULL', [role, id])
+}
+
+/**
+ * 软删除（B-1.3：删除账号）。
+ *
+ * 物理删除会切断 operation_log / admin_login_log / project.created_by 的追溯链，
+ * 因此只置 `deleted_at`，同时禁用并自增 token_version —— 已签发的 token
+ * 在下一次请求时立即失效（与禁用同一机制，AC-AD07）。
+ * 用户名由迁移 037 的生成列释放，同名账号可以重新创建。
+ */
+async function softDelete(id) {
+  await db.query(
+    `UPDATE admin_user
+        SET deleted_at = NOW(), status = 'disabled',
+            token_version = token_version + 1
+      WHERE id = ? AND deleted_at IS NULL`,
+    [id]
+  )
+}
+
+/** 某租户内仍启用、未删除的租户管理员数量（「最后一个租户管理员」保护） */
+async function countActiveOwners(tenantId) {
+  return db.count(
+    "FROM admin_user WHERE tenant_id = ? AND role = 'owner' AND status = 'active' AND deleted_at IS NULL",
+    [tenantId]
+  )
+}
+
 /** 统计某管理员创建的下属数量，用于「仅自建下属」的边界判断 */
 async function countCreatedBy(adminUserId) {
   return db.count('FROM admin_user WHERE created_by = ? AND deleted_at IS NULL', [adminUserId])
@@ -230,5 +279,9 @@ module.exports = {
   resetLoginFailure,
   updatePassword,
   updateStatus,
+  updateUsername,
+  updateRole,
+  softDelete,
+  countActiveOwners,
   countCreatedBy,
 }

@@ -4,9 +4,12 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   fetchAccounts,
   fetchCreateAccount,
+  fetchDeleteAccount,
   fetchGrantedProjects,
   fetchGrantProjects,
   fetchResetAccountPassword,
+  fetchUpdateAccount,
+  fetchUpdateAccountRole,
   fetchUpdateAccountStatus,
   type AdminAccount,
   type AdminRole,
@@ -85,6 +88,131 @@ function canManage(row: AdminAccount) {
   if (isOwner.value) return true;
 
   return row.role !== 'owner' && Number(row.createdBy) === Number(authStore.userInfo.userId);
+}
+
+/**
+ * 编辑 / 改角色 / 删除是租户级能力（B-1.3 / AC-AD50），后端也按
+ * 「仅租户管理员」实现。这里只是不渲染必然 403 的按钮，不是权限边界。
+ */
+function canEditAccount(row: AdminAccount) {
+  return isOwner.value && row.id !== Number(authStore.userInfo.userId);
+}
+
+function handleMore(command: string, row: AdminAccount) {
+  if (command === 'reset') openReset(row);
+  else if (command === 'grant') openGrant(row);
+  else if (command === 'delete') removeAccount(row);
+}
+
+// ── 编辑账号 ──
+
+const editDialog = reactive({ visible: false, submitting: false, id: 0, original: '' });
+const editForm = reactive({ username: '' });
+
+function openEdit(row: AdminAccount) {
+  editDialog.id = row.id;
+  editDialog.original = row.username;
+  editForm.username = row.username;
+  editDialog.visible = true;
+}
+
+async function submitEdit() {
+  const username = editForm.username.trim();
+
+  if (!/^[A-Za-z0-9_.@-]+$/.test(username)) {
+    ElMessage.warning('用户名只能包含字母、数字与 _ . @ -');
+    return;
+  }
+
+  if (username === editDialog.original) {
+    editDialog.visible = false;
+    return;
+  }
+
+  editDialog.submitting = true;
+
+  try {
+    const { error } = await fetchUpdateAccount(editDialog.id, username);
+
+    if (error) return;
+
+    ElMessage.success('账号信息已更新');
+    editDialog.visible = false;
+    await load();
+  } finally {
+    editDialog.submitting = false;
+  }
+}
+
+// ── 修改角色 ──
+
+const roleDialog = reactive({ visible: false, submitting: false, id: 0, username: '', current: 'admin' as AdminRole });
+const roleForm = reactive({ role: 'admin' as AdminRole });
+
+function openRole(row: AdminAccount) {
+  roleDialog.id = row.id;
+  roleDialog.username = row.username;
+  roleDialog.current = row.role;
+  roleForm.role = row.role;
+  roleDialog.visible = true;
+}
+
+async function submitRole() {
+  if (roleForm.role === roleDialog.current) {
+    ElMessage.warning('角色没有变化');
+    return;
+  }
+
+  const promoted = roleForm.role === 'owner';
+
+  try {
+    await ElMessageBox.confirm(
+      promoted
+        ? `确认把「${roleDialog.username}」提升为租户管理员？该角色可管理本租户全部账号与项目。`
+        : `确认把「${roleDialog.username}」降级为项目管理员？降级后只能看到自己创建或被授权的项目。`,
+      '修改角色',
+      { type: 'warning', confirmButtonText: '确认修改', cancelButtonText: '取消' }
+    );
+  } catch {
+    return;
+  }
+
+  roleDialog.submitting = true;
+
+  try {
+    const { error } = await fetchUpdateAccountRole(roleDialog.id, roleForm.role);
+
+    if (error) return;
+
+    ElMessage.success('角色已更新');
+    roleDialog.visible = false;
+    await load();
+  } finally {
+    roleDialog.submitting = false;
+  }
+}
+
+// ── 删除账号 ──
+
+async function removeAccount(row: AdminAccount) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除账号「${row.username}」？删除后该账号立即无法登录，已登录的会话同时失效。账号的历史操作记录会保留。`,
+      '删除账号',
+      { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    );
+  } catch {
+    return;
+  }
+
+  const { error } = await fetchDeleteAccount(row.id);
+
+  if (!error) {
+    ElMessage.success('账号已删除');
+    // 删掉当前页最后一条时回退一页，否则会停在空白页
+    if (list.value.length === 1 && query.page > 1) query.page -= 1;
+    await load();
+  }
 }
 
 // ── 新建账号 ──
@@ -338,21 +466,32 @@ onMounted(load);
           <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
         </ElTableColumn>
 
-        <ElTableColumn label="操作" width="220" fixed="right">
+        <ElTableColumn label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <template v-if="canManage(row)">
+              <ElButton v-if="canEditAccount(row)" link type="primary" @click="openEdit(row)">
+                编辑
+              </ElButton>
+              <ElButton v-if="canEditAccount(row)" link type="primary" @click="openRole(row)">
+                改角色
+              </ElButton>
               <ElButton link type="primary" @click="toggleStatus(row)">
                 {{ row.status === 'active' ? '禁用' : '启用' }}
               </ElButton>
-              <ElButton link type="primary" @click="openReset(row)">重置密码</ElButton>
-              <ElButton
-                v-if="isOwner && row.role === 'admin'"
-                link
-                type="primary"
-                @click="openGrant(row)"
-              >
-                项目权限
-              </ElButton>
+              <ElDropdown trigger="click" @command="handleMore($event, row)">
+                <ElButton link type="primary">更多</ElButton>
+                <template #dropdown>
+                  <ElDropdownMenu>
+                    <ElDropdownItem command="reset">重置密码</ElDropdownItem>
+                    <ElDropdownItem v-if="isOwner && row.role === 'admin'" command="grant">
+                      项目权限
+                    </ElDropdownItem>
+                    <ElDropdownItem v-if="canEditAccount(row)" command="delete" divided>
+                      删除账号
+                    </ElDropdownItem>
+                  </ElDropdownMenu>
+                </template>
+              </ElDropdown>
             </template>
             <span v-else class="text-12px text-#c0c4cc">—</span>
           </template>
@@ -427,6 +566,42 @@ onMounted(load);
       <template #footer>
         <ElButton @click="resetDialog.visible = false">取消</ElButton>
         <ElButton type="primary" :loading="resetDialog.submitting" @click="submitReset">重置</ElButton>
+      </template>
+    </ElDialog>
+
+    <!-- 编辑账号 -->
+    <ElDialog v-model="editDialog.visible" :title="`编辑账号 · ${editDialog.original}`" width="480px">
+      <ElForm label-width="90px">
+        <ElFormItem label="用户名" required>
+          <ElInput v-model="editForm.username" maxlength="50" placeholder="字母、数字与 _ . @ -" />
+        </ElFormItem>
+      </ElForm>
+      <div class="pt-4px text-12px text-#86909c">
+        后台账号只有用户名这一项资料；改完后该账号的登录名立即变更，历史操作日志保留原记录。
+      </div>
+      <template #footer>
+        <ElButton @click="editDialog.visible = false">取消</ElButton>
+        <ElButton type="primary" :loading="editDialog.submitting" @click="submitEdit">保存</ElButton>
+      </template>
+    </ElDialog>
+
+    <!-- 修改角色 -->
+    <ElDialog v-model="roleDialog.visible" :title="`修改角色 · ${roleDialog.username}`" width="480px">
+      <ElAlert
+        class="mb-14px"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="角色决定能看多少数据"
+        description="租户管理员可管理本租户全部账号与项目；项目管理员只能看到自己创建或被授权的项目。改完立即生效。"
+      />
+      <ElRadioGroup v-model="roleForm.role">
+        <ElRadio value="admin">项目管理员</ElRadio>
+        <ElRadio value="owner">租户管理员</ElRadio>
+      </ElRadioGroup>
+      <template #footer>
+        <ElButton @click="roleDialog.visible = false">取消</ElButton>
+        <ElButton type="primary" :loading="roleDialog.submitting" @click="submitRole">保存</ElButton>
       </template>
     </ElDialog>
 
