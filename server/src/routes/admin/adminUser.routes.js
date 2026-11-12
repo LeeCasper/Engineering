@@ -21,6 +21,14 @@ router.use(requireAdmin, requireTenant)
 
 router.get('/', asyncHandler(controller.list))
 router.post('/', asyncHandler(controller.create))
+
+// 编辑 / 改角色 / 删除是**租户级**能力（B-1.3 / B-1.10 / AC-AD50）。
+// requireTenantOwner 放在路由层是第二道闸：service 里也有一道
+// （assertTenantOwner），因为 service 会从别处被调用，路由不是唯一入口
+router.put('/:id', requireTenantOwner, asyncHandler(controller.update))
+router.put('/:id/role', requireTenantOwner, asyncHandler(controller.updateRole))
+router.delete('/:id', requireTenantOwner, asyncHandler(controller.remove))
+
 router.put('/:id/status', asyncHandler(controller.updateStatus))
 router.put('/:id/password', asyncHandler(controller.resetPassword))
 router.get('/:id/projects', asyncHandler(controller.listGrantedProjects))

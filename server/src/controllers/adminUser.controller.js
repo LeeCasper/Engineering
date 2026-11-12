@@ -15,16 +15,28 @@ const listQuerySchema = z.object({
   status: z.enum(['active', 'disabled']).optional(),
 })
 
+// 限定字符集：用户名会出现在日志与 URL 里，放开会造成日志注入与转义麻烦。
+// 创建与编辑共用同一份规则 —— 两边各写一份，迟早有一边被改漏
+const usernameSchema = z
+  .string()
+  .trim()
+  .min(1, '请输入用户名')
+  .max(50, '用户名过长')
+  .regex(/^[A-Za-z0-9_.@-]+$/, '用户名只能包含字母、数字与 _ . @ -')
+
 const createSchema = z.object({
-  username: z
-    .string()
-    .trim()
-    .min(1, '请输入用户名')
-    .max(50, '用户名过长')
-    // 限定字符集：用户名会出现在日志与 URL 里，放开会造成日志注入与转义麻烦
-    .regex(/^[A-Za-z0-9_.@-]+$/, '用户名只能包含字母、数字与 _ . @ -'),
+  username: usernameSchema,
   password: z.string().min(1, '请输入初始密码').max(72),
   role: z.enum(['admin', 'owner']).default('admin'),
+})
+
+/** 编辑账号基本信息。`admin_user` 只有用户名这一项可改（没有姓名 / 手机号字段） */
+const updateSchema = z.object({
+  username: usernameSchema,
+})
+
+const roleSchema = z.object({
+  role: z.enum(['admin', 'owner'], { errorMap: () => ({ message: '角色只能为 admin 或 owner' }) }),
 })
 
 const statusSchema = z.object({
@@ -53,6 +65,23 @@ async function create(req, res) {
   res.ok(await adminUserService.create(req.auth, input))
 }
 
+/** PUT /admin/admin-users/:id —— 编辑基本信息 */
+async function update(req, res) {
+  const { username } = validate(updateSchema, req.body)
+  res.ok(await adminUserService.updateAccount(req.auth, Number(req.params.id), { username }))
+}
+
+/** PUT /admin/admin-users/:id/role —— 修改角色 */
+async function updateRole(req, res) {
+  const { role } = validate(roleSchema, req.body)
+  res.ok(await adminUserService.updateRole(req.auth, Number(req.params.id), role))
+}
+
+/** DELETE /admin/admin-users/:id —— 软删除账号 */
+async function remove(req, res) {
+  res.ok(await adminUserService.removeAccount(req.auth, Number(req.params.id)))
+}
+
 /** PUT /admin/admin-users/:id/status */
 async function updateStatus(req, res) {
   const { status } = validate(statusSchema, req.body)
@@ -76,4 +105,14 @@ async function listGrantedProjects(req, res) {
   res.ok({ projectIds: await adminUserService.listGrantedProjects(req.auth, Number(req.params.id)) })
 }
 
-module.exports = { list, create, updateStatus, resetPassword, grantProjects, listGrantedProjects }
+module.exports = {
+  list,
+  create,
+  update,
+  updateRole,
+  remove,
+  updateStatus,
+  resetPassword,
+  grantProjects,
+  listGrantedProjects,
+}

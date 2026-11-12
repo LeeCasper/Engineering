@@ -58,6 +58,23 @@ function assertManageable(operator, target) {
   }
 }
 
+/**
+ * 校验操作者是租户管理员。
+ *
+ * 编辑 / 改角色 / 删除三项都是**租户级**能力：§5.1 的角色能力表把
+ * 「授予后台角色」与账号删除都划给租户管理员，项目管理员连自己创建的下属
+ * 也不能改角色或删除 —— 否则项目管理员可以把自己的下属提成租户管理员，
+ * 或删掉上司的账号，两条都是提权路径。B-1.10 / AC-AD50 要求这三类操作
+ * 对租户管理员账号一律 403；这里更进一步，直接按「仅租户管理员」实现。
+ *
+ * 平台账号（排障窗口）在 `requireTenant` 就已被只读拦住，与角色是两回事。
+ */
+function assertTenantOwner(operator) {
+  if (!operator || operator.role !== 'owner') {
+    throw AppError.forbidden('仅租户管理员可管理账号')
+  }
+}
+
 /** 列表。项目管理员只看自己创建的下属（AC-AD47） */
 async function list(operator, query) {
   const paging = query.paging
@@ -213,6 +230,121 @@ async function resetPassword(operator, targetId, newPassword) {
 }
 
 /**
+ * 编辑账号基本信息（B-1.3 的「编辑」）。
+ *
+ * `admin_user` 只有 `username` 一项可编辑的展示信息 —— 这张表里没有姓名、
+ * 手机号字段（后台账号靠用户名 + 密码登录，人员资料在 C 端 `user` 表）。
+ * 因此本接口只改用户名，且同样只能在本租户内查重。
+ */
+async function updateAccount(operator, targetId, { username }) {
+  assertTenantOwner(operator)
+
+  const target = await adminUserModel.findById(targetId)
+  assertManageable(operator, target)
+
+  // 改回原值视为成功：前端弹窗常常是「打开 → 直接保存」，
+  // 因此这里返 409「已存在」会让用户莫名其妙
+  if (target.username === username) return toPublic(target)
+
+  const existing = await adminUserModel.findByUsernameInTenant(username, operator.tenantId)
+  if (existing && existing.id !== targetId) throw AppError.conflict('用户名已存在')
+
+  try {
+    await adminUserModel.updateUsername(targetId, username)
+  } catch (err) {
+    // 预检与写入之间有并发窗口，最终依据是数据库唯一键（迁移 037 只约束未删除行）
+    if (err && err.code === 'ER_DUP_ENTRY') throw AppError.conflict('用户名已存在')
+    throw err
+  }
+
+  await operationLog.record({
+    ...operationLog.fromOperator(operator),
+    action: operationLog.ACTIONS.ADMIN_USER_UPDATE,
+    targetType: 'admin_user',
+    targetId,
+    detail: {
+      before: { username: target.username },
+      after: { username },
+    },
+  })
+
+  return toPublic(await adminUserModel.findById(targetId))
+}
+
+/**
+ * 修改角色（B-1.3 / B-1.10 / AC-AD50）。
+ *
+ * 只能改自己租户内的账号，且不能改自己（assertManageable），
+ * 否则租户管理员可以自我降级 / 自我提权绕过专门接口。
+ */
+async function updateRole(operator, targetId, role) {
+  assertTenantOwner(operator)
+
+  const target = await adminUserModel.findById(targetId)
+  assertManageable(operator, target)
+
+  if (target.role === role) throw AppError.conflict('账号已是该角色')
+
+  // 降级最后一个租户管理员会让租户失去账号管理能力：没有人能再建号、
+  // 改角色或删号，只能等平台运营介入。与「不能操作自己」是同一条保护的两面。
+  if (target.role === 'owner' && role !== 'owner') {
+    const owners = await adminUserModel.countActiveOwners(target.tenant_id)
+    if (owners <= 1) throw AppError.conflict('不能降级最后一个租户管理员')
+  }
+
+  await adminUserModel.updateRole(targetId, role)
+
+  await operationLog.record({
+    ...operationLog.fromOperator(operator),
+    action: operationLog.ACTIONS.ADMIN_USER_ROLE,
+    targetType: 'admin_user',
+    targetId,
+    detail: {
+      before: { username: target.username, role: target.role },
+      after: { username: target.username, role },
+    },
+  })
+
+  return { id: targetId, role }
+}
+
+/**
+ * 删除账号（B-1.3 的「删除」，B-1.10 / AC-AD50）。
+ *
+ * 走软删除：operation_log、admin_login_log、project.created_by 都引用
+ * `admin_user.id`，物理删除会把审计链切断。软删同时禁用账号并自增
+ * token_version，已签发的 token 下一次请求即失效（AC-AD07 同一机制）。
+ * 微信免密绑定显式撤销，否则小程序管理端会保留一个已删账号的入口。
+ */
+async function removeAccount(operator, targetId) {
+  assertTenantOwner(operator)
+
+  const target = await adminUserModel.findById(targetId)
+  assertManageable(operator, target)
+
+  if (target.role === 'owner') {
+    const owners = await adminUserModel.countActiveOwners(target.tenant_id)
+    if (owners <= 1) throw AppError.conflict('不能删除最后一个租户管理员')
+  }
+
+  await adminUserModel.softDelete(targetId)
+  await adminWechatBindingModel.revokeAllForAdmin(targetId, 'admin_deleted')
+
+  await operationLog.record({
+    ...operationLog.fromOperator(operator),
+    action: operationLog.ACTIONS.ADMIN_USER_DELETE,
+    targetType: 'admin_user',
+    targetId,
+    detail: {
+      before: { username: target.username, role: target.role, status: target.status, deleted: false },
+      after: { username: target.username, deleted: true },
+    },
+  })
+
+  return { id: targetId }
+}
+
+/**
  * 授予项目数据权限范围（B-5.4 / G-19）。
  * 仅租户管理员可操作（AC-AD52 的数据权限模型）。
  */
@@ -298,4 +430,15 @@ function toPublic(row) {
   }
 }
 
-module.exports = { assertManageable, list, create, updateStatus, resetPassword, grantProjects, listGrantedProjects }
+module.exports = {
+  assertManageable,
+  list,
+  create,
+  updateAccount,
+  updateRole,
+  removeAccount,
+  updateStatus,
+  resetPassword,
+  grantProjects,
+  listGrantedProjects,
+}
