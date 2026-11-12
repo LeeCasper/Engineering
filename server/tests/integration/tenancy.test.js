@@ -416,6 +416,9 @@ describe('P1 · 意见反馈：列表按租户，处理按租户校验', () => {
     const projA = await createProject(a.token, 'A 的项目', tplA)
 
     const user = await mini.login(`tenancy-feedback-${nextSeq()}`)
+    // 反馈服务要求「带 projectId 的反馈」提交者必须是该项目的 active 成员，
+    // 否则任何微信用户都能把反馈与审计写进别人的租户（feedback.service 的注释）
+    await mini.addMember({ projectId: projA, userId: user.userId, role: 'owner' })
     const submitted = await request
       .authed('post', '/feedback', user.token)
       .field('content', '这个项目的进度照片打不开')

@@ -58,11 +58,12 @@ async function downloadPdf(req, res) {
   })
 
   const row = await reportModel.findByProject(projectId)
-  if (!row || row.status !== 'success' || !row.file_url) {
+  if (!row || row.status !== 'success' || (!row.file_url && !row.file_key)) {
     throw AppError.notFound('竣工总报告尚未生成')
   }
 
-  const buffer = await storage.read(row.file_url)
+  // 新数据走私有存储；历史数据只有公开 file_url
+  const buffer = row.file_key ? await storage.readPrivate(row.file_key) : await storage.read(row.file_url)
   res.setHeader('Content-Type', 'application/pdf')
   res.setHeader('Cache-Control', 'no-store')
   res.setHeader('Content-Disposition', `inline; filename="project-completion-${projectId}.pdf"`)

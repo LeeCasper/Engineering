@@ -82,9 +82,17 @@ async function generate(reconciliationId) {
     : [null, []]
 
   const buffer = await render({ reconciliation, details, project, stage, paymentNodes })
-  const saved = await storage.saveGenerated(buffer, { category: 'settlements', ext: 'pdf' })
 
-  await reconciliationModel.updatePdf(reconciliationId, { url: saved.url, generatedAt: datetime.format() })
+  // 私有存储：结算单含金额明细，只允许经 2 小时签名 URL 下载（AC-L24）。
+  // 历史数据里的公开 URL 保持不变，下载入口会按 settlement_pdf_private 分支读取。
+  const saved = await storage.savePrivate(buffer, { category: 'settlements', ext: 'pdf' })
+
+  await reconciliationModel.updatePdf(reconciliationId, {
+    url: null,
+    key: saved.key,
+    private: true,
+    generatedAt: datetime.format(),
+  })
 
   logger.info('结算单已生成', { reconciliationId, sizeBytes: saved.sizeBytes })
   return saved

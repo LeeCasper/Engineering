@@ -18,6 +18,7 @@ const platformAccessService = require('../services/platformAccess.service')
 const adminUserModel = require('../models/adminUser.model')
 const tenantModel = require('../models/tenant.model')
 const datetime = require('../utils/datetime')
+const { userRateLimit } = require('./rateLimit')
 
 /** 平台持授权进入租户时，这些方法一律拒绝（只读窗口） */
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -108,7 +109,9 @@ async function requireAdmin(req, res, next) {
       requestId: req.id || null,
     }
 
-    return next()
+    // 鉴权之后按用户计数（§8.2「单用户 60 次/分钟」）。与 C 端同一套实现，
+    // 计数键带 auth.type，C 端与管理端账号 id 撞号时不会互相吃掉配额。
+    return userRateLimit(req, res, next)
   } catch (err) {
     return next(err)
   }

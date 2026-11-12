@@ -14,6 +14,7 @@
 const AppError = require('../utils/AppError')
 const jwt = require('../utils/jwt')
 const userModel = require('../models/user.model')
+const { userRateLimit } = require('./rateLimit')
 
 /**
  * 要求 C 端登录态。
@@ -44,7 +45,10 @@ async function requireMini(req, res, next) {
       requestId: req.id || null,
     }
 
-    return next()
+    // 鉴权之后按用户计数（§8.2「单用户 60 次/分钟」）。
+    // 必须在 req.auth 写入之后：限流键取用户 id，不取 IP ——
+    // 同一办公室的自然人共用一个出口 IP，按 IP 会互相误伤。
+    return userRateLimit(req, res, next)
   } catch (err) {
     return next(err)
   }

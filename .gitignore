@@ -6,6 +6,9 @@ node_modules/
 .env
 .env.local
 .env.*.local
+# 例外：管理后台的 Vite 变量全部是前端公开配置（成功码、路由模式、标题），
+# 不含任何密钥，且缺了它仓库构建出来就是坏的 —— 必须入库。
+!admin/.env
 
 # 上传的文件（本地存储适配器）
 server/uploads/
@@ -16,8 +19,11 @@ server/private-esign/
 server/private-esign-test/
 
 # 构建产物
+# 注意：`admin/build/` 是**源码目录**（vite.config.ts 从这里 import 插件与配置），
+# 不能被 `build/` 这种通配规则忽略，否则新克隆的仓库根本构建不了。
+# 这里只忽略仓库根目录下的构建输出。
 dist/
-build/
+/build/
 unpackage/
 .output/
 

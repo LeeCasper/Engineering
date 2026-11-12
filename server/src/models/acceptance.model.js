@@ -269,7 +269,9 @@ async function appendFlow(
  */
 async function listPostPassPending(limit = 100) {
   return db.query(
-    `SELECT id, project_id, project_stage_id, signature_mode, report_pdf_status
+    // `type` 必须带上：finalizeAfterPass 靠它判断「阶段验收要补生成阶段结算草稿」。
+    // 之前只选了阶段 id，补跑时 type 恒为 undefined，草稿生成被静默跳过却仍标记 done。
+    `SELECT id, type, project_id, project_stage_id, signature_mode, report_pdf_status
        FROM acceptance
       WHERE status = 'passed' AND deleted_at IS NULL
         AND post_pass_status IN ('pending', 'failed')
