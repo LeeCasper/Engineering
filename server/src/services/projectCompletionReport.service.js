@@ -257,7 +257,9 @@ async function buildSnapshot(project) {
 
   const itemCount = stages.reduce((sum, stage) => sum + (stage.items ? stage.items.length : 0), 0)
   const legacySignatureCount = acceptances.filter(
-    (acceptance) => acceptance.signature_mode !== 'provider' && Boolean(acceptance.signature_url)
+    (acceptance) =>
+      acceptance.signature_mode !== 'provider' &&
+      Boolean(acceptance.signature_url || acceptance.signature_key)
   ).length
   const esignCount = acceptances.filter(
     (acceptance) => acceptance.signature_mode === 'provider' || acceptance.esign_status === 'signed'
@@ -310,7 +312,7 @@ function signatureLabel(acceptance) {
   if (acceptance.signature_mode === 'provider' || acceptance.esign_status === 'signed') {
     return '可靠电子签'
   }
-  if (acceptance.signature_url) return '手写签名'
+  if (acceptance.signature_url || acceptance.signature_key) return '手写签名'
   return '—'
 }
 

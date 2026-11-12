@@ -49,7 +49,7 @@ async function list(operator, projectId) {
       submitter: row.submitter_nickname || null,
       submittedAt: row.submitted_at,
       finishedAt: row.finished_at,
-      hasSignature: Boolean(row.signature_url) || row.esign_status === 'signed',
+      hasSignature: Boolean(row.signature_url || row.signature_key) || row.esign_status === 'signed',
       signatureMode: row.signature_mode || 'legacy',
       esignStatus: row.esign_status || null,
       // 与 PDF 上印的编号一致：旧报告是回填的 AC-{id}，新报告是日期+项目+id；

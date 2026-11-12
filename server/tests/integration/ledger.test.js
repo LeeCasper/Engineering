@@ -196,7 +196,7 @@ describe('AC-L01 ~ L06 流水记录', () => {
     expect(res.status).toBe(200)
     expect(res.body.data.receiptImages).toHaveLength(3)
     // 原图与带水印版本都要留（与进度汇报同一套理由：AC-P12 的不可绕过）
-    expect(res.body.data.receiptImages[0].originalUrl).toBeTruthy()
+    expect(res.body.data.receiptImages[0].originalUrl).toContain('/api/v1/files?')
     expect(res.body.data.receiptImages[0].url).not.toBe(res.body.data.receiptImages[0].originalUrl)
   })
 

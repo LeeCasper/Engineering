@@ -157,14 +157,25 @@ async function assertProjectWritable(projectId, tx) {
 /**
  * 保存手写签名图片。
  *
- * 签名与流转记录一一对应，因此和业主签名使用同一个存储分类；
- * 图片是普通公开上传（与现有业主签名一致），PDF 渲染器可以直接读取。
+ * 走**私有存储**：签名是姓名笔迹，属于纠纷时的关键证据，不能被
+ * express.static 公开访问。返回 storage key，阅读侧统一经 2 小时签名 URL 展示
+ * （`GET /api/v1/files`），PDF 渲染直接读私有文件。
+ *
+ * 历史数据里只有 `signature_url`（公开地址），阅读侧按「有 key 用 key，
+ * 无 key 用旧 URL」兼容，不做数据迁移。
  */
 async function saveSignature(file) {
   if (!file) return null
   if (file.type !== 'image') throw AppError.badRequest('签名必须是图片')
-  const saved = await storage.save(file.buffer, { category: 'signatures', ext: file.ext })
-  return saved.url
+  const saved = await storage.savePrivate(file.buffer, { category: 'signatures', ext: file.ext })
+  return saved.key
+}
+
+/** 把签名 key / 历史公开 URL 统一转成前端可用的地址 */
+function signatureViewUrl(row) {
+  if (!row) return null
+  if (row.signature_key) return signedUrl.buildPrivateFileUrl(row.signature_key)
+  return row.signature_url || null
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -422,7 +433,7 @@ async function submitSelfCheck(userId, acceptanceId, input) {
     const round = acceptanceModel.currentRound(acceptance)
 
     // 自检项全部通过后才写文件：校验失败时不留下孤立签名
-    const signatureUrl = await saveSignature(input.signatureFile)
+    const signatureKey = await saveSignature(input.signatureFile)
 
     await acceptanceModel.appendFlow(
       {
@@ -432,7 +443,7 @@ async function submitSelfCheck(userId, acceptanceId, input) {
         operatorId: userId,
         action: 'submit',
         reason: trimmedDescription ? '工长自检完成' : null,
-        signatureUrl,
+        signatureKey,
       },
       tx
     )
@@ -527,10 +538,10 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
     const round = acceptanceModel.currentRound(acceptance)
 
     // 锁行并复核状态后再写文件，避免并发竞争失败时留下孤立签名
-    const signatureUrl = await saveSignature(signatureFile)
+    const signatureKey = await saveSignature(signatureFile)
 
     await acceptanceModel.appendFlow(
-      { acceptanceId, round, step, operatorId: userId, action: 'approve', signatureUrl },
+      { acceptanceId, round, step, operatorId: userId, action: 'approve', signatureKey },
       tx
     )
 
@@ -539,7 +550,7 @@ async function approve(userId, acceptanceId, { signatureFile } = {}) {
       const affected = await acceptanceModel.markPassed(
         acceptanceId,
         {
-          signatureUrl,
+          signatureKey,
           finishedAt: datetime.format(),
           esignStatus: 'legacy',
           esignCompletedAt: datetime.format(),
@@ -688,7 +699,7 @@ async function resubmit(userId, acceptanceId, input = {}) {
     // 错误地归到上一轮里，流程记录读起来就像没重新提交过
     const round = acceptanceModel.currentRound(acceptance) + 1
 
-    const signatureUrl = await saveSignature(input.signatureFile)
+    const signatureKey = await saveSignature(input.signatureFile)
 
     await acceptanceModel.appendFlow(
       {
@@ -698,7 +709,7 @@ async function resubmit(userId, acceptanceId, input = {}) {
         operatorId: userId,
         action: 'submit',
         reason: '工长整改完成，重新提交',
-        signatureUrl,
+        signatureKey,
       },
       tx
     )
@@ -822,9 +833,16 @@ async function getDetail(userId, acceptanceId) {
     hasSupervisor: supervisorCount > 0,
     providerMode: acceptance.signature_mode === 'provider' || Boolean(esign && esign.required),
     providerSigned: acceptance.esign_status === 'signed',
-    ownerFallback: acceptance.signature_url
-      ? { signatureUrl: acceptance.signature_url, signedAt: acceptance.finished_at }
-      : null,
+    ownerFallback:
+      acceptance.signature_url || acceptance.signature_key
+        ? {
+            // 新数据只有私有 key；历史数据只有公开 URL。两者都不下发原始值，
+            // 由 signatureViewUrl 统一换成带时效的地址 / 保留旧 URL。
+            signatureUrl: acceptance.signature_key ? null : acceptance.signature_url,
+            signatureKey: acceptance.signature_key || null,
+            signedAt: acceptance.finished_at,
+          }
+        : null,
     status: acceptance.status,
   })
 
@@ -865,7 +883,7 @@ async function getDetail(userId, acceptanceId) {
     waitingHours: waitingHours(acceptance.step_entered_at, acceptance.status),
     resubmitCount: acceptance.resubmit_count,
     finishedAt: acceptance.finished_at,
-    signatureUrl: acceptance.signature_url,
+    signatureUrl: signatureViewUrl(acceptance),
     reportPdf: {
       status: acceptance.report_pdf_status,
       // 不再下发 `url`：报告已改私有存储，这里如果继续返回永久公开地址，
@@ -916,7 +934,7 @@ function toFlowView(row) {
     actionLabel: { submit: '提交', approve: '通过', reject: '驳回' }[row.action] || row.action,
     reason: row.reason,
     esignTaskId: row.esign_task_id ?? null,
-    signatureUrl: row.signature_url || null,
+    signatureUrl: signatureViewUrl(row),
     images: (parseJson(row.images) || []).map((img) => ({
       url: img.watermarkUrl || img.url,
       originalUrl: img.watermarkUrl ? img.url : null,
@@ -996,7 +1014,7 @@ async function listAcceptances(userId, projectId) {
     resubmitCount: row.resubmit_count,
     finishedAt: row.finished_at,
     rejectCount: Number(row.reject_count),
-    hasSignature: Boolean(row.signature_url) || row.esign_status === 'signed',
+    hasSignature: Boolean(row.signature_url || row.signature_key) || row.esign_status === 'signed',
     esignStatus: row.esign_status || null,
     reportPdfStatus: row.report_pdf_status,
     reportNo:
@@ -1089,7 +1107,7 @@ async function inbox(userId) {
       waitingHours: waitingHours(row.step_entered_at, row.status),
       finishedAt: row.finished_at,
       rejectCount: Number(row.reject_count),
-      hasSignature: Boolean(row.signature_url) || row.esign_status === 'signed',
+      hasSignature: Boolean(row.signature_url || row.signature_key) || row.esign_status === 'signed',
       esignStatus: row.esign_status || null,
       reportPdfStatus: row.report_pdf_status,
       stageProgress: row.stage_progress,

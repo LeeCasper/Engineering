@@ -47,6 +47,9 @@ router.get(
 
 router.use('/admin', require('./admin/index'))
 
+// 私有文件签名下载（手写签名、票据照片）。放在鉴权之前：图片请求带不了 Authorization。
+router.use('/files', require('./mini/privateFile.routes'))
+
 // C 端路径逐字照搬 §7.3，因此这里用 '/' 挂载而不是加前缀
 router.use('/auth', require('./mini/auth.routes'))
 router.use('/branding', require('./mini/branding.routes'))

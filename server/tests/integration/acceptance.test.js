@@ -637,11 +637,23 @@ describe('AC-A16 / AC-A17 电子签名', () => {
 
     expect(approved.status).toBe(200)
     expect(approved.body.data.status).toBe('passed')
-    expect(approved.body.data.signatureUrl).toContain('/uploads/signatures/')
+    // 签名改私有存储：接口下发的是带 HMAC 的短时地址，不再是 /uploads 永久直链
+    expect(approved.body.data.signatureUrl).toContain('/api/v1/files?')
 
-    // 文件真的存在
-    const key = approved.body.data.signatureUrl.split('/uploads/')[1]
-    expect(fs.existsSync(path.join(config.upload.dir, key))).toBe(true)
+    const row = await db.queryOne('SELECT signature_key FROM acceptance WHERE id = ?', [id])
+    expect(row.signature_key).toContain('signatures/')
+    // 文件落在私有目录
+    expect(fs.existsSync(path.join(config.esign.privateDir, row.signature_key))).toBe(true)
+
+    // 签名地址真的能下载到图片，且无需登录态
+    // request helper 会自动补 API 前缀，所以这里截到 /files 为止
+    const signedPath = approved.body.data.signatureUrl.replace(
+      `${config.upload.publicBaseUrl}${config.server.apiPrefix}`,
+      ''
+    )
+    const image = await request.binary('get', signedPath)
+    expect(image.status).toBe(200)
+    expect(image.headers['content-type']).toContain('image/')
   })
 
   it('监理环节通过必须签名', async () => {
@@ -705,7 +717,9 @@ describe('三方签署（工长 / 监理 / 业主）', () => {
 
     for (const step of ['self_check', 'supervisor', 'owner']) {
       const entry = detail.body.data.flow.find((item) => item.step === step)
-      expect(entry.signatureUrl).toContain('/uploads/signatures/')
+      // 私有存储的签名以短时签名 URL 下发（绝对地址，可直接给 <image src>）
+      expect(entry.signatureUrl).toContain('/api/v1/files?')
+      expect(entry.signatureUrl).toContain('sig=')
     }
   })
 
@@ -763,13 +777,16 @@ describe('三方签署（工长 / 监理 / 业主）', () => {
     expect(signedResubmit.status).toBe(200)
 
     const submitRows = await db.query(
-      "SELECT round, signature_url FROM acceptance_flow WHERE acceptance_id = ? AND action = 'submit' ORDER BY id",
+      "SELECT round, signature_url, signature_key FROM acceptance_flow WHERE acceptance_id = ? AND action = 'submit' ORDER BY id",
       [id]
     )
     expect(submitRows.map((row) => row.round)).toEqual([1, 2])
-    expect(submitRows[0].signature_url).toBeTruthy()
-    expect(submitRows[1].signature_url).toBeTruthy()
-    expect(submitRows[0].signature_url).not.toBe(submitRows[1].signature_url)
+    expect(submitRows[0].signature_key).toBeTruthy()
+    expect(submitRows[1].signature_key).toBeTruthy()
+    expect(submitRows[0].signature_key).not.toBe(submitRows[1].signature_key)
+    // 新数据不再写公开 URL
+    expect(submitRows[0].signature_url).toBeNull()
+    expect(submitRows[1].signature_url).toBeNull()
 
     const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
     expect(detail.body.data.signatures.round).toBe(2)
@@ -780,7 +797,11 @@ describe('三方签署（工长 / 监理 / 业主）', () => {
     const ctx = await setup({ withSupervisor: false })
     const id = await passThrough(ctx)
 
-    await db.query('UPDATE acceptance_flow SET signature_url = NULL WHERE acceptance_id = ?', [id])
+    // 模拟迁移 036 之前的历史单据：flow 上没有签名（新旧字段都为 NULL）
+    await db.query(
+      'UPDATE acceptance_flow SET signature_url = NULL, signature_key = NULL WHERE acceptance_id = ?',
+      [id]
+    )
 
     const detail = await mini.authed('get', `/acceptances/${id}`, ctx.owner.token)
     const signatures = detail.body.data.signatures
@@ -930,9 +951,14 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
     // 测不到「失败被记录成 failed」这个真正要验的行为。
     // 打桩打在 render 之后的落盘步骤上，才能走完真实的失败路径
     // 报告已改私有存储，落盘走 savePrivate，因此打桩点也必须是它
+    // 签名也走 savePrivate，因此只让**报告归档**这一类失败，
+    // 否则会连带把自检签名打挂，验收单根本到不了 passed
     const originalSavePrivate = storage.savePrivate
-    storage.savePrivate = async () => {
-      throw new Error('模拟的磁盘写入失败')
+    storage.savePrivate = async (buffer, options) => {
+      if (options && options.category === 'acceptance-reports') {
+        throw new Error('模拟的磁盘写入失败')
+      }
+      return originalSavePrivate(buffer, options)
     }
 
     try {
