@@ -63,7 +63,7 @@ async function findById(id, tx = db) {
     // 而 AC-A18 要求报告 PDF 必须包含现场照片
     `SELECT id, project_id, project_stage_id, project_item_id, type, status, submitter_id,
             submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
-            signature_url, signature_mode, esign_status, esign_task_id, esign_completed_at,
+            signature_url, signature_key, signature_mode, esign_status, esign_task_id, esign_completed_at,
             report_pdf_url, report_pdf_key, report_pdf_private, report_pdf_sha256,
             report_pdf_source, report_pdf_status, report_pdf_error, report_no,
             post_pass_status, post_pass_error, post_pass_done_at, description, photos,
@@ -78,7 +78,7 @@ async function lockById(tx, id) {
   const rows = await tx.query(
     `SELECT id, project_id, project_stage_id, project_item_id, type, status, submitter_id,
             submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
-            signature_url, signature_mode, esign_status, esign_task_id, esign_completed_at,
+            signature_url, signature_key, signature_mode, esign_status, esign_task_id, esign_completed_at,
             report_pdf_url, report_pdf_key, report_pdf_private, report_pdf_sha256,
             report_pdf_source, report_pdf_status, report_pdf_error, report_no
        FROM acceptance WHERE id = ? AND deleted_at IS NULL FOR UPDATE`,
@@ -107,11 +107,11 @@ async function transition(id, { status, currentStep, stepEnteredAt, isFirstSubmi
 }
 
 /** 验收通过：终态 + 签名 + 完成时间。条件更新防止并发回调把已驳回的单子改成 passed。 */
-async function markPassed(id, { signatureUrl, finishedAt, esignTaskId, esignStatus, esignCompletedAt }, tx) {
+async function markPassed(id, { signatureUrl, signatureKey, finishedAt, esignTaskId, esignStatus, esignCompletedAt }, tx) {
   const result = await tx.query(
     `UPDATE acceptance
         SET status = 'passed', current_step = NULL, step_entered_at = NULL,
-            signature_url = ?, finished_at = ?,
+            signature_url = ?, signature_key = ?, finished_at = ?,
             esign_task_id = COALESCE(?, esign_task_id),
             esign_status = COALESCE(?, esign_status),
             esign_completed_at = COALESCE(?, esign_completed_at),
@@ -119,6 +119,7 @@ async function markPassed(id, { signatureUrl, finishedAt, esignTaskId, esignStat
       WHERE id = ? AND status = 'pending_owner'`,
     [
       signatureUrl ?? null,
+      signatureKey ?? null,
       finishedAt,
       esignTaskId ?? null,
       esignStatus ?? null,
@@ -241,13 +242,13 @@ async function saveItemResults(acceptanceId, results, tx) {
  * 数据库层管不了这件事（MySQL 没有表级只读约束），只能靠这里不提供入口。
  */
 async function appendFlow(
-  { acceptanceId, round, step, operatorId, action, reason, images, esignTaskId, signatureUrl },
+  { acceptanceId, round, step, operatorId, action, reason, images, esignTaskId, signatureUrl, signatureKey },
   tx = db
 ) {
   const result = await tx.query(
     `INSERT INTO acceptance_flow
-       (acceptance_id, round, step, operator_id, action, reason, images, esign_task_id, signature_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (acceptance_id, round, step, operator_id, action, reason, images, esign_task_id, signature_url, signature_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       acceptanceId,
       round,
@@ -258,6 +259,7 @@ async function appendFlow(
       images ? JSON.stringify(images) : null,
       esignTaskId ?? null,
       signatureUrl ?? null,
+      signatureKey ?? null,
     ]
   )
   return result.insertId
@@ -286,7 +288,7 @@ async function listPostPassPending(limit = 100) {
 async function listFlow(acceptanceId) {
   return db.query(
     `SELECT f.id, f.round, f.step, f.operator_id, f.action, f.reason, f.images, f.esign_task_id,
-            f.signature_url, f.operated_at, u.nickname, u.real_name
+            f.signature_url, f.signature_key, f.operated_at, u.nickname, u.real_name
        FROM acceptance_flow f
        LEFT JOIN user u ON u.id = f.operator_id
       WHERE f.acceptance_id = ?
@@ -340,7 +342,7 @@ const LIST_FROM = `
 const LIST_COLUMNS = `
             a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
             a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at, a.resubmit_count,
-            a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
+            a.finished_at, a.signature_url, a.signature_key, a.signature_mode, a.esign_status,
             a.report_pdf_status, a.report_pdf_error, a.report_no, a.created_at,
             s.name AS stage_name, i.name AS item_name,
             u.nickname AS submitter_nickname, u.real_name AS submitter_real_name,
@@ -480,7 +482,7 @@ async function listInboxForUser(userId) {
   return db.query(
     `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
             a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at,
-            a.resubmit_count, a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
+            a.resubmit_count, a.finished_at, a.signature_url, a.signature_key, a.signature_mode, a.esign_status,
             a.report_pdf_status, a.created_at,
             p.tenant_id, t.name AS tenant_name,
             p.name AS project_name, p.address AS project_address, p.status AS project_status,
@@ -591,7 +593,7 @@ async function listPassedByProject(projectId) {
   return db.query(
     `SELECT a.id, a.type, a.project_stage_id, a.project_item_id, a.status,
             a.resubmit_count, a.submitted_at, a.finished_at,
-            a.signature_mode, a.signature_url, a.esign_status,
+            a.signature_mode, a.signature_url, a.signature_key, a.esign_status,
             a.report_pdf_status,
             s.name AS stage_name, s.seq AS stage_seq,
             i.name AS item_name

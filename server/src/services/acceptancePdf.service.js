@@ -170,8 +170,11 @@ async function buildForSign(acceptanceId) {
       operator: row.real_name || row.nickname || `用户${row.operator_id}`,
       reason: row.reason,
       operatedAt: row.operated_at,
-      // 服务商签署的 PDF 里也要保留工长 / 监理的手写签名
-      signatureUrl: row.signature_url || null,
+      // 服务商签署的 PDF 里也要保留工长 / 监理的手写签名。
+      // 私有 key 优先：冻结文档可能在几天后重新渲染，不能把 2 小时就失效的
+      // 签名 URL 写进快照。
+      signatureUrl: row.signature_key ? null : row.signature_url || null,
+      signatureKey: row.signature_key || null,
     })),
     photos: photoUrls,
   }
@@ -441,9 +444,14 @@ function render({ acceptance, items, flow, project, stage, photoUrls, hasSupervi
         providerMode:
           acceptance.signature_mode === 'provider' || acceptance.esign_status === 'signed',
         providerSigned: acceptance.esign_status === 'signed',
-        ownerFallback: acceptance.signature_url
-          ? { signatureUrl: acceptance.signature_url, signedAt: acceptance.finished_at }
-          : null,
+        ownerFallback:
+          acceptance.signature_url || acceptance.signature_key
+            ? {
+                signatureUrl: acceptance.signature_key ? null : acceptance.signature_url,
+                signatureKey: acceptance.signature_key || null,
+                signedAt: acceptance.finished_at,
+              }
+            : null,
         status: acceptance.status,
       })
 
@@ -959,20 +967,19 @@ function drawSignatureCards(doc, signatures, addPage) {
     const imageWidth = cardWidth - 24
     const imageHeight = 50
 
-    if (signature.signatureUrl) {
-      const buffer = storageBufferSync(signature.signatureUrl)
-      if (buffer) {
-        doc.image(buffer, imageX, imageY, {
-          fit: [imageWidth, imageHeight],
-          align: 'center',
-          valign: 'center',
-        })
-      } else {
-        doc
-          .fillColor(COLORS.muted)
-          .fontSize(8)
-          .text('签名图片加载失败', imageX, imageY + 18, { width: imageWidth, align: 'center' })
-      }
+    const signatureImage = signatureBuffer(signature)
+    if (signatureImage) {
+      doc.image(signatureImage, imageX, imageY, {
+        fit: [imageWidth, imageHeight],
+        align: 'center',
+        valign: 'center',
+      })
+    } else if (signature.signatureUrl || signature.signatureKey) {
+      // 有签名记录但图片读不出来：显式提示，避免看起来像「没签」
+      doc
+        .fillColor(COLORS.muted)
+        .fontSize(8)
+        .text('签名图片加载失败', imageX, imageY + 18, { width: imageWidth, align: 'center' })
     } else if (signature.state === 'provider') {
       doc
         .fillColor(COLORS.muted)
@@ -1067,8 +1074,17 @@ function renderSignatureBlock(doc, signature) {
     doc.fillColor('#000000')
   }
 
-  if (signature.signatureUrl) {
-    renderImages(doc, [signature.signatureUrl], '签名图片加载失败', { maxHeight: 80 })
+  const signatureImage = signatureBuffer(signature)
+  if (signatureImage) {
+    if (doc.y > doc.page.height - 120) doc.addPage()
+    doc.image(signatureImage, { fit: [CONTENT_WIDTH, 80] })
+    doc.moveDown(0.5)
+  } else if (signature.signatureUrl || signature.signatureKey) {
+    doc
+      .fontSize(9)
+      .fillColor('#666666')
+      .text('签名图片加载失败')
+    doc.fillColor('#000000')
   } else if (signature.state === 'provider') {
     doc
       .fontSize(9)
@@ -1139,6 +1155,26 @@ function renderImages(doc, urls, failHint, { maxHeight = 200, gap = 10 } = {}) {
  * 而整份报告是在一个同步的渲染流程里拼出来的。图片总量有限（验收照片 + 签名），
  * 同步读文件的开销可以接受。
  */
+/**
+ * 取签名图片的字节。
+ *
+ * 新数据在私有存储里（signatureKey），历史数据是公开上传目录里的 URL。
+ * 两种都要支持 —— 迁移 036 之前的单据只有 URL。
+ */
+function signatureBuffer(signature) {
+  if (!signature) return null
+  if (signature.signatureKey) {
+    try {
+      return storage.readPrivateSync(signature.signatureKey)
+    } catch (err) {
+      logger.warn('读取私有签名图片失败', { key: signature.signatureKey, message: err.message })
+      return null
+    }
+  }
+  if (signature.signatureUrl) return storageBufferSync(signature.signatureUrl)
+  return null
+}
+
 function storageBufferSync(url) {
   const key = storage.extractKey(url)
   const path = require('node:path').join(config.upload.dir, key)

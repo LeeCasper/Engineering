@@ -26,6 +26,7 @@ const db = require('../db/pool')
 const logger = require('../utils/logger')
 const storage = require('../storage')
 const watermark = require('../utils/watermark')
+const signedUrl = require('../utils/signedUrl')
 const { assertPrimaryOwner } = require('../utils/ownerType')
 const notificationService = require('./notification.service')
 const operationLog = require('./operationLog.service')
@@ -189,14 +190,28 @@ function toLedgerView(row) {
   }
 }
 
+/**
+ * 票据照片转前端可用地址。
+ *
+ * 新数据存的是私有 key（watermarkKey / key），每次读取都重新签一个
+ * 2 小时有效的绝对地址；历史数据仍是公开 url，原样返回。
+ */
 function parseImages(raw) {
   if (!raw) return []
   const list = typeof raw === 'string' ? safeJson(raw) : raw
   if (!Array.isArray(list)) return []
-  return list.map((item) => ({
-    url: item.watermarkUrl || item.url,
-    originalUrl: item.watermarkUrl ? item.url : null,
-  }))
+  return list.map((item) => {
+    const original = item.key
+      ? signedUrl.buildPrivateFileUrl(item.key)
+      : item.url || null
+    const display = item.watermarkKey
+      ? signedUrl.buildPrivateFileUrl(item.watermarkKey)
+      : item.watermarkUrl || original
+    return {
+      url: display,
+      originalUrl: item.watermarkKey || item.watermarkUrl ? original : null,
+    }
+  })
 }
 
 function safeJson(text) {
@@ -859,21 +874,26 @@ async function resolveStageId(projectId, stageId, tx = db) {
   return stage.id
 }
 
-/** 票据照片落盘 + 服务端水印（与汇报照片同一套理由：AC-P12 的不可绕过） */
+/**
+ * 票据照片落盘 + 服务端水印（与汇报照片同一套理由：AC-P12 的不可绕过）。
+ *
+ * 走**私有存储**：票据里有转账账号、金额、户名，属于账务敏感材料。
+ * 只保存 storage key，读取时由 parseImages 签成短时地址。
+ */
 async function persistReceipts(files, project) {
   const images = []
   for (const file of files) {
-    const original = await storage.save(file.buffer, { category: 'receipts', ext: file.ext })
-    let watermarkUrl = null
+    const original = await storage.savePrivate(file.buffer, { category: 'receipts', ext: file.ext })
+    let watermarkKey = null
 
     if (file.type === 'image') {
       const marked = await watermark.apply(file.buffer, {
         lines: [datetime.format(), project.address, '票据凭证'],
       })
-      watermarkUrl = (await storage.save(marked, { category: 'receipts', ext: file.ext })).url
+      watermarkKey = (await storage.savePrivate(marked, { category: 'receipts', ext: file.ext })).key
     }
 
-    images.push({ url: original.url, watermarkUrl })
+    images.push({ key: original.key, watermarkKey })
   }
   return images
 }
