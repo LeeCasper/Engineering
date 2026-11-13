@@ -20,6 +20,10 @@ APP_DIR=${APP_DIR:-/srv/renovation/app}
 BRANCH=${BRANCH:-main}
 OWNER=${OWNER:-renovation}
 LOCK_FILE=${LOCK_FILE:-/var/lock/renovation-deploy.lock}
+# 记录「上一次成功部署到的提交」。它不是 git 跟踪的文件，避免 reset 时被清掉。
+# 上一轮如果在 reset 之后、重启之前失败，工作区已经是新代码、进程却还是旧的；
+# 只比较 OLD..NEW 会漏掉这段差异，导致后端一直不重启。用它作为 diff 的起点。
+MARKER_FILE=${MARKER_FILE:-/srv/renovation/.deployed-commit}
 HEALTH_URL=${HEALTH_URL:-http://127.0.0.1:3100/health}
 NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=2048}
 
@@ -41,14 +45,27 @@ run_as_owner() { sudo -u "$OWNER" -- "$@"; }
 OLD=$(run_as_owner git -C "$APP_DIR" rev-parse HEAD)
 run_as_owner git -C "$APP_DIR" fetch --quiet origin "$BRANCH"
 NEW=$(run_as_owner git -C "$APP_DIR" rev-parse "origin/$BRANCH")
+DEPLOYED=$(cat "$MARKER_FILE" 2>/dev/null || true)
 
-if [ "$OLD" = "$NEW" ]; then
+# 「已是新代码」不等于「已经部署完成」：上一轮可能在 reset 之后、重启之前失败。
+# 只有工作区（OLD）与成功标记（DEPLOYED）都等于 NEW，才算真的没事可做
+if [ "$OLD" = "$NEW" ] && [ "$DEPLOYED" = "$NEW" ]; then
   log "已是最新（${NEW:0:7}），无需部署"
   exit 0
 fi
 
 log "发现新提交 ${OLD:0:7} -> ${NEW:0:7}"
-CHANGED=$(run_as_owner git -C "$APP_DIR" diff --name-only "$OLD" "$NEW")
+
+# diff 的起点用「上次成功部署的提交」；没有标记（首次部署）时退回 OLD
+BASE=$OLD
+if [ -n "$DEPLOYED" ] && run_as_owner git -C "$APP_DIR" cat-file -e "${DEPLOYED}^{commit}" 2>/dev/null; then
+  BASE=$DEPLOYED
+fi
+CHANGED=$(run_as_owner git -C "$APP_DIR" diff --name-only "$BASE" "$NEW")
+# 工作区已经是 NEW 时 reset 是空操作，但 diff 仍要按 BASE 计算
+if [ "$BASE" != "$OLD" ]; then
+  log "上次成功部署停在 ${BASE:0:7}，本轮按 ${BASE:0:7}..${NEW:0:7} 计算变更"
+fi
 
 # .env 在 .gitignore 里，reset 不会动它；uploads / private-esign 也不跟踪
 run_as_owner git -C "$APP_DIR" reset --hard --quiet "$NEW"
@@ -88,6 +105,7 @@ if [ "$server_changed" -eq 1 ]; then
   for _ in $(seq 1 20); do
     if curl -fsS --max-time 3 "$HEALTH_URL" >/dev/null 2>&1; then
       log "健康检查通过"
+      echo "$NEW" > "$MARKER_FILE"
       log "部署完成：${NEW:0:7}"
       exit 0
     fi
@@ -99,4 +117,5 @@ if [ "$server_changed" -eq 1 ]; then
   exit 1
 fi
 
+echo "$NEW" > "$MARKER_FILE"
 log "仅前端有变化，不重启后端。部署完成：${NEW:0:7}"
