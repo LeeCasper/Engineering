@@ -17,7 +17,8 @@ server/private-esign-test/
 
 # 构建产物
 dist/
-build/
+# 只忽略仓库根目录的 build/；admin/build/ 是 Vite 的构建配置源码，必须入库
+/build/
 unpackage/
 .output/
 
