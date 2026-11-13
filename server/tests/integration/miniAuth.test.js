@@ -499,6 +499,37 @@ describe('C-1.2 我的项目列表按角色分组', () => {
     expect(res.body.data.hasCoordinates).toBe(false)
   })
 
+  it('项目详情下发汇报附件上限，跟随租户配置（B-5.5）', async () => {
+    const { token, userId } = await mini.login('code-report-limits')
+    const projectId = await mini.createProject({ name: '附件上限项目' })
+    await mini.addMember({ projectId, userId, role: 'foreman' })
+
+    // 出厂值：后端与 C 端表单读的是同一份配置，前端不再写死 9 张 / 60 秒
+    const before = await mini.authed('get', `/projects/${projectId}`, token)
+    expect(before.status).toBe(200)
+    expect(before.body.data.reportMediaLimits).toEqual({
+      maxImages: 9,
+      maxVideos: 1,
+      maxVideoSeconds: 60,
+    })
+
+    await db.query(
+      `INSERT INTO sys_config (tenant_id, config_key, config_value, scope, description)
+       VALUES (1, 'report_max_images', '4', 'global', 'test')
+       ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`
+    )
+    sysConfigService.invalidate()
+
+    try {
+      const after = await mini.authed('get', `/projects/${projectId}`, token)
+      // 配置改动要立刻反映到 C 端详情；否则表单会继续按旧上限限制用户
+      expect(after.body.data.reportMediaLimits.maxImages).toBe(4)
+    } finally {
+      await db.query("DELETE FROM sys_config WHERE tenant_id = 1 AND config_key = 'report_max_images'")
+      sysConfigService.invalidate()
+    }
+  })
+
   it('项目详情区分主业主与临时业主，ownerName 取主业主（v2.12）', async () => {
     const primary = await mini.login('code-primary-owner-detail')
     await db.query('UPDATE user SET nickname = ? WHERE id = ?', ['主业主张先生', primary.userId])
