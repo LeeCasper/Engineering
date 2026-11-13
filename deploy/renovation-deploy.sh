@@ -43,7 +43,8 @@ cd "$APP_DIR"
 run_as_owner() { sudo -u "$OWNER" -- "$@"; }
 
 OLD=$(run_as_owner git -C "$APP_DIR" rev-parse HEAD)
-run_as_owner git -C "$APP_DIR" fetch --quiet origin "$BRANCH"
+# --tags：ci-green 标签是 CI 全绿后才打上的，部署前必须能看到
+run_as_owner git -C "$APP_DIR" fetch --quiet --tags origin "$BRANCH"
 NEW=$(run_as_owner git -C "$APP_DIR" rev-parse "origin/$BRANCH")
 DEPLOYED=$(cat "$MARKER_FILE" 2>/dev/null || true)
 
@@ -51,6 +52,13 @@ DEPLOYED=$(cat "$MARKER_FILE" 2>/dev/null || true)
 # 只有工作区（OLD）与成功标记（DEPLOYED）都等于 NEW，才算真的没事可做
 if [ "$OLD" = "$NEW" ] && [ "$DEPLOYED" = "$NEW" ]; then
   log "已是最新（${NEW:0:7}），无需部署"
+  exit 0
+fi
+
+# CI 闸门：只有三个 job 全绿、由 workflow 打过 ci-green/<sha> 标签的提交才允许部署。
+# 标签还没出现说明 CI 仍在跑或已经失败 —— 保留线上旧版本，等下一轮 timer 再看
+if ! run_as_owner git -C "$APP_DIR" rev-parse -q --verify "refs/tags/ci-green/${NEW}" > /dev/null; then
+  log "CI 未通过或尚未完成：缺少 ci-green/${NEW:0:7} 标签，跳过本轮"
   exit 0
 fi
 

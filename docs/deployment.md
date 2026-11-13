@@ -38,7 +38,10 @@ CI 不需要任何仓库 Secret：数据库与密钥都用 CI 专用假值。同
 服务器上的 `renovation-deploy.timer` 每 5 分钟执行一次
 `/usr/local/bin/renovation-deploy.sh`：
 
-1. `git fetch origin main`，HEAD 没变就退出（幂等，可随时手动重跑）
+1. `git fetch origin main`（含 tags），HEAD 没变就退出（幂等，可随时手动重跑）
+1.5 **CI 闸门**：只有带 `ci-green/<完整 sha>` 标签的提交才继续。这个标签由 CI 的
+    `mark-green` job 在三个 job 全绿后自动打上；标签还没出现说明 CI 仍在跑或失败，
+    **保留线上旧版本**，等下一轮 timer 再看
 2. `git reset --hard origin/main`（`.env` 与 uploads 不被跟踪，不受影响）
 3. 仅当 `server/package*.json` 变化时执行 `npm ci --omit=dev`
 4. 执行 `npm run migrate`（迁移本身幂等）
@@ -56,6 +59,20 @@ Secrets，也不需要维护额外的部署账号。代价是部署延迟最多�
 
 如果以后需要「合并即部署」的实时性，再改成 GitHub Actions + 部署密钥即可，
 脚本本身可以复用。
+
+### 闸门与紧急绕过
+
+- `mark-green` job 需要 `GITHUB_TOKEN` 有写权限：GitHub → Settings → Actions →
+  General → Workflow permissions 选「Read and write permissions」。权限不足时
+  这个 job 会红，表现为「CI 绿了但线上不更新」。
+- 紧急情况（例如 CI 环境故障但必须发布）可以手工打标签绕过闸门：
+
+  ```bash
+  git tag ci-green/$(git rev-parse HEAD) HEAD
+  git push origin ci-green/$(git rev-parse HEAD)
+  ```
+
+  打完标签后，下一轮 timer 会自动部署。**这只应在确认代码可上线时使用。**
 
 ### 安装 / 重装
 

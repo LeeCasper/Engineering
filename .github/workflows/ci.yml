@@ -187,6 +187,30 @@ jobs:
       - name: 构建
         run: pnpm build
 
+  # 只有三个 job 全绿，才给这条提交打上 ci-green/<sha> 标签。
+  # 服务器上的部署脚本只部署带这个标签的提交 —— 这就是「CI 通过才 CD」的闸门。
+  # 用标签而不是在部署脚本里查 API：不需要在服务器上放任何 GitHub token。
+  mark-green:
+    name: 标记可部署版本
+    needs: [server, admin, miniapp]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: 打 ci-green 标签
+        run: |
+          TAG="ci-green/${GITHUB_SHA}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            echo "标签已存在，跳过：$TAG"
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+            echo "已标记：$TAG"
+          fi
+
   miniapp:
     name: 小程序（构建）
     runs-on: ubuntu-latest
