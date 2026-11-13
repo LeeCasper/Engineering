@@ -115,6 +115,7 @@ describe('管理端项目统计', () => {
       total: 0,
       statusCounts: { pending: 0, building: 0, finished: 0, archived: 0 },
       overdue: 0,
+      newThisMonth: 0,
       pendingAcceptance: 0,
       pendingInvitations: 0,
     })
@@ -193,6 +194,52 @@ describe('管理端项目统计', () => {
     const res = await getStats(token)
     expect(res.body.data.overdue).toBe(2)
     expect(res.body.data.total).toBe(5)
+  })
+
+  it('本月新增按 Asia/Shanghai 自然月区间统计（左闭右开），排除软删除项目', async () => {
+    const { token } = await ownerLogin()
+    const templateId = await fixtures.createTemplate()
+    const ids = []
+    for (let i = 0; i < 5; i += 1) {
+      ids.push(await createProject(token, templateId, `本月统计项目${i + 1}`))
+    }
+
+    const monthStart = datetime.now().startOf('month')
+    const nextMonthStart = monthStart.add(1, 'month')
+
+    // 1) 默认创建时间 = 现在 → 计入
+    // 2) 本月 1 日 00:00:00 → 计入（左闭）
+    await setProject(ids[1], { created_at: monthStart.format(datetime.DATETIME_FORMAT) })
+    // 3) 上月最后一秒 → 不计入
+    await setProject(ids[2], {
+      created_at: monthStart.subtract(1, 'second').format(datetime.DATETIME_FORMAT),
+    })
+    // 4) 下月 1 日 00:00:00 → 不计入（右开）
+    await setProject(ids[3], {
+      created_at: nextMonthStart.format(datetime.DATETIME_FORMAT),
+    })
+    // 5) 本月新增但已软删除 → 既不计入本月新增，也不计入项目总数
+    await setProject(ids[4], { deleted_at: datetime.format() })
+
+    const res = await getStats(token)
+    expect(res.body.data.newThisMonth).toBe(2)
+    expect(res.body.data.total).toBe(4)
+  })
+
+  it('本月新增同样受数据权限约束，不统计未授权项目', async () => {
+    const templateId = await fixtures.createTemplate()
+    const adminA = await auth.createAndLogin({ username: 'month-pm-a', role: 'admin' })
+    const adminB = await auth.createAndLogin({ username: 'month-pm-b', role: 'admin' })
+    const owner = await ownerLogin()
+
+    await createProject(adminA.token, templateId, 'A 自己的新项目')
+    const projectB = await createProject(adminB.token, templateId, 'B 授权给 A 的新项目')
+    await createProject(adminB.token, templateId, 'B 未授权的新项目')
+
+    await fixtures.grantProjectScope(adminA.admin.id, projectB, owner.admin.id)
+
+    expect((await getStats(adminA.token)).body.data.newThisMonth).toBe(2)
+    expect((await getStats(adminB.token)).body.data.newThisMonth).toBe(2)
   })
 
   it('项目管理员只统计自己创建或被授权的项目', async () => {

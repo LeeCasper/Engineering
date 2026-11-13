@@ -11,10 +11,10 @@
       <AdminPageState
         :loading="loading && !items.length"
         :error="error"
-        :empty="!loading && !error && !items.length"
+        :empty="!loading && !error && !items.length && !filterActive"
         empty-title="暂无验收单"
         empty-text="项目还没有发起验收；阶段或工序验收提交后会显示在这里。"
-        @retry="load"
+        @retry="() => load()"
       >
         <!-- 汇总 -->
         <view class="summary-card">
@@ -59,7 +59,6 @@
             @tap="statusFilter = option.key"
           >
             <text class="filter-label">{{ option.label }}</text>
-            <text class="filter-count">{{ option.count }}</text>
           </view>
         </view>
 
@@ -73,22 +72,21 @@
             @tap="typeFilter = option.key"
           >
             <text class="filter-label">{{ option.label }}</text>
-            <text class="filter-count">{{ option.count }}</text>
           </view>
         </view>
 
         <view class="list-head">
           <text class="list-title">验收记录</text>
-          <text class="list-total">共 {{ filteredItems.length }} 条</text>
+          <text class="list-total">共 {{ total }} 条</text>
         </view>
 
-        <!-- 筛选后为空 -->
-        <view v-if="items.length && !filteredItems.length" class="admin-card">
+        <!-- 筛选后为空：分页接口只返回当前页，筛选结果为空要单独提示 -->
+        <view v-if="!loading && !items.length && filterActive" class="admin-card">
           <text class="admin-empty-inline">当前筛选下没有验收记录</text>
         </view>
 
-        <view v-else-if="filteredItems.length" class="admin-list">
-          <view v-for="item in filteredItems" :key="item.id" class="admin-card report-card">
+        <view v-else-if="items.length" class="admin-list">
+          <view v-for="item in items" :key="item.id" class="admin-card report-card">
             <view class="report-head">
               <view class="report-main">
                 <view class="report-title-row">
@@ -140,6 +138,16 @@
             </view>
           </view>
 
+          <view v-if="page < totalPages" class="load-more">
+            <button
+              class="admin-btn admin-btn--ghost admin-btn--small"
+              :disabled="loadingMore"
+              @tap="loadMore"
+            >
+              {{ loadingMore ? '加载中…' : '加载更多' }}
+            </button>
+          </view>
+
           <text class="list-note">仅「已通过」的验收单会生成 PDF 报告；草稿与流转中的单子只展示进度。</text>
         </view>
       </AdminPageState>
@@ -148,8 +156,8 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
-import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
+import { computed, ref, watch } from 'vue'
+import { onLoad, onPullDownRefresh, onShow, onUnload } from '@dcloudio/uni-app'
 import AdminNav from '../../../components/admin/AdminNav.vue'
 import AdminPageState from '../../../components/admin/AdminPageState.vue'
 import { resolveMediaUrl } from '../../../api/request'
@@ -171,62 +179,53 @@ const EMPTY_SUMMARY = { total: 0, passed: 0, inProgress: 0, reportReady: 0 }
 // 服务端签名有效期 2 小时，超过 90 分钟先刷新列表再下载
 const SIGNED_URL_STALE_MS = 90 * 60 * 1000
 
+const PAGE_SIZE = 20
+
 const projectId = ref(null)
 const items = ref([])
 const summary = ref({ ...EMPTY_SUMMARY })
 const loading = ref(false)
+const loadingMore = ref(false)
 const error = ref('')
 const keyword = ref('')
 const statusFilter = ref('all')
 const typeFilter = ref('all')
+const page = ref(1)
+const total = ref(0)
+const totalPages = ref(0)
 
 let loadedOnce = false
 let loadedAt = 0
+let keywordTimer = null
+// 连续切筛选时只认最后一次请求，防止慢响应覆盖新结果
+let loadSeq = 0
 
-const pendingCount = computed(
-  () =>
-    items.value.filter(
-      (item) => item.status !== 'passed' && item.status !== 'pending_rectify'
-    ).length
+const statusOptions = [
+  { key: 'all', label: '全部' },
+  { key: 'passed', label: '已通过' },
+  { key: 'pending', label: '进行中' },
+  { key: 'rectify', label: '待整改' },
+]
+
+const typeOptions = [
+  { key: 'all', label: '全部类型' },
+  { key: 'stage', label: '阶段验收' },
+  { key: 'item', label: '工序验收' },
+]
+
+// 筛选与搜索都在服务端做（AC-AD45 分页后不能再拿当前页做前端过滤）
+const filterActive = computed(
+  () => statusFilter.value !== 'all' || typeFilter.value !== 'all' || !!keyword.value.trim()
 )
 
-const statusOptions = computed(() => [
-  { key: 'all', label: '全部', count: items.value.length },
-  { key: 'passed', label: '已通过', count: items.value.filter((i) => i.status === 'passed').length },
-  { key: 'pending', label: '进行中', count: pendingCount.value },
-  {
-    key: 'rectify',
-    label: '待整改',
-    count: items.value.filter((i) => i.status === 'pending_rectify').length,
-  },
-])
-
-const typeOptions = computed(() => [
-  { key: 'all', label: '全部类型', count: items.value.length },
-  { key: 'stage', label: '阶段验收', count: items.value.filter((i) => i.type === 'stage').length },
-  { key: 'item', label: '工序验收', count: items.value.filter((i) => i.type === 'item').length },
-])
-
-const filteredItems = computed(() => {
-  const term = keyword.value.trim().toLowerCase()
-  return items.value.filter((item) => {
-    if (typeFilter.value !== 'all' && item.type !== typeFilter.value) return false
-    if (statusFilter.value === 'passed' && item.status !== 'passed') return false
-    if (statusFilter.value === 'rectify' && item.status !== 'pending_rectify') return false
-    if (
-      statusFilter.value === 'pending' &&
-      (item.status === 'passed' || item.status === 'pending_rectify')
-    ) {
-      return false
-    }
-    if (!term) return true
-    return [item.reportNo, item.stageName, item.itemName, item.submitter, String(item.id)]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-      .includes(term)
-  })
-})
+function queryParams(nextPage) {
+  const params = { page: nextPage, pageSize: PAGE_SIZE }
+  if (statusFilter.value !== 'all') params.status = statusFilter.value
+  if (typeFilter.value !== 'all') params.type = typeFilter.value
+  const term = keyword.value.trim()
+  if (term) params.keyword = term
+  return params
+}
 
 onLoad(async (options) => {
   const id = options && options.id ? Number(options.id) : null
@@ -251,37 +250,81 @@ onLoad(async (options) => {
 })
 
 onShow(() => {
-  if (loadedOnce && projectId.value) load(true)
+  if (loadedOnce && projectId.value) load({ silent: true })
 })
 
 onPullDownRefresh(async () => {
   try {
-    if (loadedOnce) await load(true)
+    if (loadedOnce) await load({ silent: true })
   } finally {
     uni.stopPullDownRefresh()
   }
 })
 
-async function load(silent = false) {
+onUnload(() => clearTimeout(keywordTimer))
+
+// 筛选变化回到第 1 页重新取数
+watch([statusFilter, typeFilter], () => load({ reset: true }))
+
+// 与服务端筛选配合：输入防抖，避免每个字都打一次接口
+watch(keyword, () => {
+  clearTimeout(keywordTimer)
+  keywordTimer = setTimeout(() => load({ reset: true }), 300)
+})
+
+async function load({ reset = true, silent = false } = {}) {
   if (!projectId.value) return
+
+  const seq = ++loadSeq
   if (!silent) {
     loading.value = true
     error.value = ''
   }
 
   try {
-    const data = await fetchAdminProjectAcceptances(projectId.value)
-    items.value = (data && data.items) || []
+    const data = await fetchAdminProjectAcceptances(
+      projectId.value,
+      queryParams(reset ? 1 : page.value)
+    )
+
+    if (seq !== loadSeq) return
+
+    items.value = (data && data.list) || []
     summary.value = (data && data.summary) || { ...EMPTY_SUMMARY }
+    page.value = (data && data.page) || 1
+    total.value = (data && data.total) || 0
+    totalPages.value = (data && data.totalPages) || 0
     loadedAt = Date.now()
     error.value = ''
   } catch (err) {
+    if (seq !== loadSeq) return
     if (!silent || !items.value.length) {
       error.value = err.message || '验收报告加载失败'
     }
     showAdminError(err, '验收报告加载失败')
   } finally {
-    if (!silent) loading.value = false
+    if (seq === loadSeq && !silent) loading.value = false
+  }
+}
+
+async function loadMore() {
+  if (loadingMore.value || page.value >= totalPages.value) return
+
+  const nextPage = page.value + 1
+  const seq = loadSeq
+  loadingMore.value = true
+  try {
+    const data = await fetchAdminProjectAcceptances(projectId.value, queryParams(nextPage))
+    // 加载期间用户切了筛选，这一页已经不属于当前结果，直接丢弃
+    if (seq !== loadSeq) return
+    items.value = items.value.concat((data && data.list) || [])
+    page.value = (data && data.page) || nextPage
+    total.value = (data && data.total) || total.value
+    totalPages.value = (data && data.totalPages) || totalPages.value
+  } catch (err) {
+    showAdminError(err, '加载更多失败')
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -484,10 +527,10 @@ function openPdfPath(path) {
   white-space: nowrap;
 }
 
-.filter-count {
-  margin-left: dp(4);
-  opacity: 0.7;
-  font-size: dp(10);
+.load-more {
+  display: flex;
+  justify-content: center;
+  padding: dp(12) 0 dp(4);
 }
 
 .list-head {

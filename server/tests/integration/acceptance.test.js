@@ -902,8 +902,12 @@ describe('AC-A18 / AC-A19 / AC-A20 验收报告 PDF', () => {
     expect(res.body.data.summary.total).toBe(1)
     expect(res.body.data.summary.passed).toBe(1)
     expect(res.body.data.summary.reportReady).toBe(1)
+    // AC-AD45：列表走统一分页响应体
+    expect(res.body.data.total).toBe(1)
+    expect(res.body.data.page).toBe(1)
+    expect(res.body.data.pageSize).toBe(20)
 
-    const item = res.body.data.items.find((row) => row.id === id)
+    const item = res.body.data.list.find((row) => row.id === id)
     expect(item.status).toBe('passed')
     expect(item.stageName).toBe('水电工程')
     expect(item.reportPdf.status).toBe('success')

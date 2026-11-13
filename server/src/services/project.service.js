@@ -473,7 +473,16 @@ async function listProjects(operator, query) {
  */
 async function getProjectStats(operator) {
   const scope = dataScope.buildFilter(operator)
-  return projectModel.getStats(scope, { today: datetime.formatDate() })
+  const now = datetime.now()
+
+  // 「本月新增」按 Asia/Shanghai 自然月区间统计，口径与平台看板一致：
+  // 用 [月初, 下月初) 的区间条件，而不是对 created_at 做 DATE_FORMAT ——
+  // 后者既用不上索引，也会把「按天格式化」的时区语义带进统计。
+  return projectModel.getStats(scope, {
+    today: datetime.formatDate(),
+    monthStart: now.startOf('month').format(datetime.DATETIME_FORMAT),
+    monthEnd: now.add(1, 'month').startOf('month').format(datetime.DATETIME_FORMAT),
+  })
 }
 
 /** 项目详情（B-2.4）：概览 + 阶段工序树 + 成员 + 付款节点 + 概况 */

@@ -978,7 +978,7 @@ function buildMyActions(acceptance, viewer, esign) {
  */
 async function listAcceptances(userId, projectId) {
   const viewer = await resolveViewer(userId, projectId)
-  const rows = await acceptanceModel.listByProject(projectId)
+  const rows = await acceptanceModel.listAllByProject(projectId)
 
   const views = rows.map((row) => ({
     id: row.id,

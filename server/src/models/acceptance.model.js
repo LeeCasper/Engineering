@@ -324,23 +324,144 @@ async function hasRejection(acceptanceId) {
  * 而列表要按「待我处理 / 进行中 / 已完成」分组统计角标 ——
  * 分页会让分组计数变得没有意义（每页各算一次）。
  */
-async function listByProject(projectId) {
-  return db.query(
-    `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
+/**
+ * 后台验收列表的 FROM / JOIN 片段。count 与列表查询共用，避免两处条件分叉。
+ * 三张关联表都按主键 1:1 关联，因此不会把行数放大。
+ */
+const LIST_FROM = `
+       FROM acceptance a
+       LEFT JOIN project_stage s ON s.id = a.project_stage_id
+       LEFT JOIN project_item i ON i.id = a.project_item_id
+       LEFT JOIN user u ON u.id = a.submitter_id`
+
+/** 列表字段。后台分页列表与 C 端分组列表共用，避免两边字段悄悄分叉 */
+const LIST_COLUMNS = `
+            a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
             a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at, a.resubmit_count,
             a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
             a.report_pdf_status, a.report_pdf_error, a.report_no, a.created_at,
             s.name AS stage_name, i.name AS item_name,
             u.nickname AS submitter_nickname, u.real_name AS submitter_real_name,
-            (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count
-       FROM acceptance a
-       LEFT JOIN project_stage s ON s.id = a.project_stage_id
-       LEFT JOIN project_item i ON i.id = a.project_item_id
-       LEFT JOIN user u ON u.id = a.submitter_id
+            (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count`
+
+/**
+ * 列表展示用的报告编号表达式，必须与 utils/acceptanceReportNo 的规则一致：
+ * 优先用已落库的 report_no（旧报告回填为 AC-{id}），否则按
+ * 「通过日期 + 项目 + 6 位验收单 id」推算。
+ *
+ * 为什么不能只查 report_no 列：PDF 生成前该列还是 NULL，但列表接口
+ * 已经按同一函数显示了编号 —— 只查列会让「生成中 / 生成失败」的已通过单搜不到。
+ */
+const REPORT_NO_EXPR = `COALESCE(
+          a.report_no,
+          CONCAT('AC-', DATE_FORMAT(COALESCE(a.finished_at, a.submitted_at, a.created_at), '%Y%m%d'),
+                 '-', a.project_id, '-', LPAD(a.id, 6, '0'))
+        )`
+
+/**
+ * 后台验收列表的筛选条件（AC-AD45，筛选在服务端完成）。
+ *
+ * 语义与前端此前的事后筛选保持一致：
+ * - status=passed → 已通过；rectify → 待整改；pending → 其余全部在途状态
+ * - type → stage / item
+ * - keyword → 报告编号 / 阶段名 / 工序名 / 提交人昵称 / 验收单 id
+ *   提交人只匹配昵称，因为列表返回的 submitter 就是昵称（与展示一致）。
+ */
+function buildListFilter(projectId, filters = {}) {
+  const where = ['a.project_id = ?', 'a.deleted_at IS NULL']
+  const params = [projectId]
+
+  if (filters.status === 'passed') {
+    where.push("a.status = 'passed'")
+  } else if (filters.status === 'rectify') {
+    where.push("a.status = 'pending_rectify'")
+  } else if (filters.status === 'pending') {
+    where.push("a.status <> 'passed' AND a.status <> 'pending_rectify'")
+  }
+
+  if (filters.type) {
+    where.push('a.type = ?')
+    params.push(filters.type)
+  }
+
+  if (filters.keyword) {
+    // 与 project.model 一致：用户输入的 % 与 _ 按字面匹配，否则一个 % 就能捞出全量
+    const like = `%${escapeLike(filters.keyword)}%`
+    // 只有已通过的单子才展示报告编号，未通过的单子不该被编号搜出来
+    where.push(`(
+        CAST(a.id AS CHAR) LIKE ?
+        OR s.name LIKE ?
+        OR i.name LIKE ?
+        OR u.nickname LIKE ?
+        OR (a.status = 'passed' AND ${REPORT_NO_EXPR} LIKE ?)
+      )`)
+    params.push(like, like, like, like, like)
+  }
+
+  return { fromWhere: `${LIST_FROM} WHERE ${where.join(' AND ')}`, params }
+}
+
+/** 转义 LIKE 通配符（与 project.model 同一规则） */
+function escapeLike(value) {
+  return String(value).replace(/[\\%_]/g, (ch) => `\\${ch}`)
+}
+
+/**
+ * 项目下的验收单分页列表。筛选与分页都在 SQL 里完成 ——
+ * 先全量查出再在内存里切，既违背 AC-AD45 的强制分页，也会随项目变大越来越慢。
+ */
+async function listByProject(projectId, { filters = {}, paging } = {}) {
+  const { fromWhere, params } = buildListFilter(projectId, filters)
+  const total = await db.count(fromWhere, params)
+
+  const rows = await db.query(
+    `SELECT ${LIST_COLUMNS}
+       ${fromWhere}
+      ORDER BY a.id DESC
+      LIMIT ? OFFSET ?`,
+    [...params, paging.limit, paging.offset]
+  )
+
+  return { total, rows }
+}
+
+/**
+ * 项目下的**全部**验收单（不分页）。
+ *
+ * 仅供 C 端分组列表使用（AC-A23）：分组计数与列表必须来自同一次查询，
+ * 因此不能复用分页接口。后台列表必须走 listByProject —— 它的分页是 AC-AD45 的硬约束。
+ */
+async function listAllByProject(projectId) {
+  return db.query(
+    `SELECT ${LIST_COLUMNS}
+       ${LIST_FROM}
       WHERE a.project_id = ? AND a.deleted_at IS NULL
       ORDER BY a.id DESC`,
     [projectId]
   )
+}
+
+/**
+ * 项目验收摘要。**始终按项目全量统计**，不随列表筛选变化 ——
+ * 摘要卡展示的是项目整体情况，跟着筛选走会让「总数」在切换筛选时跳动。
+ */
+async function statsByProject(projectId) {
+  const row = await db.queryOne(
+    `SELECT COUNT(*) AS total,
+            SUM(a.status = 'passed') AS passed,
+            SUM(a.status <> 'passed') AS in_progress,
+            SUM(a.status = 'passed' AND a.report_pdf_status = 'success') AS report_ready
+       FROM acceptance a
+      WHERE a.project_id = ? AND a.deleted_at IS NULL`,
+    [projectId]
+  )
+
+  return {
+    total: Number(row && row.total) || 0,
+    passed: Number(row && row.passed) || 0,
+    inProgress: Number(row && row.in_progress) || 0,
+    reportReady: Number(row && row.report_ready) || 0,
+  }
 }
 
 /**
@@ -502,6 +623,8 @@ module.exports = {
   currentRound,
   hasRejection,
   listByProject,
+  listAllByProject,
+  statsByProject,
   listInboxForUser,
   listInitiablesForUser,
   listTimeoutCandidates,

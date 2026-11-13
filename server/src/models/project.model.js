@@ -265,9 +265,11 @@ async function listForemenOfProjects(projectIds) {
  *
  * 统计是全局口径，不受列表的搜索/状态筛选影响。
  */
-async function getStats(scope, { today }) {
+async function getStats(scope, { today, monthStart, monthEnd }) {
   dataScope.assertValid(scope)
 
+  // 本月新增的口径与平台看板一致：按 Asia/Shanghai 自然月区间取 [月初, 下月初)，
+  // 软删项目已在 deleted_at 条件里排除。区间由服务层算好传入，模型不碰时区。
   const [projectRow, acceptanceRow, invitationRow] = await Promise.all([
     db.queryOne(
       `SELECT
@@ -276,6 +278,7 @@ async function getStats(scope, { today }) {
          SUM(p.status = 'building') AS building,
          SUM(p.status = 'finished') AS finished,
          SUM(p.status = 'archived') AS archived,
+         SUM(p.created_at >= ? AND p.created_at < ?) AS new_this_month,
          SUM(
            CASE
              WHEN p.status <> 'archived'
@@ -286,7 +289,7 @@ async function getStats(scope, { today }) {
          ) AS overdue
          FROM project p
         WHERE p.deleted_at IS NULL AND ${scope.clause}`,
-      [today, ...scope.params]
+      [monthStart, monthEnd, today, ...scope.params]
     ),
     db.queryOne(
       `SELECT COUNT(*) AS count
@@ -320,6 +323,7 @@ async function getStats(scope, { today }) {
       archived: Number(row.archived) || 0,
     },
     overdue: Number(row.overdue) || 0,
+    newThisMonth: Number(row.new_this_month) || 0,
     pendingAcceptance: Number(acceptanceRow && acceptanceRow.count) || 0,
     pendingInvitations: Number(invitationRow && invitationRow.count) || 0,
   }

@@ -15,6 +15,7 @@ import {
   fetchCreateProject,
   fetchDeleteProject,
   fetchExportProjects,
+  fetchMemberDirectory,
   fetchProjectDetail,
   fetchProjectList,
   fetchUpdateProject,
@@ -49,10 +50,67 @@ const query = reactive({
   pageSize: 20,
   name: '',
   address: '',
-  status: '' as ProjectStatus | ''
+  status: '' as ProjectStatus | '',
+  foremanId: null as number | null
 });
 
 const templates = ref<TemplateListItem[]>([]);
+
+// 工长下拉：远程搜索，只取前 20 条；成员关系按项目聚合，需要按 userId 去重
+const foremanOptions = ref<{ id: number; label: string }[]>([]);
+const foremanLoading = ref(false);
+let foremanSearchSeq = 0;
+
+function foremanLabel(row: {
+  realName?: string | null;
+  nickname: string | null;
+  userId: number;
+  phoneMasked?: string | null;
+}) {
+  const name = row.realName || row.nickname || `用户 #${row.userId}`;
+  return row.phoneMasked ? `${name}（${row.phoneMasked}）` : name;
+}
+
+async function searchForemen(keyword: string) {
+  const seq = ++foremanSearchSeq;
+  foremanLoading.value = true;
+
+  try {
+    const { data, error } = await fetchMemberDirectory({
+      role: 'foreman',
+      keyword: keyword.trim() || undefined,
+      page: 1,
+      pageSize: 20
+    });
+
+    // 慢请求可能后回来，丢掉过期结果，避免下拉框被旧关键词覆盖
+    if (seq !== foremanSearchSeq) return;
+
+    if (error || !data) {
+      foremanOptions.value = [];
+      return;
+    }
+
+    const seen = new Set<number>();
+    const options: { id: number; label: string }[] = [];
+    data.list.forEach((row) => {
+      // 项目列表的 foremanId 只匹配 active 成员；目录里还有待确认的邀请，
+      // 把它们放进下拉只会得到一个永远筛不出项目的死选项
+      if (row.status !== 'active') return;
+      if (seen.has(row.userId)) return;
+      seen.add(row.userId);
+      options.push({ id: row.userId, label: foremanLabel(row) });
+    });
+
+    // 已选中的工长不在本次搜索结果里时也要保留，否则下拉框只会显示一个数字 id
+    const selected = foremanOptions.value.find(item => item.id === query.foremanId);
+    if (selected && !seen.has(selected.id)) options.unshift(selected);
+
+    foremanOptions.value = options;
+  } finally {
+    if (seq === foremanSearchSeq) foremanLoading.value = false;
+  }
+}
 
 async function load() {
   loading.value = true;
@@ -63,7 +121,8 @@ async function load() {
       pageSize: query.pageSize,
       name: query.name.trim() || undefined,
       address: query.address.trim() || undefined,
-      status: query.status || undefined
+      status: query.status || undefined,
+      foremanId: query.foremanId || undefined
     });
 
     if (!error && data) {
@@ -94,7 +153,9 @@ function resetQuery() {
   query.name = '';
   query.address = '';
   query.status = '';
+  query.foremanId = null;
   query.page = 1;
+  void searchForemen('');
   load();
 }
 
@@ -541,6 +602,7 @@ async function exportExcel() {
     name: selectedIds.value.length ? undefined : query.name.trim() || undefined,
     address: selectedIds.value.length ? undefined : query.address.trim() || undefined,
     status: selectedIds.value.length ? undefined : query.status || undefined,
+    foremanId: selectedIds.value.length ? undefined : query.foremanId || undefined,
     ids: selectedIds.value.length ? selectedIds.value : undefined
   });
 
@@ -583,7 +645,7 @@ async function exportExcel() {
 }
 
 onMounted(async () => {
-  await load();
+  await Promise.all([load(), searchForemen('')]);
 
   if (route.query.create === '1') {
     openCreate();
@@ -612,6 +674,19 @@ onMounted(async () => {
                 <ElOption label="施工中" value="building" />
                 <ElOption label="已完工" value="finished" />
                 <ElOption label="已归档" value="archived" />
+              </ElSelect>
+              <ElSelect
+                v-model="query.foremanId"
+                class="w-180px"
+                clearable
+                filterable
+                remote
+                reserve-keyword
+                :remote-method="searchForemen"
+                :loading="foremanLoading"
+                placeholder="工长"
+              >
+                <ElOption v-for="item in foremanOptions" :key="item.id" :label="item.label" :value="item.id" />
               </ElSelect>
               <ElButton type="primary" @click="search">查询</ElButton>
               <ElButton @click="resetQuery">重置</ElButton>
