@@ -425,8 +425,9 @@ describe('管理员消息通道（AC-P23 的管理员侧）', () => {
 
     // 把项目改成施工中、建档时间推到 10 天前，且没有任何汇报
     const datetime = require('../../src/utils/datetime')
+    const anchor = datetime.now().subtract(10, 'day').format('YYYY-MM-DD HH:mm:ss')
     await db.query("UPDATE project SET status = 'building', created_at = ? WHERE id = ?", [
-      datetime.now().subtract(10, 'day').format('YYYY-MM-DD HH:mm:ss'),
+      anchor,
       projectIds[0],
     ])
 
@@ -441,7 +442,9 @@ describe('管理员消息通道（AC-P23 的管理员侧）', () => {
     )
     expect(rows).toHaveLength(1)
     expect(rows[0].title).toContain('没有进度汇报')
-    expect(rows[0].ref_id).toBe(projectIds[0])
+    // ref_id 是「静默期起点」的时间戳（秒），不是项目 id：它让同一段静默期
+    // 只提醒一次，工长汇报后锚点变化才能再次提醒（见 staleReportReminder）
+    expect(rows[0].ref_id).toBe(Math.floor(datetime.parse(anchor).valueOf() / 1000))
   })
 
   it('管理员侧与 C 端消息互不干扰（两套主体）', async () => {
