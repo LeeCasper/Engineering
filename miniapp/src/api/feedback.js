@@ -1,16 +1,32 @@
-import { request } from './request'
+import { request, uploadFile } from './request'
 
 /**
- * 意见反馈（AC-U18）。
+ * 意见反馈（AC-U18）：最多 3 张图片。
  *
- * 当前小程序只提交文字与联系方式；后端 multipart 接口也接受纯 JSON。
- * 图片反馈需要先解决微信一次只能上传一个文件的限制（暂存接口），
- * 在补上之前不要做一个“选了 3 张图却只传出去 1 张”的假上传。
+ * 微信的 `uni.uploadFile` 一次只能带一个文件，而提交要求一次原子完成，
+ * 所以图片先逐张传到这里暂存，提交时用 `mediaIds` 一次性消费
+ * （后端 /feedback/media，模式与进度汇报、现场签到照片相同）。
  */
-export function submitFeedback({ content, projectId, tenantId, contact }) {
+export function stageFeedbackImage(filePath) {
+  return uploadFile({
+    url: '/feedback/media',
+    filePath,
+    // 后端按 multipart 的任意字段收文件；这里固定一个语义化字段名便于排查
+    name: 'file',
+  })
+}
+
+/** 提交反馈。`mediaIds` 为逐张暂存后的图片 ID，顺序即用户选择的顺序 */
+export function submitFeedback({ content, projectId, tenantId, contact, mediaIds }) {
   return request({
     url: '/feedback',
     method: 'POST',
-    data: { content, projectId, tenantId, contact },
+    data: {
+      content,
+      projectId,
+      tenantId,
+      contact,
+      mediaIds: mediaIds && mediaIds.length ? mediaIds : undefined,
+    },
   })
 }

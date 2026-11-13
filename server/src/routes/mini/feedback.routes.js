@@ -14,6 +14,9 @@ const router = express.Router()
 
 router.use(requireMini)
 
+// 单张图片暂存：微信一次只能传一个文件，逐张拿到 mediaId 后再提交
+router.post('/media', uploadAny, asyncHandler(controller.stageMedia))
+
 // multipart：正文与图片同请求提交。图片数上限在 service 层校验
 // （3 张），不在这里 —— 中间件只负责把文件收下来并归一化
 router.post('/', uploadAny, asyncHandler(controller.submit))
