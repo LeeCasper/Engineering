@@ -1149,13 +1149,6 @@ function renderImages(doc, urls, failHint, { maxHeight = 200, gap = 10 } = {}) {
 }
 
 /**
- * 同步读取图片与 URL。
- *
- * 名字里的 Sync 是刻意的：pdfkit 的 doc.image 需要 Buffer 而不是 Promise，
- * 而整份报告是在一个同步的渲染流程里拼出来的。图片总量有限（验收照片 + 签名），
- * 同步读文件的开销可以接受。
- */
-/**
  * 取签名图片的字节。
  *
  * 新数据在私有存储里（signatureKey），历史数据是公开上传目录里的 URL。
@@ -1175,6 +1168,13 @@ function signatureBuffer(signature) {
   return null
 }
 
+/**
+ * 同步读取图片与 URL。
+ *
+ * 名字里的 Sync 是刻意的：pdfkit 的 doc.image 需要 Buffer 而不是 Promise，
+ * 而整份报告是在一个同步的渲染流程里拼出来的。图片总量有限（验收照片 + 签名），
+ * 同步读文件的开销可以接受。
+ */
 function storageBufferSync(url) {
   const key = storage.extractKey(url)
   const path = require('node:path').join(config.upload.dir, key)
