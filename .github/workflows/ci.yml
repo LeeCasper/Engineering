@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支只保留最新一次运行：连续 push 时旧运行自动取消，
+# 避免多个集成测试同时去 DROP 同一个测试库
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server（单元 + 集成）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: renovation_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      # 水印与验收报告 PDF 依赖中文字体；缺字体时测试会直接失败，
+      # 不会产出「中文变方块」的假通过
+      - name: 安装中文字体
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
+      # 集成测试会 DROP/CREATE 测试库，因此必须用有建库权限的账号。
+      # 所有密钥都用 CI 专用的假值，与任何真实环境无关。
+      - name: 写入 CI 环境变量
+        run: |
+          cat > .env <<'EOF'
+          NODE_ENV=test
+          PORT=3000
+          API_PREFIX=/api/v1
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_USER=root
+          DB_PASSWORD=root
+          DB_NAME=renovation_ci
+          DB_NAME_TEST=renovation_test
+          DB_POOL_LIMIT=10
+          DB_TIMEZONE=+08:00
+          CACHE_DRIVER=memory
+          JWT_MINI_SECRET=ci-only-mini-secret
+          JWT_ADMIN_SECRET=ci-only-admin-secret
+          JWT_MINI_EXPIRES=7d
+          JWT_ADMIN_EXPIRES=8h
+          JWT_ADMIN_IDLE=30m
+          WX_MOCK=true
+          REAL_NAME_ENABLED=true
+          REAL_NAME_PROVIDER=local
+          REAL_NAME_CONSENT_VERSION=2026-11-v1
+          UPLOAD_DIR=./uploads
+          PUBLIC_BASE_URL=http://127.0.0.1:3000
+          RATE_LIMIT_PER_MINUTE=60
+          BCRYPT_ROUNDS=10
+          BCRYPT_ROUNDS_MIN=10
+          BCRYPT_ROUNDS_TEST=4
+          SIGNED_URL_SECRET=ci-only-signed-url-secret
+          SIGNED_URL_TTL_SECONDS=7200
+          WATERMARK_FONT_FAMILY=Noto Sans CJK SC
+          WATERMARK_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+          WATERMARK_OPACITY=0.75
+          WATERMARK_POSITION=southeast
+          PDF_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+          PDF_FONT_NAME=NotoSansCJKsc-Regular
+          MAP_PROVIDER=auto
+          ESIGN_ENABLED=false
+          ESIGN_LEGACY_SIGNING=true
+          LOG_LEVEL=warn
+          DOOR_CODE_KEY=6369216d6f6e67e4bda084e4bda084e4bda084e4bda084e4bda084e4bda084e4bda084e
+          EOF
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 集成测试
+        run: npm run test:integration
+
+  admin:
+    name: 管理后台（typecheck + build）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: admin/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      - name: 构建
+        run: pnpm build
+
+  miniapp:
+    name: 小程序（构建）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: miniapp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 生产包必须显式指定 HTTPS API 基址，否则真机报
+      # url not in domain list。打包产物不进仓库，只验证能构建成功。
+      - name: 构建微信小程序
+        run: npm run build:mp-weixin
+        env:
+          VITE_API_BASE: https://bzg.yanxinn.com/api/v1

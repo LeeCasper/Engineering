@@ -1,0 +1,11 @@
+[Unit]
+Description=Check origin/main every 5 minutes and deploy if changed
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=renovation-deploy.service
+
+[Install]
+WantedBy=timers.target
