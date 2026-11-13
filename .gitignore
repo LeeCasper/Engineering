@@ -46,3 +46,7 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.swp
+
+# Allure 测试报告（CI 产物，不入库）
+server/allure-results/
+server/allure-report/

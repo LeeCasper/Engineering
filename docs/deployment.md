@@ -19,6 +19,19 @@ CI 不需要任何仓库 Secret：数据库与密钥都用 CI 专用假值。同
 小程序产物不随 CD 发布：构建成功只代表能打包，正式发布仍需在本机用微信
 开发者工具上传并提交审核。
 
+### 测试报告与群通知
+
+- server job 用 Allure reporter 产出 `server/allure-results`，生成 HTML 后作为
+  `allure-report` artifact 上传；**测试失败时也会上传**，方便直接看失败用例。
+- `pages` job 把报告推到 `gh-pages` 分支。首次使用需要在 GitHub →
+  Settings → Pages 选择「Deploy from a branch → gh-pages / root」，之后地址是
+  `https://leecasper.github.io/Engineering/`。私有仓库的 Pages 需要套餐支持，
+  不可用时 `pages` job 会失败但已标 `continue-on-error`，不影响 CI 结论。
+- `notify` job 通过企业微信群机器人推送结果与报告链接，需要仓库 Secret
+  `WECOM_WEBHOOK`（在群机器人设置里复制完整 webhook 地址）。没配置时自动跳过。
+- `allure-vitest` 必须固定在 **3.0.0**：更新的版本只实现了 vitest 3 的 reporter
+  API，在当前的 vitest 2.1.9 上不报错但也不产出结果。
+
 ### 几个不能随手改的事
 
 - **admin 的 pnpm 必须是 12**：`pnpm-workspace.yaml` 里的 `allowBuilds` /

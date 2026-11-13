@@ -42,6 +42,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "allure-commandline": "2.46.1",
+    "allure-vitest": "3.0.0",
     "nodemon": "^3.1.9",
     "supertest": "^7.0.0",
     "vitest": "^2.1.8"

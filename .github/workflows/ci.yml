@@ -22,6 +22,8 @@ jobs:
     # 进程按 UTC 解析 DATETIME 会让锁定时间、提醒窗口整体偏 8 小时
     env:
       TZ: Asia/Shanghai
+      # 打开 allure reporter（vitest.config.mjs 里按这个变量决定是否挂 reporter）
+      ALLURE_RESULTS_DIR: allure-results
 
     services:
       mysql:
@@ -153,6 +155,55 @@ jobs:
       - name: 集成测试
         run: npm run test:integration
 
+      # 以下三步都要在测试失败时也执行，否则红的那次反而没有报告可看
+      - name: 生成 Allure 报告
+        if: always()
+        run: |
+          if [ -d allure-results ]; then
+            npx allure generate allure-results --clean -o allure-report
+          else
+            mkdir -p allure-report
+            echo "没有 allure-results，跳过报告生成"
+          fi
+
+      - name: 汇总用例结果
+        if: always()
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const dir = 'allure-results';
+            const counts = { passed: 0, failed: 0, broken: 0, skipped: 0, unknown: 0 };
+            const failed = [];
+            if (fs.existsSync(dir)) {
+              for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('-result.json'))) {
+                const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+                const s = d.status || 'unknown';
+                counts[s] = (counts[s] || 0) + 1;
+                if (s === 'failed' || s === 'broken') failed.push(d.name);
+              }
+            }
+            fs.mkdirSync('allure-report', { recursive: true });
+            fs.writeFileSync(
+              'allure-report/summary.json',
+              JSON.stringify({
+                counts,
+                failed: failed.slice(0, 10),
+                total: Object.values(counts).reduce((a, b) => a + b, 0)
+              })
+            );
+            console.log(JSON.stringify(counts));
+          "
+
+      - name: 上传 Allure 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: server/allure-report
+          if-no-files-found: warn
+          retention-days: 14
+
   admin:
     name: 管理后台（typecheck + build）
     runs-on: ubuntu-latest
@@ -238,3 +289,101 @@ jobs:
         run: npm run build:mp-weixin
         env:
           VITE_API_BASE: https://bzg.yanxinn.com/api/v1
+
+  # 把 Allure 报告发布到 gh-pages 分支。GitHub Pages 选择「Deploy from a branch →
+  # gh-pages」后即可通过 https://leecasper.github.io/Engineering/ 访问。
+  # 测试失败也发布（always），这样红的那次能直接点开看失败用例。
+  pages:
+    name: 发布 Allure 报告
+    needs: [server]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Pages 未开启 / 私有仓库套餐不支持时不要让整个 CI 变红
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: allure-report
+          path: report
+
+      - name: 推送到 gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./report
+          force_orphan: true
+
+  # 企业微信群机器人通知。需要仓库 Secret：WECOM_WEBHOOK。
+  # 没配 Secret 时这一步只打印一行提示，不算失败。
+  notify:
+    name: 企业微信通知
+    needs: [server, admin, miniapp, pages]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: allure-report
+          path: report
+
+      - name: 发送企业微信消息
+        env:
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          SERVER_RESULT: ${{ needs.server.result }}
+          ADMIN_RESULT: ${{ needs.admin.result }}
+          MINIAPP_RESULT: ${{ needs.miniapp.result }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          REPORT_URL: https://leecasper.github.io/Engineering/
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$WECOM_WEBHOOK" ]; then
+            echo "未配置 WECOM_WEBHOOK，跳过通知"
+            exit 0
+          fi
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const env = process.env;
+
+          let counts = { passed: 0, failed: 0, broken: 0, skipped: 0 };
+          try {
+            const summary = JSON.parse(fs.readFileSync('report/summary.json', 'utf8'));
+            counts = { ...counts, ...summary.counts };
+          } catch {
+            console.log('没有 summary.json，通知里只报 job 状态');
+          }
+
+          const icon = (name) => (env[`${name.toUpperCase()}_RESULT`] === 'success' ? '✅' : '❌');
+          const allGreen = ['server', 'admin', 'miniapp'].every(
+            (name) => env[`${name.toUpperCase()}_RESULT`] === 'success'
+          );
+          const title = allGreen ? '✅ CI 通过' : '❌ CI 失败';
+          const firstLine = (env.HEAD_COMMIT_MESSAGE || '').split('\n')[0];
+          const failedTotal = (counts.failed || 0) + (counts.broken || 0);
+
+          const content = [
+            `## ${title}`,
+            `> 提交：${firstLine}`,
+            `> server ${icon('server')} / admin ${icon('admin')} / miniapp ${icon('miniapp')}`,
+            `> 用例：通过 ${counts.passed || 0} / 失败 ${failedTotal} / 跳过 ${counts.skipped || 0}`,
+            `> [查看 Allure 报告](${env.REPORT_URL})`,
+            `> [查看运行日志](${env.RUN_URL})`
+          ].join('\n');
+
+          fetch(env.WECOM_WEBHOOK, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ msgtype: 'markdown', markdown: { content } })
+          })
+            .then((res) => res.json())
+            .then((body) => console.log('企业微信响应：', JSON.stringify(body)))
+            .catch((err) => {
+              // 通知失败不影响 CI 结论
+              console.error('企业微信通知失败：', err.message);
+            });
+          NODE

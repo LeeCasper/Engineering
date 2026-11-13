@@ -11,10 +11,22 @@ import { defineConfig } from 'vitest/config'
  *   tests/integration  打真实 MySQL，必须串行（--no-file-parallelism），
  *                      否则多个用例文件同时重建同一张表会互相踩。
  */
+/**
+ * Allure 只在 CI 里开启：本地 `npm test` 不需要每次生成一堆结果文件。
+ * CI 通过 ALLURE_RESULTS_DIR 打开，产出交给 `allure generate`。
+ * 注意 reporter 的入口是 `allure-vitest/reporter`（包没有 "." 导出），
+ * 写成 `allure-vitest` 会报 ERR_RESOLVE_PACKAGE_ENTRY_FAIL。
+ */
+const reporters = ['default']
+if (process.env.ALLURE_RESULTS_DIR) {
+  reporters.push('allure-vitest/reporter')
+}
+
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.js'],
     environment: 'node',
+    reporters,
     // 必须在 config/index.js 被 require 之前生效，否则测试会连到开发库上，
     // 而集成测试会 DROP DATABASE —— 那等于每次跑测试都清空开发数据。
     // WX_MOCK 固定为 true：测试必须走 mock openid，绝不能打真实微信接口；
