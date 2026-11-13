@@ -94,7 +94,7 @@ jobs:
           ESIGN_ENABLED=false
           ESIGN_LEGACY_SIGNING=true
           LOG_LEVEL=warn
-          DOOR_CODE_KEY=6369216d6f6e67e4bda084e4bda084e4bda084e4bda084e4bda084e4bda084e4bda084e
+          DOOR_CODE_KEY=8752831b203e7b228011e268d5843432bab7f7d6a0cfb065d0f6124beb118d93
           EOF
 
       - name: 安装依赖
