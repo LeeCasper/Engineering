@@ -176,7 +176,12 @@ async function main() {
 
   console.log(`[migrate] 目标库 ${config.db.user}@${config.db.host}:${config.db.port}/${config.db.database}`)
 
-  const conn = await createConnection()
+  // --fresh 必须用「不指定 database」的连接：库还不存在时（新建的测试环境、CI），
+  // 带 database 的连接会直接报 Unknown database，连 DROP DATABASE IF EXISTS 都到不了。
+  // 重建后再 USE 回目标库，后续迁移复用同一条连接
+  const conn = fresh
+    ? await createConnection({ database: undefined })
+    : await createConnection()
   try {
     if (fresh) await runFresh(conn)
     await ensureLedger(conn)
