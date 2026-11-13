@@ -50,6 +50,19 @@ jobs:
       - name: 安装中文字体
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
 
+      # 把环境问题与代码问题分开：如果这一步失败，日志会直接指出是
+      # 数据库连不上还是 runner 环境不对，而不是在集成测试里看到一片 ECONNREFUSED
+      - name: 检查运行环境与 MySQL
+        run: |
+          node -v
+          npm -v
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -proot 2>/dev/null; then break; fi
+            sleep 2
+          done
+          mysql -h 127.0.0.1 -P 3306 -uroot -proot -e 'SELECT VERSION() AS mysql_version'
+          ls -l /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+
       # 集成测试会 DROP/CREATE 测试库，因此必须用有建库权限的账号。
       # 所有密钥都用 CI 专用的假值，与任何真实环境无关。
       - name: 写入 CI 环境变量
