@@ -311,6 +311,8 @@ const activeReport = ref(null)
 let loadedOnce = false
 
 const coverUrl = computed(() => {
+  // 管理员上传的封面优先；没有封面时按项目 id 稳定映射到内置实景占位图
+  if (detail.value?.coverUrl) return resolveMediaUrl(detail.value.coverUrl)
   const index = (Math.abs(Number(projectId.value) || 0) % 4) + 1
   return `/static/images/project-cover-${index}.jpg`
 })

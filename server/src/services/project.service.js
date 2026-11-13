@@ -290,12 +290,14 @@ async function getProjectForMember(userId, projectId) {
 
   // 详情页头部要展示「业主 / 主工长」，与首页卡片保持同一套脱敏规则。
   // 成员数量与「是否有监理」供快捷入口展示，避免前端为两个数字再发两次请求。
-  const [tree, keyMembers, memberCount, supervisorCount, settlementRows] = await Promise.all([
+  const [tree, keyMembers, memberCount, supervisorCount, settlementRows, reportMediaLimits] = await Promise.all([
     projectStageModel.findTreeByProject(projectId),
     projectMemberModel.listKeyMembersOfProjects([projectId]),
     projectMemberModel.countByRole(projectId),
     projectMemberModel.countByRole(projectId, 'supervisor'),
     reconciliationModel.listByProject(projectId, { scopeType: 'stage' }),
+    // 汇报附件上限（B-5.5）：随项目详情一起下发，提交页不再写死 9 张 / 60 秒
+    sysConfigService.getReportMediaLimits(project.tenant_id),
   ])
 
   const owner =
@@ -366,6 +368,8 @@ async function getProjectForMember(userId, projectId) {
     currentStageGateStatus: currentStage ? currentStage.gate_status : null,
     currentStageProgress: currentStage ? currentStage.progress : null,
     isOverdue: isOverdue(project),
+    // 汇报附件上限按项目所属租户取，与 POST /reports 的校验同源
+    reportMediaLimits,
     stageSettlements,
     stages: tree.map((stage) => ({
       id: stage.id,

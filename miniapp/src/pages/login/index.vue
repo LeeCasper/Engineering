@@ -22,46 +22,29 @@
         <image class="handwriting-underline" src="/static/images/login-underline.png" mode="aspectFit" />
       </view>
 
-      <!-- 登录卡 -->
+      <!-- 登录卡：C 端身份由微信 openid 决定，这里只保留真正可用的微信登录。
+           不保留手机号 + 验证码输入框 —— 后端没有短信能力，填了也不会被使用。 -->
       <view class="login-card" :class="{ 'login-card--shake': shaking }">
-        <view class="field">
-          <image class="field-icon" src="/static/images/icon-phone.png" mode="aspectFit" />
-          <input
-            v-model="phone"
-            class="field-input"
-            type="number"
-            maxlength="11"
-            placeholder="请输入手机号"
-            placeholder-class="field-placeholder"
-          />
-        </view>
-
-        <view class="field field--code">
-          <image class="field-icon" src="/static/images/icon-shield-check.png" mode="aspectFit" />
-          <input
-            v-model="smsCode"
-            class="field-input"
-            type="number"
-            maxlength="6"
-            placeholder="请输入验证码"
-            placeholder-class="field-placeholder"
-          />
-          <view class="field-divider" />
-          <text class="code-btn" @tap="onGetCode">获取验证码</text>
-        </view>
+        <text class="login-hint">使用微信账号一键登录，无需注册</text>
 
         <button
-          class="login-btn"
-          :class="{ 'login-btn--loading': loading }"
+          class="wechat-btn card-cta"
           :disabled="loading"
-          hover-class="login-btn--pressed"
-          @tap="onLogin"
+          @tap="onWechatLogin"
         >
-          <view v-if="loading && loginChannel === 'phone'" class="login-btn-inner">
-            <view class="login-spinner" />
-            <text>正在登录</text>
+          <view v-if="loading && loginChannel === 'wechat'" class="wechat-loading">
+            <view class="wechat-spinner" />
+            <text class="wechat-text">正在登录</text>
           </view>
-          <text v-else>登 录</text>
+          <template v-else>
+            <image
+              class="wechat-icon"
+              :src="wechatIcon"
+              mode="aspectFit"
+              @error="onWechatIconError"
+            />
+            <text class="wechat-btn-text">微信一键登录</text>
+          </template>
         </button>
 
         <view class="agreement" @tap="agreed = !agreed">
@@ -82,28 +65,13 @@
         </view>
       </view>
 
-      <!-- 微信登录 / 管理员登录：同一行水平分布 -->
+      <!-- 管理员入口：租户 owner / 项目管理员的后台身份，与普通用户分开 -->
       <view class="third-party">
         <view class="divider">
           <view class="divider-line" />
-          <text class="divider-label">其他登录方式</text>
+          <text class="divider-label">管理员入口</text>
         </view>
         <view class="login-actions">
-          <button class="wechat-btn" :disabled="loading" @tap="onWechatLogin">
-            <view v-if="loading && loginChannel === 'wechat'" class="wechat-loading">
-              <view class="wechat-spinner" />
-              <text class="wechat-text">正在登录</text>
-            </view>
-            <template v-else>
-              <image
-                class="wechat-icon"
-                :src="wechatIcon"
-                mode="aspectFit"
-                @error="onWechatIconError"
-              />
-              <text class="wechat-text">微信登录</text>
-            </template>
-          </button>
           <view class="admin-login-btn" @tap="goAdminLogin">
             <view
               class="admin-login-icon"
@@ -217,25 +185,16 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { DEV_PHONE_BIND, DEV_WX_CODE, DEV_MP_WX_CODE } from '../../config'
-import { login, bindPhone } from '../../api/auth'
+import { DEV_WX_CODE, DEV_MP_WX_CODE } from '../../config'
+import { login } from '../../api/auth'
 import { myProjects } from '../../api/project'
-import {
-  getToken,
-  getUser,
-  setToken,
-  setUser,
-  setCachedProjects,
-} from '../../store/session'
+import { getToken, setToken, setUser, setCachedProjects } from '../../store/session'
 import { resolveProjectsLanding } from '../../store/projectContext'
 import { branding, loadBranding } from '../../store/branding'
 
-const phone = ref('')
-const smsCode = ref('')
 const agreed = ref(true)
 const loading = ref(false)
-// 当前登录入口：phone / wechat。两个按钮各自显示自己的 loading，避免点了微信登录却
-// 只有主登录按钮在转圈。
+// 当前登录入口，只有一个：wechat。
 const loginChannel = ref(null)
 const safeTop = ref(0)
 // 登录成功后的全屏过场；与 loading 分开，避免按钮状态和进入动画互相打断
@@ -381,18 +340,8 @@ function getWxCode() {
   })
 }
 
-function onGetCode() {
-  // 后端目前没有短信验证码登录接口：C 端身份由微信 openid 决定。
-  // 这里如实提示，而不是做一个永远收不到验证码的假倒计时。
-  uni.showToast({ title: '短信登录暂未开通，请使用微信登录', icon: 'none' })
-}
-
-async function onLogin() {
-  await doLogin({ bindPhone: true, channel: 'phone' })
-}
-
 async function onWechatLogin() {
-  await doLogin({ bindPhone: false, channel: 'wechat' })
+  await doLogin()
 }
 
 function goAdminLogin() {
@@ -455,7 +404,7 @@ async function enterApp(url) {
   })
 }
 
-async function doLogin({ bindPhone: shouldBind, channel }) {
+async function doLogin() {
   if (!agreed.value) {
     shakeCard()
     uni.showToast({ title: '请先阅读并同意用户协议与隐私政策', icon: 'none' })
@@ -463,7 +412,7 @@ async function doLogin({ bindPhone: shouldBind, channel }) {
   }
   if (loading.value) return
   loading.value = true
-  loginChannel.value = channel || 'phone'
+  loginChannel.value = 'wechat'
 
   // 先让 loading 状态渲染一帧，再调用 uni.login / 网络请求。
   // 否则微信原生登录桥接会抢占主线程，按钮看起来像「点了没反应」。
@@ -474,22 +423,6 @@ async function doLogin({ bindPhone: shouldBind, channel }) {
     const result = await login({ code })
     setToken(result.token)
     setUser(result.user)
-
-    // 设计稿里的手机号表单：开发/mock 环境下用它顺带绑定手机号，
-    // 这样被邀请人不必再走一遍绑定流程。真实环境必须使用微信
-    // getPhoneNumber 授权，这里失败不阻断登录。
-    if (DEV_PHONE_BIND && shouldBind && /^1[3-9]\d{9}$/.test(phone.value)) {
-      try {
-        const bound = await bindPhone({ phone: phone.value })
-        if (bound && bound.token) setToken(bound.token)
-        if (bound && bound.phoneMasked) {
-          const nextUser = { ...(getUser() || {}), hasPhone: true, phoneMasked: bound.phoneMasked }
-          setUser(nextUser)
-        }
-      } catch (err) {
-        // 手机号绑定失败不影响登录；项目列表的空态还会再引导一次
-      }
-    }
 
     const data = await myProjects()
     setCachedProjects(data)
@@ -643,105 +576,12 @@ function openLegal(key) {
   }
 }
 
-.field {
-  display: flex;
-  align-items: center;
-  height: dp(48);
-  padding: 0 dp(14);
-  margin-bottom: dp(12);
-  background: $color-surface;
-  border: 1px solid #e6ddd5;
-  border-radius: dp(12);
-}
-
-.field--code {
-  margin-bottom: dp(4);
-}
-
-.field-icon {
-  width: dp(20);
-  height: dp(20);
-  margin-right: dp(12);
-  flex-shrink: 0;
-}
-
-.field-input {
-  flex: 1;
-  height: 100%;
-  font-size: dp(15);
-  color: $color-ink;
-}
-
-.field-placeholder {
-  color: #a19488;
-}
-
-.field-divider {
-  width: 1px;
-  height: dp(16);
-  margin: 0 dp(8);
-  background: #e6ddd5;
-  flex-shrink: 0;
-}
-
-.code-btn {
-  font-size: dp(14);
-  font-weight: 500;
-  color: $color-primary;
-  white-space: nowrap;
-  padding-left: dp(2);
-  padding-right: dp(1);
-}
-
-.login-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: dp(50);
-  margin-top: dp(10);
-  border-radius: dp(999);
-  background: $color-primary;
-  color: $color-on-primary;
-  font-size: dp(16);
-  font-weight: 600;
-  box-shadow: 0 dp(6) dp(20) rgba(235, 92, 32, 0.35);
-  transition:
-    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.login-btn:active,
-.login-btn--pressed {
-  background: $color-primary-pressed;
-  transform: scale(0.985);
-  box-shadow: 0 dp(3) dp(12) rgba(235, 92, 32, 0.28);
-}
-
-.login-btn[disabled] {
-  opacity: 0.82;
-}
-
-.login-btn-inner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.login-spinner {
-  width: dp(16);
-  height: dp(16);
-  margin-right: dp(8);
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: login-spinner 720ms linear infinite;
-}
-
-@keyframes login-spinner {
-  to {
-    transform: rotate(360deg);
-  }
+.login-hint {
+  margin-bottom: dp(16);
+  font-size: dp(13);
+  line-height: 1.5;
+  color: #7f7267;
+  text-align: center;
 }
 
 /* ── 协议 ── */
@@ -839,6 +679,22 @@ function openLegal(key) {
 
 .wechat-btn:active {
   background: rgba(255, 255, 255, 0.68);
+}
+
+/* 登录卡里的主按钮：整行宽度，视觉上比「管理员入口」更突出 */
+.wechat-btn.card-cta {
+  flex: none;
+  width: 100%;
+  height: dp(50);
+  padding: 0 dp(14);
+  border-radius: dp(999);
+}
+
+.wechat-btn-text {
+  font-size: dp(16);
+  font-weight: 600;
+  color: #33281f;
+  white-space: nowrap;
 }
 
 .wechat-icon {
