@@ -569,28 +569,27 @@ describe('平台与租户的登录门户分离', () => {
     return result.insertId
   }
 
-  it('平台入口不暴露租户账号是否存在（只查平台命名空间）', async () => {
+  it('平台入口拒绝租户账号，并提示使用租户专属地址', async () => {
     const admin = await auth.createAdmin({ username: 'tenantowner', tenantId: 1 })
 
     const res = await auth.loginExpectFailure('tenantowner', admin.plainPassword, { portal: 'platform' })
 
-    // 安全审计修复后，平台入口只解析平台账号（tenant_id IS NULL）。租户账号
-    // 走「账号不存在」的通用分支，与真实空账号的响应完全一致 —— 否则可以拿
-    // 平台入口当枚举器，逐个试出哪些用户名属于某个租户。
-    expect(res.status).toBe(401)
-    expect(res.body.message).toContain('账号或密码错误')
+    // AC-T19：密码正确时明确告知「请走租户专属地址」；密码错误仍统一 401，
+    // 平台入口不会被当成账号枚举器（只在本租户内唯一时才会走到 403 分支）。
+    expect(res.status).toBe(403)
+    expect(res.body.message).toContain('租户专属管理地址')
 
     // 密码是对的，不应被算作一次失败尝试（否则误用旧书签会把账号锁死）
     const row = await db.queryOne('SELECT failed_count FROM admin_user WHERE username = ?', ['tenantowner'])
     expect(row.failed_count).toBe(0)
 
-    // 仍要留日志，方便排查「有人收藏了旧地址」
+    // 但必须留日志：平台入口出现租户账号，通常意味着有人收藏了旧地址
     const log = await db.queryOne(
       'SELECT result, fail_reason FROM admin_login_log WHERE username = ? ORDER BY id DESC LIMIT 1',
       ['tenantowner']
     )
     expect(log.result).toBe('failed')
-    expect(log.fail_reason).toContain('账号不存在')
+    expect(log.fail_reason).toContain('平台入口拒绝了租户账号')
   })
 
   it('租户入口只接受该租户的账号', async () => {

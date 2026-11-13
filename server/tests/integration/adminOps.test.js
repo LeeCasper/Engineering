@@ -530,11 +530,16 @@ describe('AC-L24 结算单 PDF', () => {
   it('确认对账后自动生成结算单 PDF', async () => {
     const { reconciliationId } = await setupConfirmedReconciliation()
 
-    const row = await db.queryOne('SELECT settlement_pdf_url FROM reconciliation WHERE id = ?', [reconciliationId])
-    expect(row.settlement_pdf_url).toContain('/uploads/settlements/')
+    const row = await db.queryOne(
+      'SELECT settlement_pdf_key, settlement_pdf_private, settlement_pdf_url FROM reconciliation WHERE id = ?',
+      [reconciliationId]
+    )
+    // 结算单已改私有存储：不再有公开直链，只能经签名 URL 下载
+    expect(row.settlement_pdf_private).toBe(1)
+    expect(row.settlement_pdf_url).toBeNull()
+    expect(row.settlement_pdf_key).toContain('settlements/')
 
-    const key = row.settlement_pdf_url.split('/uploads/')[1]
-    const fullPath = require('node:path').join(config.upload.dir, key)
+    const fullPath = require('node:path').join(config.esign.privateDir, row.settlement_pdf_key)
     expect(fs.existsSync(fullPath)).toBe(true)
 
     const pdf = fs.readFileSync(fullPath)
