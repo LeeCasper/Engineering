@@ -6,6 +6,9 @@ node_modules/
 .env
 .env.local
 .env.*.local
+# 例外：管理后台的 Vite 变量全是会打进前端包的公开值，不含密钥；
+# 缺了它新克隆的仓库连 vite 配置都加载不了（VITE_ICON_PREFIX 未定义）
+!admin/.env
 
 # 上传的文件（本地存储适配器）
 server/uploads/
