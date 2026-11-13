@@ -19,6 +19,20 @@ CI 不需要任何仓库 Secret：数据库与密钥都用 CI 专用假值。同
 小程序产物不随 CD 发布：构建成功只代表能打包，正式发布仍需在本机用微信
 开发者工具上传并提交审核。
 
+### 几个不能随手改的事
+
+- **admin 的 pnpm 必须是 12**：`pnpm-workspace.yaml` 里的 `allowBuilds` /
+  `shamefullyHoist` 只有 pnpm 10 以上才识别。pnpm 9 能装上 workspace 包，但根
+  `node_modules` 不做提升，`axios` / `@unocss/core` 这些直接 import 全部解析失败。
+- **CI 的时区必须是 Asia/Shanghai**：业务约定所有时间是上海墙上时间。
+  job 设 `TZ`，并把 MySQL 全局 `time_zone` 设为 `+08:00`（官方镜像默认 UTC）。
+  否则锁定时间、提醒窗口、导出任务清理都会偏 8 小时。
+- **`migrate.js --fresh` 会自己建库**：它先建立不带 database 的连接再 DROP/CREATE，
+  因此 CI 不需要额外创建 `renovation_test`；也不要改回「先连库再删库」，
+  库不存在时连接会直接失败。
+- **`admin/build/` 与 `admin/.env` 必须入库**：前者是 Vite 插件源码，后者是公开的
+  构建变量。`.gitignore` 只忽略仓库根目录的 `/build/` 和 `server/.env` 等真实密钥。
+
 ## 持续部署（服务器拉取式）
 
 服务器上的 `renovation-deploy.timer` 每 5 分钟执行一次
