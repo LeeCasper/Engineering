@@ -25,6 +25,7 @@
  */
 
 const AppError = require('../utils/AppError')
+const datetime = require('../utils/datetime')
 const password = require('../utils/password')
 const jwt = require('../utils/jwt')
 const captcha = require('./captcha.service')
@@ -331,7 +332,10 @@ async function changePassword(adminId, { oldPassword, newPassword, requireOldPas
  */
 function isLocked(admin) {
   if (!admin || !admin.locked_until) return false
-  return new Date(admin.locked_until).getTime() > Date.now()
+  // DATETIME 以墙上时间字符串返回（dateStrings: true），必须按约定的
+  // Asia/Shanghai 解释。直接 new Date(str) 会按**进程**时区解析：进程跑在 UTC
+  // （CI、容器）时整条锁定时间会偏 8 小时，表现为「已到期的锁仍然锁着」。
+  return datetime.parse(admin.locked_until).valueOf() > Date.now()
 }
 
 /** 达到阈值才给锁定时间，未达阈值返回 null（表示「只记数，不锁」） */

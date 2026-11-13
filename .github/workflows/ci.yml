@@ -18,6 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # 与生产一致：业务约定所有时间都是 Asia/Shanghai 墙上时间，
+    # 进程按 UTC 解析 DATETIME 会让锁定时间、提醒窗口整体偏 8 小时
+    env:
+      TZ: Asia/Shanghai
+
     services:
       mysql:
         image: mysql:8.0
@@ -121,6 +126,26 @@ jobs:
 
       - name: 安装依赖
         run: npm ci
+
+      # 生产 MySQL 的 system_time_zone 是 CST(+08:00)，而官方镜像默认 UTC。
+      # NOW() 等 SQL 时间函数按会话时区返回，差 8 小时会让「导出任务 10 分钟宽限期」
+      # 这类比较直接失效，测试里表现为刚启动的任务被当成滞留任务清理掉。
+      - name: 统一数据库时区
+        run: |
+          node -e "
+            const mysql = require('mysql2/promise');
+            (async () => {
+              const conn = await mysql.createConnection({
+                host: '127.0.0.1', port: 3306, user: 'root', password: 'root'
+              });
+              await conn.query(\"SET GLOBAL time_zone = '+08:00'\");
+              await conn.end();
+              console.log('mysql time_zone set to +08:00');
+            })().catch((err) => {
+              console.error('set time_zone failed:', err.message);
+              process.exit(1);
+            });
+          "
 
       - name: 单元测试
         run: npm test
