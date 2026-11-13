@@ -24,6 +24,11 @@ LOCK_FILE=${LOCK_FILE:-/var/lock/renovation-deploy.lock}
 # 上一轮如果在 reset 之后、重启之前失败，工作区已经是新代码、进程却还是旧的；
 # 只比较 OLD..NEW 会漏掉这段差异，导致后端一直不重启。用它作为 diff 的起点。
 MARKER_FILE=${MARKER_FILE:-/srv/renovation/.deployed-commit}
+# CI 生成的 Allure 报告会被推到 gh-pages 分支；这里把它同步成站点上的静态目录，
+# 让国内网络不用翻墙也能打开（github.io 在很多网络下是打不开的）
+REPORT_DIR=${REPORT_DIR:-/srv/renovation/reports}
+REPORT_MARKER=${REPORT_MARKER:-/srv/renovation/.report-commit}
+REPORT_BRANCH=${REPORT_BRANCH:-gh-pages}
 HEALTH_URL=${HEALTH_URL:-http://127.0.0.1:3100/health}
 NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=2048}
 
@@ -41,6 +46,38 @@ cd "$APP_DIR"
 # 仓库与依赖都属于 renovation。以 root 执行 git/npm 会把源码改成 root 属主，
 # 之后 renovation 再跑 npm 就会 permission denied
 run_as_owner() { sudo -u "$OWNER" -- "$@"; }
+
+# 把 gh-pages 上的 Allure 报告同步到本机静态目录（nginx 的 /reports/）。
+# 与主分支是否变化无关，因此放在「已是最新」提前退出之前执行。
+# 用提交号做标记，报告没更新时不重复解包。
+sync_report() {
+  run_as_owner git -C "$APP_DIR" fetch --quiet --force origin \
+    "refs/heads/$REPORT_BRANCH:refs/remotes/origin/$REPORT_BRANCH" 2>/dev/null || return 0
+
+  local sha
+  sha=$(run_as_owner git -C "$APP_DIR" rev-parse "refs/remotes/origin/$REPORT_BRANCH" 2>/dev/null || true)
+  [ -z "$sha" ] && return 0
+  if [ "$(cat "$REPORT_MARKER" 2>/dev/null || true)" = "$sha" ]; then
+    return 0
+  fi
+
+  local tmp="$REPORT_DIR/.tmp"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  if ! run_as_owner git -C "$APP_DIR" archive "refs/remotes/origin/$REPORT_BRANCH" | tar -x -C "$tmp"; then
+    rm -rf "$tmp"
+    log "测试报告解包失败，保留旧报告"
+    return 0
+  fi
+
+  rm -rf "$REPORT_DIR/latest"
+  mv "$tmp" "$REPORT_DIR/latest"
+  chmod -R a+rX "$REPORT_DIR"
+  echo "$sha" > "$REPORT_MARKER"
+  log "测试报告已同步：${sha:0:7}"
+}
+
+sync_report
 
 OLD=$(run_as_owner git -C "$APP_DIR" rev-parse HEAD)
 # --tags：ci-green 标签是 CI 全绿后才打上的，部署前必须能看到

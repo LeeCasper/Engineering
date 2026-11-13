@@ -27,6 +27,9 @@ CI 不需要任何仓库 Secret：数据库与密钥都用 CI 专用假值。同
   Settings → Pages 选择「Deploy from a branch → gh-pages / root」，之后地址是
   `https://leecasper.github.io/Engineering/`。私有仓库的 Pages 需要套餐支持，
   不可用时 `pages` job 会失败但已标 `continue-on-error`，不影响 CI 结论。
+- **国内网络优先用生产域名下的报告**：部署脚本会把 `gh-pages` 同步到
+  `/srv/renovation/reports/latest`，nginx 暴露为 `https://bzg.yanxinn.com/reports/`。
+  企业微信通知里的链接用的是这个地址；`github.io` 在不少网络下打不开。
 - `notify` job 通过企业微信群机器人推送结果与报告链接，需要仓库 Secret
   `WECOM_WEBHOOK`（在群机器人设置里复制完整 webhook 地址）。没配置时自动跳过。
 - `allure-vitest` 必须固定在 **3.0.0**：更新的版本只实现了 vitest 3 的 reporter

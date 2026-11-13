@@ -339,7 +339,8 @@ jobs:
           ADMIN_RESULT: ${{ needs.admin.result }}
           MINIAPP_RESULT: ${{ needs.miniapp.result }}
           HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          REPORT_URL: https://leecasper.github.io/Engineering/
+          # 国内网络访问 github.io 经常失败，通知里优先给生产域名下的报告
+          REPORT_URL: https://bzg.yanxinn.com/reports/
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$WECOM_WEBHOOK" ]; then
