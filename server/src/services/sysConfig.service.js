@@ -148,6 +148,25 @@ function parseIntRaw(raw, key) {
   return parsed
 }
 
+/**
+ * 进度汇报的附件上限（B-5.5）。
+ *
+ * 这三个值「几乎一定会被调整」，写死在代码里意味着每次调整都要发版
+ * （§5.5 的原话），因此统一由系统配置提供。C 端提交页也要读同一份，
+ * 否则会出现「页面允许选 9 张、服务端按新配置只收 5 张」的割裂。
+ *
+ * 放在 sysConfig 层是为了避免 project.service ↔ report.service 互相 require
+ * （CLAUDE.md 第 63 条：循环 require 会让方法在运行时变成 undefined）。
+ */
+async function getReportMediaLimits(tenantId) {
+  const [maxImages, maxVideos, maxVideoSeconds] = await Promise.all([
+    getInt(tenantId, 'report_max_images'),
+    getInt(tenantId, 'report_max_videos'),
+    getInt(tenantId, 'report_max_video_seconds'),
+  ])
+  return { maxImages, maxVideos, maxVideoSeconds }
+}
+
 /** 取小数配置（如大额支出比例 0.1） */
 async function getFloat(tenantId, key) {
   const raw = await getRaw(tenantId, key)
@@ -996,6 +1015,7 @@ module.exports = {
   // B-5.1：项目级覆盖。优先级 项目 → 租户 → 平台 → 默认值
   getRawForProject,
   getIntForProject,
+  getReportMediaLimits,
   describeAll,
   describe,
   describeProject,

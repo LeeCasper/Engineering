@@ -48,8 +48,11 @@ const ACTIONS = {
   MEMBER_REMOVE: 'project_member.remove',
   MEMBER_SET_PRIMARY: 'project_member.set_primary',
   ADMIN_USER_CREATE: 'admin_user.create',
+  ADMIN_USER_UPDATE: 'admin_user.update',
   ADMIN_USER_STATUS: 'admin_user.status',
   ADMIN_USER_PASSWORD: 'admin_user.reset_password',
+  ADMIN_USER_ROLE: 'admin_user.role',
+  ADMIN_USER_DELETE: 'admin_user.delete',
   ADMIN_USER_GRANT: 'admin_user.grant_projects',
   // 小程序管理端：微信免密绑定是持久凭据，绑定/解绑/免密登录都要留痕
   ADMIN_WECHAT_BIND: 'admin_user.wechat_bind',

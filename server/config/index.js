@@ -168,7 +168,16 @@ const config = {
   },
 
   rateLimit: {
+    /** 按 IP 的全局限流基数（实际阈值 = 该值 × 5） */
     perMinute: int('RATE_LIMIT_PER_MINUTE', 60),
+    /**
+     * 鉴权后按用户 id 的限流阈值（§8.2「单用户 60 次/分钟」）。
+     *
+     * 单独一项是为了让集成测试能只关掉用户级限流：测试文件常用同一个账号
+     * 连打上百个请求，而「IP 级限流生效」本身仍需要被验证（foundation 用例）。
+     * 设为 0 表示关闭该项。
+     */
+    perUserPerMinute: int('RATE_LIMIT_PER_USER_PER_MINUTE', int('RATE_LIMIT_PER_MINUTE', 60)),
   },
 
   security: {

@@ -16,6 +16,7 @@
  */
 
 const fs = require('node:fs/promises')
+const fsSync = require('node:fs')
 const path = require('node:path')
 const { nanoid } = require('nanoid')
 
@@ -44,10 +45,13 @@ const GENERATED_EXTENSIONS = new Set(['pdf', 'png', 'jpg', 'xlsx'])
 /**
  * 私有存储允许的扩展名。
  *
- * 电子签的签署前 PDF、已签 PDF、证据报告都走这里。这些文件包含合同内容、
- * 证书主体等敏感信息，**不能**放在 `UPLOAD_DIR` 下由 express.static 直接服务。
+ * 凡是含敏感信息、只能经签名 URL 分发的文件都走这里：
+ * 电子签的签署前 PDF / 已签 PDF / 证据报告、验收报告、阶段结算单、竣工总报告，
+ * 以及手写签名图片与票据照片（含业主签名、银行卡/转账截图）。
+ * 它们**不能**放在 `UPLOAD_DIR` 下由 express.static 直接服务 ——
+ * 一旦公开，链接转发出去就是永久免登录可下载，签名 URL 的时效形同虚设。
  */
-const PRIVATE_EXTENSIONS = new Set(['pdf', 'json', 'zip', 'txt'])
+const PRIVATE_EXTENSIONS = new Set(['pdf', 'json', 'zip', 'txt', 'jpg', 'jpeg', 'png', 'webp'])
 
 /**
  * 生成存储 key：`<category>/<年>/<月>/<日>/<随机>.<ext>`。
@@ -195,7 +199,7 @@ function extractKey(keyOrUrl) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 私有存储（电子签证据）
+// 私有存储（电子签证据、验收报告、结算单、竣工总报告）
 // ─────────────────────────────────────────────────────────────
 
 /**
@@ -233,6 +237,22 @@ async function savePrivate(buffer, { category, ext }) {
 async function readPrivate(key) {
   if (!key) throw new Error('私有存储 key 为空')
   return fs.readFile(privatePath(key))
+}
+
+/**
+ * 同步读取私有文件，供 PDF 渲染这类同步 API 使用（pdfkit 的 doc.image 需要 Buffer）。
+ *
+ * 文件不存在时返回 null 而不是抛错：签名图片缺失时 PDF 应该显示「未采集」，
+ * 而不是让整份验收报告生成失败。路径逃逸仍然抛错 —— 那说明调用方传错了 key。
+ */
+function readPrivateSync(key) {
+  if (!key) return null
+  try {
+    return fsSync.readFileSync(privatePath(key))
+  } catch (err) {
+    if (err.code === 'ENOENT') return null
+    throw err
+  }
 }
 
 async function removePrivate(key) {
@@ -276,6 +296,7 @@ module.exports = {
   urlFor,
   read,
   readPrivate,
+  readPrivateSync,
   removePrivate,
   extractKey,
   remove,

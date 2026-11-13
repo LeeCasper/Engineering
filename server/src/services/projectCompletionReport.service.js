@@ -135,21 +135,26 @@ async function generate(project, { operatorId, operatorType, force = false }) {
   try {
     const snapshot = await buildSnapshot(project)
     const buffer = await pdf.render(snapshot)
-    const saved = await storage.saveGenerated(buffer, {
+    // 私有存储：总报告含阶段验收、付款节点与账务，不能由 express.static 公开服务。
+    // 下载只走 2 小时签名的 `/completion-reports/:projectId/report.pdf`。
+    const saved = await storage.savePrivate(buffer, {
       category: 'project-completion-reports',
       ext: 'pdf',
     })
     const sha256 = crypto.createHash('sha256').update(buffer).digest('hex')
 
-    await reportModel.markSuccess(project.id, { url: saved.url, key: saved.key, sha256 })
-    // 重新生成时清理上一份归档文件；失败只记 warn，不影响新报告
-    if (existing && existing.file_url && existing.file_url !== saved.url) {
+    await reportModel.markSuccess(project.id, { url: null, key: saved.key, sha256 })
+    // 重新生成时清理上一份归档文件；失败只记 warn，不影响新报告。
+    // 历史数据可能只有 file_url（公开目录），两种都要能清掉。
+    if (existing && existing.file_key && existing.file_key !== saved.key) {
+      await storage.removePrivate(existing.file_key)
+    } else if (existing && existing.file_url) {
       await storage.remove(storage.extractKey(existing.file_url))
     }
     logger.info('项目竣工总报告已生成', { projectId: project.id, sizeBytes: saved.sizeBytes })
   } catch (err) {
     // 重新生成失败时保留上一版成功报告：归档材料不应因一次刷新失败而不可下载
-    if (existing && existing.status === 'success' && existing.file_url) {
+    if (existing && existing.status === 'success' && (existing.file_key || existing.file_url)) {
       await reportModel.restoreSuccess(
         project.id,
         existing,
@@ -252,7 +257,9 @@ async function buildSnapshot(project) {
 
   const itemCount = stages.reduce((sum, stage) => sum + (stage.items ? stage.items.length : 0), 0)
   const legacySignatureCount = acceptances.filter(
-    (acceptance) => acceptance.signature_mode !== 'provider' && Boolean(acceptance.signature_url)
+    (acceptance) =>
+      acceptance.signature_mode !== 'provider' &&
+      Boolean(acceptance.signature_url || acceptance.signature_key)
   ).length
   const esignCount = acceptances.filter(
     (acceptance) => acceptance.signature_mode === 'provider' || acceptance.esign_status === 'signed'
@@ -305,7 +312,7 @@ function signatureLabel(acceptance) {
   if (acceptance.signature_mode === 'provider' || acceptance.esign_status === 'signed') {
     return '可靠电子签'
   }
-  if (acceptance.signature_url) return '手写签名'
+  if (acceptance.signature_url || acceptance.signature_key) return '手写签名'
   return '—'
 }
 

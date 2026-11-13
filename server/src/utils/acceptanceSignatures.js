@@ -39,6 +39,17 @@ function signatureUrlOf(row) {
   return row.signature_url || row.signatureUrl || null
 }
 
+/** 私有存储 key（新数据）；历史数据没有这一列，返回 null */
+function signatureKeyOf(row) {
+  if (!row) return null
+  return row.signature_key || row.signatureKey || null
+}
+
+/** 有 URL 或有私有 key，都算「这张单子上采集过签名」 */
+function hasSignatureOf(row) {
+  return Boolean(signatureUrlOf(row) || signatureKeyOf(row))
+}
+
 function operatedAtOf(row) {
   if (!row) return null
   return row.operated_at || row.operatedAt || null
@@ -56,6 +67,7 @@ function signedState(row) {
     stateLabel: '已签署',
     signed: true,
     signatureUrl: signatureUrlOf(row),
+    signatureKey: signatureKeyOf(row),
     source: 'flow',
     operator: operatorOf(row),
     signedAt: operatedAtOf(row),
@@ -68,6 +80,7 @@ function missingState(row, label) {
     stateLabel: label,
     signed: false,
     signatureUrl: null,
+    signatureKey: null,
     source: null,
     operator: operatorOf(row),
     signedAt: null,
@@ -106,7 +119,7 @@ function collectRoundSignatures(
     role: 'foreman',
     roleLabel: ROLE_LABELS.foreman,
     required: true,
-    ...(signatureUrlOf(foremanRow) ? signedState(foremanRow) : missingState(foremanRow, missingLabel)),
+    ...(hasSignatureOf(foremanRow) ? signedState(foremanRow) : missingState(foremanRow, missingLabel)),
   }
 
   const supervisorRow = latest(rows, 'supervisor')
@@ -119,7 +132,7 @@ function collectRoundSignatures(
         roleLabel: ROLE_LABELS.supervisor,
         required: true,
         configured: true,
-        ...(signatureUrlOf(supervisorRow)
+        ...(hasSignatureOf(supervisorRow)
           ? signedState(supervisorRow)
           : missingState(supervisorRow, missingLabel)),
       }
@@ -132,6 +145,7 @@ function collectRoundSignatures(
         stateLabel: '未配置监理，已跳过',
         signed: false,
         signatureUrl: null,
+        signatureKey: null,
         source: null,
         operator: null,
         signedAt: null,
@@ -140,9 +154,9 @@ function collectRoundSignatures(
   const ownerRow = latest(rows, 'owner')
   let owner
 
-  if (signatureUrlOf(ownerRow)) {
+  if (hasSignatureOf(ownerRow)) {
     owner = { role: 'owner', roleLabel: ROLE_LABELS.owner, required: true, ...signedState(ownerRow) }
-  } else if (ownerFallback && ownerFallback.signatureUrl) {
+  } else if (ownerFallback && (ownerFallback.signatureUrl || ownerFallback.signatureKey)) {
     // 迁移 036 之前的历史单据：业主签名只在 acceptance.signature_url
     owner = {
       role: 'owner',
@@ -151,7 +165,8 @@ function collectRoundSignatures(
       state: SIGNATURE_STATES.SIGNED,
       stateLabel: '已签署',
       signed: true,
-      signatureUrl: ownerFallback.signatureUrl,
+      signatureUrl: ownerFallback.signatureUrl || null,
+      signatureKey: ownerFallback.signatureKey || null,
       source: 'acceptance',
       operator: operatorOf(ownerRow),
       signedAt: ownerFallback.signedAt || operatedAtOf(ownerRow),
@@ -165,6 +180,7 @@ function collectRoundSignatures(
       stateLabel: '已可靠电子签',
       signed: true,
       signatureUrl: null,
+      signatureKey: null,
       source: 'provider',
       operator: operatorOf(ownerRow),
       signedAt: operatedAtOf(ownerRow),

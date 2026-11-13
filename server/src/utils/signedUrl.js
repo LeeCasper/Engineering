@@ -82,4 +82,25 @@ function buildPath({ resource, id, path, ttlSeconds }) {
   return `${path}?expires=${expires}&sig=${signature}`
 }
 
-module.exports = { sign, verify, buildPath, computeSignature }
+/**
+ * 给**私有存储文件**签一个可直接放进 `<image src>` / `uni.downloadFile` 的绝对地址。
+ *
+ * 与 buildPath 的区别只有两点：
+ *   1. 签名内容是 storage key，而不是业务 id —— 私有文件没有独立的主键；
+ *   2. 返回绝对地址。图片要直接交给 `<image src>`，相对路径在真机上会
+ *      相对于小程序自身域名解析，必然 404。
+ *
+ * 有效期与 PDF 同为 2 小时（config.signedUrl.ttlSeconds）。
+ */
+function buildPrivateFileUrl(key, { ttlSeconds } = {}) {
+  if (!key) return null
+  const { expires, signature } = sign({ resource: 'private-file', id: key, ttlSeconds })
+  const query = new URLSearchParams({
+    key,
+    expires: String(expires),
+    sig: signature,
+  })
+  return `${config.upload.publicBaseUrl}${config.server.apiPrefix}/files?${query.toString()}`
+}
+
+module.exports = { sign, verify, buildPath, buildPrivateFileUrl, computeSignature }

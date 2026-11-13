@@ -416,6 +416,12 @@ describe('P1 · 意见反馈：列表按租户，处理按租户校验', () => {
     const projA = await createProject(a.token, 'A 的项目', tplA)
 
     const user = await mini.login(`tenancy-feedback-${nextSeq()}`)
+    // 反馈要按项目归属租户，服务端会先校验调用者是该项目的 active 成员 ——
+    // 否则任何微信用户拿一个自增 projectId 就能把反馈写进别人的租户
+    await db.query(
+      "INSERT INTO project_member (project_id, user_id, role, status, confirmed_at, joined_at) VALUES (?, ?, 'foreman', 'active', NOW(), NOW())",
+      [projA, user.userId]
+    )
     const submitted = await request
       .authed('post', '/feedback', user.token)
       .field('content', '这个项目的进度照片打不开')

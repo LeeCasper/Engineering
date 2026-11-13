@@ -381,10 +381,12 @@ async function getDetail(userId, projectId, reconciliationId) {
     confirmedBy: reconciliation.confirmed_by,
     confirmedAt: reconciliation.confirmed_at,
     remark: reconciliation.remark,
-    settlementPdfUrl: reconciliation.settlement_pdf_url,
+    // 不再下发永久公开 URL：结算单已改私有存储，只签发 2 小时临时链接。
+    // 历史数据（settlement_pdf_private = 0）也统一走签名下载入口。
     // AC-L24：双方均可下载。与 AC-A20 同口径 —— 带签名的临时链接，
     // 不要求登录态（结算单同样要能转发给不在系统里的人），2 小时有效
-    settlementPdfSignedPath: reconciliation.settlement_pdf_url
+    settlementPdfSignedPath:
+      reconciliation.settlement_pdf_key || reconciliation.settlement_pdf_url
       ? signedUrl.buildPath({
           resource: 'reconciliation-settlement',
           id: reconciliation.id,
@@ -446,7 +448,7 @@ async function list(userId, projectId) {
       confirmedBy: row.confirmed_by,
       confirmedByName: confirmers.get(row.confirmed_by) || null,
       confirmedAt: row.confirmed_at,
-      settlementPdfUrl: row.settlement_pdf_url,
+      settlementPdfReady: Boolean(row.settlement_pdf_key || row.settlement_pdf_url),
     })),
     total: rows.length,
     myRole: viewer.role,

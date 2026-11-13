@@ -111,6 +111,16 @@
         <button class="empty-btn" @tap="emptyProjectAction">
           {{ emptyProjectState.action }}
         </button>
+        <!-- #ifdef MP-WEIXIN -->
+        <!-- 没有客服电话时直接拉起微信客服会话；这段原本只有一行「客服联系方式」文本 -->
+        <button
+          v-if="emptyProjectState.type !== 'noCurrent'"
+          class="empty-contact-btn"
+          open-type="contact"
+        >
+          联系在线客服
+        </button>
+        <!-- #endif -->
       </view>
 
       <!-- 常用功能 -->
@@ -166,22 +176,40 @@
       <view class="section">
         <text class="section-title">服务与设置</text>
         <view class="settings-card">
-          <view
-            v-for="(row, index) in serviceRows"
-            :key="row.key"
-            class="setting-row"
-            :class="{ 'setting-row--divided': index > 0 }"
-            @tap="openService(row.key)"
-          >
-            <view class="setting-icon-wrap">
-              <image class="setting-icon" :src="row.icon" mode="aspectFit" />
+          <template v-for="(row, index) in serviceRows" :key="row.key">
+            <!-- 在线客服必须是 open-type="contact" 的 button 才能拉起微信客服会话 -->
+            <button
+              v-if="CONTACT_BUTTON_SUPPORTED && row.key === 'support'"
+              class="setting-row"
+              :class="{ 'setting-row--divided': index > 0 }"
+              open-type="contact"
+            >
+              <view class="setting-icon-wrap">
+                <image class="setting-icon" :src="row.icon" mode="aspectFit" />
+              </view>
+              <view class="setting-main">
+                <text class="setting-title">{{ row.title }}</text>
+                <text class="setting-sub">{{ row.sub }}</text>
+              </view>
+              <image class="setting-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
+            </button>
+            <!-- H5 / App 没有微信客服会话，客服行退回到「展示联系方式 / 引导反馈」 -->
+            <view
+              v-if="!CONTACT_BUTTON_SUPPORTED || row.key !== 'support'"
+              class="setting-row"
+              :class="{ 'setting-row--divided': index > 0 }"
+              @tap="openService(row.key)"
+            >
+              <view class="setting-icon-wrap">
+                <image class="setting-icon" :src="row.icon" mode="aspectFit" />
+              </view>
+              <view class="setting-main">
+                <text class="setting-title">{{ row.title }}</text>
+                <text class="setting-sub">{{ row.sub }}</text>
+              </view>
+              <image class="setting-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
             </view>
-            <view class="setting-main">
-              <text class="setting-title">{{ row.title }}</text>
-              <text class="setting-sub">{{ row.sub }}</text>
-            </view>
-            <image class="setting-chevron" src="/static/images/icon-chevron-right.png" mode="aspectFit" />
-          </view>
+          </template>
         </view>
       </view>
 
@@ -393,6 +421,19 @@ defineOptions({ name: 'MinePage' })
 const APP_VERSION = '0.1.0'
 const DEFAULT_AVATAR = '/static/images/mine-avatar-default.png'
 
+/**
+ * 微信端才有客服会话（`button open-type="contact"`）。
+ *
+ * 用编译期常量而不是在模板里写 `#ifdef`：模板要在两端都渲染出同一行，
+ * 只是微信端是 button、H5 是普通 view（点击退回到展示联系方式）。
+ */
+// #ifdef MP-WEIXIN
+const CONTACT_BUTTON_SUPPORTED = true
+// #endif
+// #ifndef MP-WEIXIN
+const CONTACT_BUTTON_SUPPORTED = false
+// #endif
+
 const ROLE_LABELS = {
   owner: '业主',
   foreman: '工长',
@@ -411,6 +452,12 @@ const serviceRows = [
     title: '意见反馈',
     sub: '告诉我们您的建议',
     icon: '/static/images/icon-edit-accent.png',
+  },
+  {
+    key: 'support',
+    title: '在线客服',
+    sub: '遇到问题可直接联系我们',
+    icon: '/static/images/icon-service-accent.png',
   },
   {
     key: 'about',
@@ -548,9 +595,8 @@ const emptyProjectState = computed(() => {
     const hasPhone = Boolean(profile.value && profile.value.hasPhone)
     return {
       title: '还没有加入项目',
-      text: supportContact.value
-        ? `请联系装修公司管理员邀请你加入。客服联系方式：${supportContact.value}`
-        : '项目邀请按手机号发送。请先绑定手机号，再联系装修公司管理员。',
+      // 客服入口由下面的 open-type="contact" 按钮承担（H5 走「服务与设置 → 在线客服」）
+      text: '项目邀请按手机号发送。请先绑定手机号，再联系装修公司管理员。',
       action: hasPhone ? '刷新项目' : '去绑定手机号',
       type: hasPhone ? 'refresh' : 'noProjects',
     }
@@ -983,6 +1029,24 @@ function openService(key) {
       if (currentProject.value.tenantId) params.push(`tenantId=${currentProject.value.tenantId}`)
     }
     uni.navigateTo({ url: `/pages/feedback/index${params.length ? `?${params.join('&')}` : ''}` })
+    return
+  }
+  if (key === 'support') {
+    // 微信端这一行本身就是 open-type="contact" 的 button，点击由微信直接拉起客服会话；
+    // 能走到这里的是 H5 / 其他端 —— 没有客服会话入口，退回到联系方式或反馈页
+    if (supportContact.value) {
+      uni.showModal({
+        title: '在线客服',
+        content: `客服联系方式：${supportContact.value}`,
+        cancelText: '关闭',
+        confirmText: '复制',
+        success: (res) => {
+          if (res.confirm) uni.setClipboardData({ data: supportContact.value })
+        },
+      })
+      return
+    }
+    uni.showToast({ title: '请在微信小程序内联系在线客服', icon: 'none' })
     return
   }
   if (key === 'about') {
@@ -1577,6 +1641,16 @@ function closeActiveSheet() {
   line-height: dp(34);
 }
 
+/* 无项目时的客服入口：文字比主按钮弱一档，避免与「刷新项目」抢注意力 */
+.empty-contact-btn {
+  display: block;
+  margin: dp(8) auto 0;
+  padding: dp(4) dp(10);
+  color: #8b8179;
+  font-size: dp(11);
+  line-height: 1.5;
+}
+
 /* ── 常用功能 ── */
 .section {
   margin-top: dp(18);
@@ -1677,7 +1751,10 @@ function closeActiveSheet() {
 .setting-row {
   display: flex;
   align-items: center;
+  width: 100%;
   padding: dp(13) 0;
+  /* 在线客服这一行是 button（open-type="contact"），需要把按钮默认的居中与宽度按行样式对齐 */
+  text-align: left;
 }
 
 .setting-row--divided {

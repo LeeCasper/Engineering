@@ -1,0 +1,390 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支只保留最新一次运行：连续 push 时旧运行自动取消，
+# 避免多个集成测试同时去 DROP 同一个测试库
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server（单元 + 集成）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # 与生产一致：业务约定所有时间都是 Asia/Shanghai 墙上时间，
+    # 进程按 UTC 解析 DATETIME 会让锁定时间、提醒窗口整体偏 8 小时
+    env:
+      TZ: Asia/Shanghai
+      # 打开 allure reporter（vitest.config.mjs 里按这个变量决定是否挂 reporter）
+      ALLURE_RESULTS_DIR: allure-results
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: renovation_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      # 水印与验收报告 PDF 依赖中文字体；缺字体时测试会直接失败，
+      # 不会产出「中文变方块」的假通过
+      - name: 安装中文字体
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+
+      # 把环境问题与代码问题分开：如果这一步失败，日志会直接指出是
+      # 数据库连不上还是字体缺失，而不是在集成测试里看到一片 ECONNREFUSED。
+      # 这里只用 Node 的 net 做 TCP 探测 —— runner 上不保证装了 mysql 客户端，
+      # 用 mysqladmin 反而可能让这一步自己失败。
+      - name: 检查运行环境与 MySQL
+        run: |
+          node -v
+          npm -v
+          node -e "
+            const net = require('node:net');
+            const started = Date.now();
+            const socket = net.connect(3306, '127.0.0.1', () => {
+              console.log('mysql tcp ok in', Date.now() - started, 'ms');
+              socket.end();
+            });
+            socket.on('error', (err) => {
+              console.error('mysql tcp failed:', err.code);
+              process.exit(1);
+            });
+          "
+          ls -l /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+
+      # 集成测试会 DROP/CREATE 测试库，因此必须用有建库权限的账号。
+      # 所有密钥都用 CI 专用的假值，与任何真实环境无关。
+      - name: 写入 CI 环境变量
+        run: |
+          cat > .env <<'EOF'
+          NODE_ENV=test
+          PORT=3000
+          API_PREFIX=/api/v1
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_USER=root
+          DB_PASSWORD=root
+          DB_NAME=renovation_ci
+          DB_NAME_TEST=renovation_test
+          DB_POOL_LIMIT=10
+          DB_TIMEZONE=+08:00
+          CACHE_DRIVER=memory
+          JWT_MINI_SECRET=ci-only-mini-secret
+          JWT_ADMIN_SECRET=ci-only-admin-secret
+          JWT_MINI_EXPIRES=7d
+          JWT_ADMIN_EXPIRES=8h
+          JWT_ADMIN_IDLE=30m
+          WX_MOCK=true
+          REAL_NAME_ENABLED=true
+          REAL_NAME_PROVIDER=local
+          REAL_NAME_CONSENT_VERSION=2026-11-v1
+          UPLOAD_DIR=./uploads
+          PUBLIC_BASE_URL=http://127.0.0.1:3000
+          RATE_LIMIT_PER_MINUTE=60
+          BCRYPT_ROUNDS=10
+          BCRYPT_ROUNDS_MIN=10
+          BCRYPT_ROUNDS_TEST=4
+          SIGNED_URL_SECRET=ci-only-signed-url-secret
+          SIGNED_URL_TTL_SECONDS=7200
+          WATERMARK_FONT_FAMILY=Noto Sans CJK SC
+          WATERMARK_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+          WATERMARK_OPACITY=0.75
+          WATERMARK_POSITION=southeast
+          PDF_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+          PDF_FONT_NAME=NotoSansCJKsc-Regular
+          MAP_PROVIDER=auto
+          ESIGN_ENABLED=false
+          ESIGN_LEGACY_SIGNING=true
+          LOG_LEVEL=warn
+          DOOR_CODE_KEY=8752831b203e7b228011e268d5843432bab7f7d6a0cfb065d0f6124beb118d93
+          EOF
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 生产 MySQL 的 system_time_zone 是 CST(+08:00)，而官方镜像默认 UTC。
+      # NOW() 等 SQL 时间函数按会话时区返回，差 8 小时会让「导出任务 10 分钟宽限期」
+      # 这类比较直接失效，测试里表现为刚启动的任务被当成滞留任务清理掉。
+      - name: 统一数据库时区
+        run: |
+          node -e "
+            const mysql = require('mysql2/promise');
+            (async () => {
+              const conn = await mysql.createConnection({
+                host: '127.0.0.1', port: 3306, user: 'root', password: 'root'
+              });
+              await conn.query(\"SET GLOBAL time_zone = '+08:00'\");
+              await conn.end();
+              console.log('mysql time_zone set to +08:00');
+            })().catch((err) => {
+              console.error('set time_zone failed:', err.message);
+              process.exit(1);
+            });
+          "
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 集成测试
+        run: npm run test:integration
+
+      # 以下三步都要在测试失败时也执行，否则红的那次反而没有报告可看
+      - name: 生成 Allure 报告
+        if: always()
+        run: |
+          if [ -d allure-results ]; then
+            npx allure generate allure-results --clean -o allure-report
+          else
+            mkdir -p allure-report
+            echo "没有 allure-results，跳过报告生成"
+          fi
+
+      - name: 汇总用例结果
+        if: always()
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const dir = 'allure-results';
+            const counts = { passed: 0, failed: 0, broken: 0, skipped: 0, unknown: 0 };
+            const failed = [];
+            if (fs.existsSync(dir)) {
+              for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('-result.json'))) {
+                const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+                const s = d.status || 'unknown';
+                counts[s] = (counts[s] || 0) + 1;
+                if (s === 'failed' || s === 'broken') failed.push(d.name);
+              }
+            }
+            fs.mkdirSync('allure-report', { recursive: true });
+            fs.writeFileSync(
+              'allure-report/summary.json',
+              JSON.stringify({
+                counts,
+                failed: failed.slice(0, 10),
+                total: Object.values(counts).reduce((a, b) => a + b, 0)
+              })
+            );
+            console.log(JSON.stringify(counts));
+          "
+
+      - name: 上传 Allure 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: server/allure-report
+          if-no-files-found: warn
+          retention-days: 14
+
+  admin:
+    name: 管理后台（typecheck + build）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 必须用能读取 pnpm-workspace.yaml 里 allowBuilds / shamefullyHoist 的版本。
+      # pnpm 9 会忽略这些设置：workspace 包能装上，但根 node_modules 不做提升，
+      # 于是 axios / @unocss/core / @iconify/utils 这些直接 import 全部解析失败。
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: admin/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      - name: 构建
+        run: pnpm build
+
+  # 只有三个 job 全绿，才给这条提交打上 ci-green/<sha> 标签。
+  # 服务器上的部署脚本只部署带这个标签的提交 —— 这就是「CI 通过才 CD」的闸门。
+  # 用标签而不是在部署脚本里查 API：不需要在服务器上放任何 GitHub token。
+  mark-green:
+    name: 标记可部署版本
+    needs: [server, admin, miniapp]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: 打 ci-green 标签
+        run: |
+          TAG="ci-green/${GITHUB_SHA}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            echo "标签已存在，跳过：$TAG"
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+            echo "已标记：$TAG"
+          fi
+
+  miniapp:
+    name: 小程序（构建）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: miniapp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 生产包必须显式指定 HTTPS API 基址，否则真机报
+      # url not in domain list。打包产物不进仓库，只验证能构建成功。
+      - name: 构建微信小程序
+        run: npm run build:mp-weixin
+        env:
+          VITE_API_BASE: https://bzg.yanxinn.com/api/v1
+
+  # 把 Allure 报告发布到 gh-pages 分支。GitHub Pages 选择「Deploy from a branch →
+  # gh-pages」后即可通过 https://leecasper.github.io/Engineering/ 访问。
+  # 测试失败也发布（always），这样红的那次能直接点开看失败用例。
+  pages:
+    name: 发布 Allure 报告
+    needs: [server]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Pages 未开启 / 私有仓库套餐不支持时不要让整个 CI 变红
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: allure-report
+          path: report
+
+      - name: 推送到 gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./report
+          force_orphan: true
+
+  # 企业微信群机器人通知。需要仓库 Secret：WECOM_WEBHOOK。
+  # 没配 Secret 时这一步只打印一行提示，不算失败。
+  notify:
+    name: 企业微信通知
+    needs: [server, admin, miniapp, pages]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: allure-report
+          path: report
+
+      - name: 发送企业微信消息
+        env:
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
+          SERVER_RESULT: ${{ needs.server.result }}
+          ADMIN_RESULT: ${{ needs.admin.result }}
+          MINIAPP_RESULT: ${{ needs.miniapp.result }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          # 国内网络访问 github.io 经常失败，通知里优先给生产域名下的报告
+          REPORT_URL: https://bzg.yanxinn.com/reports/
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$WECOM_WEBHOOK" ]; then
+            echo "未配置 WECOM_WEBHOOK，跳过通知"
+            exit 0
+          fi
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const env = process.env;
+
+          let counts = { passed: 0, failed: 0, broken: 0, skipped: 0 };
+          try {
+            const summary = JSON.parse(fs.readFileSync('report/summary.json', 'utf8'));
+            counts = { ...counts, ...summary.counts };
+          } catch {
+            console.log('没有 summary.json，通知里只报 job 状态');
+          }
+
+          const icon = (name) => (env[`${name.toUpperCase()}_RESULT`] === 'success' ? '✅' : '❌');
+          const allGreen = ['server', 'admin', 'miniapp'].every(
+            (name) => env[`${name.toUpperCase()}_RESULT`] === 'success'
+          );
+          const title = allGreen ? '✅ CI 通过' : '❌ CI 失败';
+          const firstLine = (env.HEAD_COMMIT_MESSAGE || '').split('\n')[0];
+          const failedTotal = (counts.failed || 0) + (counts.broken || 0);
+
+          const content = [
+            `## ${title}`,
+            `> 提交：${firstLine}`,
+            `> server ${icon('server')} / admin ${icon('admin')} / miniapp ${icon('miniapp')}`,
+            `> 用例：通过 ${counts.passed || 0} / 失败 ${failedTotal} / 跳过 ${counts.skipped || 0}`,
+            `> [查看 Allure 报告](${env.REPORT_URL})`,
+            `> [查看运行日志](${env.RUN_URL})`
+          ].join('\n');
+
+          fetch(env.WECOM_WEBHOOK, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ msgtype: 'markdown', markdown: { content } })
+          })
+            .then((res) => res.json())
+            .then((body) => console.log('企业微信响应：', JSON.stringify(body)))
+            .catch((err) => {
+              // 通知失败不影响 CI 结论
+              console.error('企业微信通知失败：', err.message);
+            });
+          NODE

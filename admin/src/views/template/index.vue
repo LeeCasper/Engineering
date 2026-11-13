@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { VueDraggable } from 'vue-draggable-plus';
 import {
   fetchCreateTemplate,
   fetchDeleteTemplate,
@@ -18,6 +19,29 @@ import { useTenantReadOnly } from '@/hooks/common/tenant';
 import { formatDate } from '@/utils/format';
 
 defineOptions({ name: 'TemplatePage' });
+
+/**
+ * 编辑器里的阶段 / 工序需要一个稳定 key。
+ *
+ * 拖拽会改变数组顺序，如果用下标做 key，Vue 会把「位置」当成身份 ——
+ * 输入框的焦点会跟着位置走，而不是跟着它编辑的那一行走。
+ * 新建的行还没有数据库 id，因此本地补一个自增 uid。
+ */
+interface EditorItem extends TemplateItem {
+  uid: number;
+}
+
+interface EditorStage extends Omit<TemplateStage, 'items'> {
+  uid: number;
+  items: EditorItem[];
+}
+
+let uidSeed = 0;
+
+function nextUid() {
+  uidSeed += 1;
+  return uidSeed;
+}
 
 const readOnly = useTenantReadOnly();
 const loading = ref(false);
@@ -67,15 +91,15 @@ const editor = reactive({
 const editorForm = reactive({
   name: '',
   isDefault: false,
-  stages: [] as TemplateStage[]
+  stages: [] as EditorStage[]
 });
 
-function blankItem(): TemplateItem {
-  return { name: '', weight: '', checklist: [] };
+function blankItem(): EditorItem {
+  return { uid: nextUid(), name: '', weight: '', checklist: [] };
 }
 
-function blankStage(): TemplateStage {
-  return { name: '', planDays: 7, weight: '', items: [blankItem()] };
+function blankStage(): EditorStage {
+  return { uid: nextUid(), name: '', planDays: 7, weight: '', items: [blankItem()] };
 }
 
 function resetEditor() {
@@ -108,11 +132,13 @@ async function openEdit(row: TemplateListItem) {
     editorForm.isDefault = data.isDefault;
     editor.referencingProjectCount = data.referencingProjectCount;
     editorForm.stages = data.stages.map(stage => ({
+      uid: nextUid(),
       id: stage.id,
       name: stage.name,
       planDays: Number(stage.planDays),
       weight: stage.weight == null ? '' : String(stage.weight),
       items: stage.items.map(item => ({
+        uid: nextUid(),
         id: item.id,
         name: item.name,
         weight: item.weight == null ? '' : String(item.weight),
@@ -137,20 +163,11 @@ function removeStage(index: number) {
   editorForm.stages.splice(index, 1);
 }
 
-function moveStage(index: number, direction: -1 | 1) {
-  const target = index + direction;
-
-  if (target < 0 || target >= editorForm.stages.length) return;
-
-  const [stage] = editorForm.stages.splice(index, 1);
-  editorForm.stages.splice(target, 0, stage);
-}
-
-function addItem(stage: TemplateStage) {
+function addItem(stage: EditorStage) {
   stage.items.push(blankItem());
 }
 
-function removeItem(stage: TemplateStage, index: number) {
+function removeItem(stage: EditorStage, index: number) {
   if (stage.items.length <= 1) {
     ElMessage.warning('每个阶段至少需要 1 个工序');
     return;
@@ -159,14 +176,8 @@ function removeItem(stage: TemplateStage, index: number) {
   stage.items.splice(index, 1);
 }
 
-function moveItem(stage: TemplateStage, index: number, direction: -1 | 1) {
-  const target = index + direction;
-
-  if (target < 0 || target >= stage.items.length) return;
-
-  const [item] = stage.items.splice(index, 1);
-  stage.items.splice(target, 0, item);
-}
+// 排序全部交给 VueDraggable（AC-AD62）：拖拽直接改写数组顺序，
+// 保存时服务端按数组下标重写 seq，前端不需要再维护一个 seq 字段。
 
 // ── 默认验收项 ──
 
@@ -469,61 +480,55 @@ onMounted(load);
           <ElButton type="primary" plain @click="addStage">新增阶段</ElButton>
         </div>
 
-        <ElCard v-for="(stage, si) in editorForm.stages" :key="si" class="mb-12px" shadow="never">
-          <template #header>
-            <div class="flex flex-wrap items-center gap-8px">
-              <span class="text-13px text-#86909c">阶段 {{ si + 1 }}</span>
-              <ElInput v-model="stage.name" class="w-220px" maxlength="50" placeholder="阶段名称" />
-              <span class="text-12px text-#86909c">计划工期</span>
-              <ElInputNumber v-model="stage.planDays" :min="1" :max="9999" :precision="0" />
-              <span class="text-12px text-#86909c">天</span>
-              <ElInput v-model="stage.weight" class="w-110px" placeholder="权重（可选）" />
-              <ElButton link :disabled="si === 0" @click="moveStage(si, -1)">上移</ElButton>
-              <ElButton link :disabled="si === editorForm.stages.length - 1" @click="moveStage(si, 1)">
-                下移
-              </ElButton>
-              <ElButton link type="danger" @click="removeStage(si)">删除阶段</ElButton>
+        <!-- 拖拽排序（AC-AD62）：拖动顺序即保存顺序，服务端按数组下标重写 seq -->
+        <VueDraggable v-model="editorForm.stages" :animation="180" handle=".stage-drag" class="flex flex-col">
+          <ElCard v-for="(stage, si) in editorForm.stages" :key="stage.uid" class="mb-12px" shadow="never">
+            <template #header>
+              <div class="flex flex-wrap items-center gap-8px">
+                <icon-mdi-drag class="stage-drag cursor-move text-#86909c" />
+                <span class="text-13px text-#86909c">阶段 {{ si + 1 }}</span>
+                <ElInput v-model="stage.name" class="w-220px" maxlength="50" placeholder="阶段名称" />
+                <span class="text-12px text-#86909c">计划工期</span>
+                <ElInputNumber v-model="stage.planDays" :min="1" :max="9999" :precision="0" />
+                <span class="text-12px text-#86909c">天</span>
+                <ElInput v-model="stage.weight" class="w-110px" placeholder="权重（可选）" />
+                <ElButton link type="danger" @click="removeStage(si)">删除阶段</ElButton>
+              </div>
+            </template>
+
+            <!-- 工序同样用拖拽排序；表头单独一行，行内容保持表格的密度 -->
+            <div class="item-head">
+              <span class="w-18px" />
+              <span class="w-28px text-center">#</span>
+              <span class="flex-1">工序名称</span>
+              <span class="w-120px">权重</span>
+              <span class="w-84px text-center">默认验收项</span>
+              <span class="w-72px text-center">操作</span>
             </div>
-          </template>
+            <VueDraggable v-model="stage.items" :animation="150" handle=".item-drag" class="item-list">
+              <div v-for="(item, ii) in stage.items" :key="item.uid" class="item-row">
+                <icon-mdi-drag class="item-drag w-18px cursor-move text-#86909c" />
+                <span class="w-28px text-center text-13px text-#86909c">{{ ii + 1 }}</span>
+                <div class="min-w-0 flex-1">
+                  <ElInput v-model="item.name" maxlength="50" placeholder="工序名称" />
+                </div>
+                <div class="w-120px">
+                  <ElInput v-model="item.weight" placeholder="可选" />
+                </div>
+                <div class="w-84px text-center">
+                  <ElButton link type="primary" @click="openChecklist(si, ii)">
+                    {{ item.checklist?.length || 0 }} 项
+                  </ElButton>
+                </div>
+                <div class="w-72px text-center">
+                  <ElButton link type="danger" @click="removeItem(stage, ii)">删除</ElButton>
+                </div>
+              </div>
+            </VueDraggable>
 
-          <ElTable :data="stage.items" size="small" border>
-            <ElTableColumn label="#" width="52" align="center">
-              <template #default="{ $index }">{{ $index + 1 }}</template>
-            </ElTableColumn>
-            <ElTableColumn label="工序名称" min-width="220">
-              <template #default="{ row }">
-                <ElInput v-model="row.name" maxlength="50" placeholder="工序名称" />
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="权重" width="130">
-              <template #default="{ row }">
-                <ElInput v-model="row.weight" placeholder="可选" />
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="默认验收项" width="130" align="center">
-              <template #default="{ row, $index }">
-                <ElButton link type="primary" @click="openChecklist(si, $index)">
-                  {{ row.checklist?.length || 0 }} 项
-                </ElButton>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="操作" width="180" fixed="right">
-              <template #default="{ row, $index }">
-                <ElButton link :disabled="$index === 0" @click="moveItem(stage, $index, -1)">上移</ElButton>
-                <ElButton
-                  link
-                  :disabled="$index === stage.items.length - 1"
-                  @click="moveItem(stage, $index, 1)"
-                >
-                  下移
-                </ElButton>
-                <ElButton link type="danger" @click="removeItem(stage, $index)">删除</ElButton>
-              </template>
-            </ElTableColumn>
-          </ElTable>
-
-          <ElButton class="mt-10px" plain @click="addItem(stage)">添加工序</ElButton>
-        </ElCard>
+            <ElButton class="mt-10px" plain @click="addItem(stage)">添加工序</ElButton>
+          </ElCard>
+        </VueDraggable>
 
         <div class="mt-18px flex gap-8px">
           <ElButton type="primary" :loading="editor.submitting" @click="submitEditor">保存</ElButton>
@@ -599,4 +604,38 @@ onMounted(load);
   </div>
 </template>
 
-<style scoped></style>
+<style scoped>
+/* 工序行的表头与数据行用同一套宽度，避免和「默认验收项 / 操作」错位 */
+.item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #86909c;
+}
+
+.item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+}
+
+.item-row:hover {
+  border-color: var(--el-border-color);
+}
+</style>

@@ -25,6 +25,7 @@
  */
 
 const AppError = require('../utils/AppError')
+const datetime = require('../utils/datetime')
 const password = require('../utils/password')
 const jwt = require('../utils/jwt')
 const captcha = require('./captcha.service')
@@ -111,6 +112,18 @@ async function login({ username, password: plainPassword, captchaId, captchaAnsw
   }
 
   let admin = candidates[0] || null
+
+  // AC-T19：平台入口遇到「密码正确的租户账号」必须返回 403 并提示专属地址。
+  // 但平台门户上面只查平台命名空间（避免多个租户同名账号串号），租户账号会
+  // 先落进「账号不存在」，永远走不到 4.2 的 403 分支。
+  // 这里额外取一条同名租户账号**只用于密码比对**：密码错误仍统一返回 401，
+  // 只有在密码正确之后才暴露「你属于某个租户」—— 不违反 AC-AD01。
+  if (!admin && portal === 'platform') {
+    const tenantCandidates = await adminUserModel.findForLogin(username)
+    // 多个租户同名时无法确定是哪一家，保持统一的 401，不做猜测
+    if (tenantCandidates.length === 1) admin = tenantCandidates[0]
+  }
+
   if (admin && tenant && Number(admin.tenant_id) !== Number(tenant.id)) {
     // tenantCode 指向 A，账号却属于 B：退化成「账号不存在」，
     // 让下面的密码校验走 DUMMY_HASH，响应时间与提示都不泄露差异
@@ -331,7 +344,10 @@ async function changePassword(adminId, { oldPassword, newPassword, requireOldPas
  */
 function isLocked(admin) {
   if (!admin || !admin.locked_until) return false
-  return new Date(admin.locked_until).getTime() > Date.now()
+  // DATETIME 以墙上时间字符串返回（dateStrings: true），必须按约定的
+  // Asia/Shanghai 解释。直接 new Date(str) 会按**进程**时区解析：进程跑在 UTC
+  // （CI、容器）时整条锁定时间会偏 8 小时，表现为「已到期的锁仍然锁着」。
+  return datetime.parse(admin.locked_until).valueOf() > Date.now()
 }
 
 /** 达到阈值才给锁定时间，未达阈值返回 null（表示「只记数，不锁」） */

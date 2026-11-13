@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { fetchProjectList, type ProjectListItem } from '@/service/api/project';
+import { fetchProjectList, fetchProjectStats, type ProjectListItem } from '@/service/api/project';
 import { fetchTenants } from '@/service/api/platform';
 import { useAuthStore } from '@/store/modules/auth';
 import { formatDate, formatMoney, PROJECT_STATUS_META, ROLE_LABELS } from '@/utils/format';
@@ -17,7 +17,8 @@ const counts = reactive({
   total: 0,
   pending: 0,
   building: 0,
-  finished: 0
+  finished: 0,
+  newThisMonth: 0
 });
 
 const platformCounts = reactive({
@@ -70,18 +71,19 @@ async function load() {
   loading.value = true;
 
   try {
-    const [all, pending, building, finished, latest] = await Promise.all([
-      fetchProjectList({ page: 1, pageSize: 1 }),
-      fetchProjectList({ page: 1, pageSize: 1, status: 'pending' }),
-      fetchProjectList({ page: 1, pageSize: 1, status: 'building' }),
-      fetchProjectList({ page: 1, pageSize: 1, status: 'finished' }),
+    // 统计数字统一来自 stats 接口，口径与项目列表、状态筛选一致；
+    // 最近项目仍用列表接口取前 6 条
+    const [stats, latest] = await Promise.all([
+      fetchProjectStats(),
       fetchProjectList({ page: 1, pageSize: 6, sortField: 'created_at', sortDirection: 'desc' })
     ]);
 
-    counts.total = all.data?.total ?? 0;
-    counts.pending = pending.data?.total ?? 0;
-    counts.building = building.data?.total ?? 0;
-    counts.finished = finished.data?.total ?? 0;
+    const data = stats.data;
+    counts.total = data?.total ?? 0;
+    counts.pending = data?.statusCounts.pending ?? 0;
+    counts.building = data?.statusCounts.building ?? 0;
+    counts.finished = data?.statusCounts.finished ?? 0;
+    counts.newThisMonth = data?.newThisMonth ?? 0;
     recent.value = latest.data?.list ?? [];
   } finally {
     loading.value = false;
@@ -165,7 +167,7 @@ function openProject(row: ProjectListItem) {
 
     <template v-if="!authStore.isPlatform">
       <!-- 统计卡片 -->
-      <div class="mb-16px grid grid-cols-4 gap-16px lt-lg:grid-cols-2 lt-sm:grid-cols-1">
+      <div class="mb-16px grid grid-cols-5 gap-16px lt-lg:grid-cols-3 lt-sm:grid-cols-2">
         <ElCard shadow="never" :body-style="{ padding: '18px' }">
           <div class="text-13px text-#86909c">项目总数</div>
           <div class="pt-8px text-30px font-700 text-#1d2129">{{ counts.total }}</div>
@@ -181,6 +183,10 @@ function openProject(row: ProjectListItem) {
         <ElCard shadow="never" :body-style="{ padding: '18px' }">
           <div class="text-13px text-#86909c">已完工</div>
           <div class="pt-8px text-30px font-700 text-#00b42a">{{ counts.finished }}</div>
+        </ElCard>
+        <ElCard shadow="never" :body-style="{ padding: '18px' }">
+          <div class="text-13px text-#86909c">本月新增</div>
+          <div class="pt-8px text-30px font-700 text-#722ed1">{{ counts.newThisMonth }}</div>
         </ElCard>
       </div>
 

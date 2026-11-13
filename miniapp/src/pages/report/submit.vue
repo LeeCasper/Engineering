@@ -159,14 +159,14 @@
           <view class="card section">
             <view class="section-head">
               <text class="section-title">现场照片</text>
-              <text class="section-count">{{ photos.length }}/9</text>
+              <text class="section-count">{{ photos.length }}/{{ maxImages }}</text>
             </view>
             <view class="photo-grid">
               <view v-for="(photo, index) in photos" :key="photo.tempFilePath" class="photo-item">
                 <image class="photo-image" :src="photo.tempFilePath" mode="aspectFill" @tap="previewPhoto(index)" />
                 <view class="photo-remove" @tap.stop="removePhoto(index)">×</view>
               </view>
-              <view v-if="photos.length < 9" class="photo-add" @tap="choosePhotos">
+              <view v-if="photos.length < maxImages" class="photo-add" @tap="choosePhotos">
                 <image class="photo-add-icon" src="/static/images/icon-camera-gray.png" mode="aspectFit" />
                 <text class="photo-add-text">拍照 / 相册</text>
               </view>
@@ -174,11 +174,11 @@
             <text class="section-hint">照片由服务端叠加水印：时间 + 项目地址 + 工序名。</text>
           </view>
 
-          <!-- 视频 -->
-          <view class="card section">
+          <!-- 视频。后台把视频上限配成 0 时整块隐藏，避免给一个必然失败的入口 -->
+          <view v-if="videoCapacity > 0" class="card section">
             <view class="section-head">
               <text class="section-title">现场视频</text>
-              <text class="section-count">最多 1 个 · 60 秒内</text>
+              <text class="section-count">最多 {{ videoCapacity }} 个 · {{ maxVideoSeconds }} 秒内</text>
             </view>
 
             <view v-if="video" class="video-card">
@@ -241,6 +241,16 @@ const uploadText = ref('')
 const clientRequestId = ref('')
 const projectId = ref(0)
 
+// 附件上限由后台配置决定（B-5.5），随项目详情下发。
+// 这里的默认值只用于详情尚未返回 / 旧版后端缺字段时兜底，
+// 不能当作真实上限 —— 服务端永远按当前配置再校验一次。
+const FALLBACK_LIMITS = { maxImages: 9, maxVideos: 1, maxVideoSeconds: 60 }
+const mediaLimits = ref({ ...FALLBACK_LIMITS })
+const maxImages = computed(() => mediaLimits.value.maxImages)
+const maxVideoSeconds = computed(() => mediaLimits.value.maxVideoSeconds)
+// 本页只支持选择一个视频：配置允许更多时按 1 处理，配置为 0 时隐藏视频区
+const videoCapacity = computed(() => Math.min(1, mediaLimits.value.maxVideos))
+
 const isForeman = computed(() => detail.value?.myRole === 'foreman')
 const reportableStages = computed(() => stages.value.filter((stage) => stage.canReport))
 const lockedStages = computed(() =>
@@ -301,6 +311,7 @@ async function load() {
 
     detail.value = project
     stages.value = (stageData && stageData.stages) || []
+    applyMediaLimits(project.reportMediaLimits)
 
     if (project.myRole !== 'foreman') {
       loadError.value = '仅该项目的工长可提交进度汇报'
@@ -330,6 +341,23 @@ function goBack() {
 
 function generateClientRequestId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/**
+ * 后台配置的附件上限。缺字段 / 非法值时逐项回落默认值，
+ * 不因为一个字段异常就把整组上限清零。
+ */
+function applyMediaLimits(raw) {
+  const next = { ...FALLBACK_LIMITS }
+  if (raw && typeof raw === 'object') {
+    const images = Number(raw.maxImages)
+    if (Number.isFinite(images) && images > 0) next.maxImages = Math.floor(images)
+    const videos = Number(raw.maxVideos)
+    if (Number.isFinite(videos) && videos >= 0) next.maxVideos = Math.floor(videos)
+    const seconds = Number(raw.maxVideoSeconds)
+    if (Number.isFinite(seconds) && seconds > 0) next.maxVideoSeconds = Math.floor(seconds)
+  }
+  mediaLimits.value = next
 }
 
 function percent(value) {
@@ -381,7 +409,7 @@ function onProgressChange(event) {
 }
 
 function choosePhotos() {
-  const remain = 9 - photos.value.length
+  const remain = maxImages.value - photos.value.length
   if (remain <= 0) return
 
   uni.chooseImage({
@@ -419,12 +447,12 @@ function chooseVideo() {
   uni.chooseVideo({
     sourceType: ['camera', 'album'],
     compressed: true,
-    maxDuration: 60,
+    maxDuration: maxVideoSeconds.value,
     camera: 'back',
     success(res) {
       const duration = Math.round(Number(res.duration) || 0)
-      if (duration > 60) {
-        uni.showToast({ title: '视频时长不能超过 60 秒', icon: 'none' })
+      if (duration > maxVideoSeconds.value) {
+        uni.showToast({ title: `视频时长不能超过 ${maxVideoSeconds.value} 秒`, icon: 'none' })
         return
       }
       video.value = {

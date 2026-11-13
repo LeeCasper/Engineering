@@ -425,8 +425,9 @@ describe('管理员消息通道（AC-P23 的管理员侧）', () => {
 
     // 把项目改成施工中、建档时间推到 10 天前，且没有任何汇报
     const datetime = require('../../src/utils/datetime')
+    const anchor = datetime.now().subtract(10, 'day').format('YYYY-MM-DD HH:mm:ss')
     await db.query("UPDATE project SET status = 'building', created_at = ? WHERE id = ?", [
-      datetime.now().subtract(10, 'day').format('YYYY-MM-DD HH:mm:ss'),
+      anchor,
       projectIds[0],
     ])
 
@@ -441,7 +442,9 @@ describe('管理员消息通道（AC-P23 的管理员侧）', () => {
     )
     expect(rows).toHaveLength(1)
     expect(rows[0].title).toContain('没有进度汇报')
-    expect(rows[0].ref_id).toBe(projectIds[0])
+    // ref_id 是「静默期起点」的时间戳（秒），不是项目 id：它让同一段静默期
+    // 只提醒一次，工长汇报后锚点变化才能再次提醒（见 staleReportReminder）
+    expect(rows[0].ref_id).toBe(Math.floor(datetime.parse(anchor).valueOf() / 1000))
   })
 
   it('管理员侧与 C 端消息互不干扰（两套主体）', async () => {
@@ -527,11 +530,16 @@ describe('AC-L24 结算单 PDF', () => {
   it('确认对账后自动生成结算单 PDF', async () => {
     const { reconciliationId } = await setupConfirmedReconciliation()
 
-    const row = await db.queryOne('SELECT settlement_pdf_url FROM reconciliation WHERE id = ?', [reconciliationId])
-    expect(row.settlement_pdf_url).toContain('/uploads/settlements/')
+    const row = await db.queryOne(
+      'SELECT settlement_pdf_key, settlement_pdf_private, settlement_pdf_url FROM reconciliation WHERE id = ?',
+      [reconciliationId]
+    )
+    // 结算单已改私有存储：不再有公开直链，只能经签名 URL 下载
+    expect(row.settlement_pdf_private).toBe(1)
+    expect(row.settlement_pdf_url).toBeNull()
+    expect(row.settlement_pdf_key).toContain('settlements/')
 
-    const key = row.settlement_pdf_url.split('/uploads/')[1]
-    const fullPath = require('node:path').join(config.upload.dir, key)
+    const fullPath = require('node:path').join(config.esign.privateDir, row.settlement_pdf_key)
     expect(fs.existsSync(fullPath)).toBe(true)
 
     const pdf = fs.readFileSync(fullPath)

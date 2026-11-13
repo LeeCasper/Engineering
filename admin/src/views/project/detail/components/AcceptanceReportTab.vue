@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
   fetchProjectAcceptanceReports,
   type AdminAcceptanceReport,
-  type AdminAcceptanceReportList
+  type AdminAcceptanceReportSummary
 } from '@/service/api/project';
 import { openSignedApiPath } from '@/utils/signed-url';
 import { formatDateTime } from '@/utils/format';
@@ -26,7 +26,9 @@ const STATUS_META: Record<
 
 const loading = ref(false);
 const items = ref<AdminAcceptanceReport[]>([]);
-const summary = ref<AdminAcceptanceReportList['summary']>({
+const total = ref(0);
+const paging = reactive({ page: 1, pageSize: 20 });
+const summary = reactive<AdminAcceptanceReportSummary>({
   total: 0,
   passed: 0,
   inProgress: 0,
@@ -37,51 +39,87 @@ const statusFilter = ref<'all' | 'passed' | 'pending' | 'rectify'>('all');
 const typeFilter = ref<'all' | 'stage' | 'item'>('all');
 const keyword = ref('');
 
-const filteredItems = computed(() => {
-  const term = keyword.value.trim().toLowerCase();
-
-  return items.value.filter((item) => {
-    if (typeFilter.value !== 'all' && item.type !== typeFilter.value) return false;
-
-    if (statusFilter.value === 'passed' && item.status !== 'passed') return false;
-    if (statusFilter.value === 'rectify' && item.status !== 'pending_rectify') return false;
-    if (
-      statusFilter.value === 'pending' &&
-      (item.status === 'passed' || item.status === 'pending_rectify')
-    ) {
-      return false;
-    }
-
-    if (!term) return true;
-    const haystack = [item.reportNo, item.stageName, item.itemName, item.submitter, String(item.id)]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    return haystack.includes(term);
-  });
-});
+// 服务端分页 + 筛选：列表本身已是筛选结果，前端不再二次过滤
+let keywordTimer: ReturnType<typeof setTimeout> | undefined;
+// 重置时三个筛选一起变化，避免触发多次请求
+let resetting = false;
+// 连续切筛选时只认最后一次请求，防止慢响应把新结果覆盖掉
+let loadSeq = 0;
 
 async function load() {
+  const seq = ++loadSeq;
   loading.value = true;
   try {
-    const { data, error } = await fetchProjectAcceptanceReports(props.projectId);
+    const { data, error } = await fetchProjectAcceptanceReports(props.projectId, {
+      page: paging.page,
+      pageSize: paging.pageSize,
+      status: statusFilter.value === 'all' ? undefined : statusFilter.value,
+      type: typeFilter.value === 'all' ? undefined : typeFilter.value,
+      keyword: keyword.value.trim() || undefined
+    });
+
+    if (seq !== loadSeq) return;
+
     if (data) {
-      items.value = data.items;
-      summary.value = data.summary;
+      items.value = data.list;
+      total.value = data.total;
+      // summary 是项目全量口径，不随筛选变化
+      Object.assign(summary, data.summary);
     } else if (error) {
+      items.value = [];
+      total.value = 0;
       ElMessage.error(error.message || '验收报告加载失败');
     }
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
-watch(() => props.projectId, load, { immediate: true });
+function reloadFromFirstPage() {
+  paging.page = 1;
+  load();
+}
 
-function resetFilters() {
+watch([statusFilter, typeFilter], () => {
+  if (resetting) return;
+  reloadFromFirstPage();
+});
+
+// 关键词输入防抖，避免每敲一个字都打一次接口
+watch(keyword, () => {
+  if (resetting) return;
+  clearTimeout(keywordTimer);
+  keywordTimer = setTimeout(() => {
+    if (!resetting) reloadFromFirstPage();
+  }, 300);
+});
+
+watch(
+  () => props.projectId,
+  () => {
+    paging.page = 1;
+    load();
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => clearTimeout(keywordTimer));
+
+async function resetFilters() {
+  resetting = true;
   statusFilter.value = 'all';
   typeFilter.value = 'all';
   keyword.value = '';
+  clearTimeout(keywordTimer);
+  paging.page = 1;
+  await nextTick();
+  resetting = false;
+  load();
+}
+
+function onPageSizeChange() {
+  paging.page = 1;
+  load();
 }
 
 function objectLabel(item: AdminAcceptanceReport) {
@@ -163,11 +201,11 @@ function openReport(item: AdminAcceptanceReport) {
       />
       <ElButton link type="primary" @click="resetFilters">重置</ElButton>
       <span class="ml-auto text-12px text-#86909c">
-        共 {{ filteredItems.length }} 条
+        共 {{ total }} 条
       </span>
     </div>
 
-    <ElTable :data="filteredItems" row-key="id" border>
+    <ElTable :data="items" row-key="id" border>
       <ElTableColumn label="报告编号" width="210">
         <template #default="{ row }">{{ row.reportNo || '—' }}</template>
       </ElTableColumn>
@@ -239,6 +277,18 @@ function openReport(item: AdminAcceptanceReport) {
         <ElEmpty description="当前筛选下没有验收记录" :image-size="72" />
       </template>
     </ElTable>
+
+    <div class="mt-16px flex justify-end">
+      <ElPagination
+        v-model:current-page="paging.page"
+        v-model:page-size="paging.pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50]"
+        layout="total, sizes, prev, pager, next, jumper"
+        @current-change="load"
+        @size-change="onPageSizeChange"
+      />
+    </div>
   </div>
 </template>
 

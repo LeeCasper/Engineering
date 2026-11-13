@@ -235,6 +235,26 @@ export function fetchProjectList(params: ProjectListParams) {
   });
 }
 
+/** 工作台统计：与项目列表同一套数据权限口径 */
+export interface ProjectStats {
+  total: number;
+  statusCounts: {
+    pending: number;
+    building: number;
+    finished: number;
+    archived: number;
+  };
+  overdue: number;
+  pendingAcceptance: number;
+  pendingInvitations: number;
+  /** 本月新增：按 Asia/Shanghai 月初起算，排除软删项目 */
+  newThisMonth: number;
+}
+
+export function fetchProjectStats() {
+  return request<ProjectStats>({ url: '/admin/projects/stats' });
+}
+
 /** 项目详情：概览 + 阶段工序 + 成员 + 付款节点 */
 export function fetchProjectDetail(id: number) {
   return request<ProjectDetail>({ url: `/admin/projects/${id}` });
@@ -287,18 +307,37 @@ export interface AdminAcceptanceReport {
   };
 }
 
-export interface AdminAcceptanceReportList {
-  items: AdminAcceptanceReport[];
-  summary: {
-    total: number;
-    passed: number;
-    inProgress: number;
-    reportReady: number;
-  };
+/** 验收列表筛选：pending = 非 passed 且非 pending_rectify（与服务端口径一致） */
+export type AdminAcceptanceStatusFilter = 'passed' | 'pending' | 'rectify';
+export type AdminAcceptanceTypeFilter = 'stage' | 'item';
+
+export interface AdminAcceptanceReportQuery {
+  page?: number;
+  pageSize?: number;
+  status?: AdminAcceptanceStatusFilter;
+  type?: AdminAcceptanceTypeFilter;
+  /** 匹配报告编号 / 阶段名 / 工序名 / 验收单 id / 提交人 */
+  keyword?: string;
 }
 
-export function fetchProjectAcceptanceReports(id: number) {
-  return request<AdminAcceptanceReportList>({ url: `/admin/projects/${id}/acceptances` });
+/** summary 按项目全量统计，不随筛选变化 */
+export interface AdminAcceptanceReportSummary {
+  total: number;
+  passed: number;
+  inProgress: number;
+  reportReady: number;
+}
+
+/** AC-AD45：强制分页，默认 20、上限 50 */
+export interface AdminAcceptanceReportList extends PageResult<AdminAcceptanceReport> {
+  summary: AdminAcceptanceReportSummary;
+}
+
+export function fetchProjectAcceptanceReports(id: number, params: AdminAcceptanceReportQuery = {}) {
+  return request<AdminAcceptanceReportList>({
+    url: `/admin/projects/${id}/acceptances`,
+    params
+  });
 }
 
 export function fetchCreateProject(data: CreateProjectInput) {
@@ -406,6 +445,37 @@ export function fetchExportProjects(params: ProjectListParams) {
 export function fetchProjectMembers(id: number) {
   return request<{ members: ProjectMember[]; composition: MemberComposition }>({
     url: `/admin/projects/${id}/members`
+  });
+}
+
+export interface MemberDirectoryParams {
+  page?: number;
+  pageSize?: number;
+  keyword?: string;
+  role?: MemberRole;
+  projectId?: number;
+}
+
+/** 跨项目成员目录的一项：成员关系 + 所属项目 */
+export interface MemberDirectoryItem extends ProjectMember {
+  projectId: number;
+  projectName: string;
+  projectStatus: ProjectStatus;
+}
+
+export interface MemberDirectoryResult extends PageResult<MemberDirectoryItem> {
+  roleCounts: { all: number; foreman: number; supervisor: number; owner: number };
+}
+
+/**
+ * 跨项目成员目录（只读）。
+ * 工长筛选下拉用它做远程搜索，不要拉全量 —— 成员关系会随项目数线性增长。
+ */
+export function fetchMemberDirectory(params: MemberDirectoryParams = {}) {
+  return request<MemberDirectoryResult>({
+    url: '/admin/members',
+    method: 'get',
+    params
   });
 }
 

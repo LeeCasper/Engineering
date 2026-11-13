@@ -43,14 +43,12 @@ const projectStageModel = require('../models/projectStage.model')
 /**
  * 取附件上限（B-5.5）。走系统配置而非写死，因为这几个值「几乎一定会被调整」，
  * 写死在代码里意味着每次调整都要发版（§5.5 的原话）。
+ *
+ * 读取实现放在 sysConfig.service，项目详情接口也要返回同一份上限给 C 端表单，
+ * 而 project.service 不能反过来 require 本模块（CLAUDE.md 第 63 条）。
  */
 async function getMediaLimits(tenantId) {
-  const [maxImages, maxVideos, maxVideoSeconds] = await Promise.all([
-    sysConfigService.getInt(tenantId, 'report_max_images'),
-    sysConfigService.getInt(tenantId, 'report_max_videos'),
-    sysConfigService.getInt(tenantId, 'report_max_video_seconds'),
-  ])
-  return { maxImages, maxVideos, maxVideoSeconds }
+  return sysConfigService.getReportMediaLimits(tenantId)
 }
 
 /**

@@ -574,6 +574,8 @@ describe('平台与租户的登录门户分离', () => {
 
     const res = await auth.loginExpectFailure('tenantowner', admin.plainPassword, { portal: 'platform' })
 
+    // AC-T19：密码正确时明确告知「请走租户专属地址」；密码错误仍统一 401，
+    // 平台入口不会被当成账号枚举器（只在本租户内唯一时才会走到 403 分支）。
     expect(res.status).toBe(403)
     expect(res.body.message).toContain('租户专属管理地址')
 

@@ -63,7 +63,7 @@ async function findById(id, tx = db) {
     // 而 AC-A18 要求报告 PDF 必须包含现场照片
     `SELECT id, project_id, project_stage_id, project_item_id, type, status, submitter_id,
             submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
-            signature_url, signature_mode, esign_status, esign_task_id, esign_completed_at,
+            signature_url, signature_key, signature_mode, esign_status, esign_task_id, esign_completed_at,
             report_pdf_url, report_pdf_key, report_pdf_private, report_pdf_sha256,
             report_pdf_source, report_pdf_status, report_pdf_error, report_no,
             post_pass_status, post_pass_error, post_pass_done_at, description, photos,
@@ -78,7 +78,7 @@ async function lockById(tx, id) {
   const rows = await tx.query(
     `SELECT id, project_id, project_stage_id, project_item_id, type, status, submitter_id,
             submitted_at, current_step, step_entered_at, resubmit_count, finished_at,
-            signature_url, signature_mode, esign_status, esign_task_id, esign_completed_at,
+            signature_url, signature_key, signature_mode, esign_status, esign_task_id, esign_completed_at,
             report_pdf_url, report_pdf_key, report_pdf_private, report_pdf_sha256,
             report_pdf_source, report_pdf_status, report_pdf_error, report_no
        FROM acceptance WHERE id = ? AND deleted_at IS NULL FOR UPDATE`,
@@ -107,11 +107,11 @@ async function transition(id, { status, currentStep, stepEnteredAt, isFirstSubmi
 }
 
 /** 验收通过：终态 + 签名 + 完成时间。条件更新防止并发回调把已驳回的单子改成 passed。 */
-async function markPassed(id, { signatureUrl, finishedAt, esignTaskId, esignStatus, esignCompletedAt }, tx) {
+async function markPassed(id, { signatureUrl, signatureKey, finishedAt, esignTaskId, esignStatus, esignCompletedAt }, tx) {
   const result = await tx.query(
     `UPDATE acceptance
         SET status = 'passed', current_step = NULL, step_entered_at = NULL,
-            signature_url = ?, finished_at = ?,
+            signature_url = ?, signature_key = ?, finished_at = ?,
             esign_task_id = COALESCE(?, esign_task_id),
             esign_status = COALESCE(?, esign_status),
             esign_completed_at = COALESCE(?, esign_completed_at),
@@ -119,6 +119,7 @@ async function markPassed(id, { signatureUrl, finishedAt, esignTaskId, esignStat
       WHERE id = ? AND status = 'pending_owner'`,
     [
       signatureUrl ?? null,
+      signatureKey ?? null,
       finishedAt,
       esignTaskId ?? null,
       esignStatus ?? null,
@@ -241,13 +242,13 @@ async function saveItemResults(acceptanceId, results, tx) {
  * 数据库层管不了这件事（MySQL 没有表级只读约束），只能靠这里不提供入口。
  */
 async function appendFlow(
-  { acceptanceId, round, step, operatorId, action, reason, images, esignTaskId, signatureUrl },
+  { acceptanceId, round, step, operatorId, action, reason, images, esignTaskId, signatureUrl, signatureKey },
   tx = db
 ) {
   const result = await tx.query(
     `INSERT INTO acceptance_flow
-       (acceptance_id, round, step, operator_id, action, reason, images, esign_task_id, signature_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (acceptance_id, round, step, operator_id, action, reason, images, esign_task_id, signature_url, signature_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       acceptanceId,
       round,
@@ -258,6 +259,7 @@ async function appendFlow(
       images ? JSON.stringify(images) : null,
       esignTaskId ?? null,
       signatureUrl ?? null,
+      signatureKey ?? null,
     ]
   )
   return result.insertId
@@ -269,7 +271,9 @@ async function appendFlow(
  */
 async function listPostPassPending(limit = 100) {
   return db.query(
-    `SELECT id, project_id, project_stage_id, signature_mode, report_pdf_status
+    // `type` 必须带上：finalizeAfterPass 靠它判断「阶段验收要补生成阶段结算草稿」。
+    // 之前只选了阶段 id，补跑时 type 恒为 undefined，草稿生成被静默跳过却仍标记 done。
+    `SELECT id, type, project_id, project_stage_id, signature_mode, report_pdf_status
        FROM acceptance
       WHERE status = 'passed' AND deleted_at IS NULL
         AND post_pass_status IN ('pending', 'failed')
@@ -284,7 +288,7 @@ async function listPostPassPending(limit = 100) {
 async function listFlow(acceptanceId) {
   return db.query(
     `SELECT f.id, f.round, f.step, f.operator_id, f.action, f.reason, f.images, f.esign_task_id,
-            f.signature_url, f.operated_at, u.nickname, u.real_name
+            f.signature_url, f.signature_key, f.operated_at, u.nickname, u.real_name
        FROM acceptance_flow f
        LEFT JOIN user u ON u.id = f.operator_id
       WHERE f.acceptance_id = ?
@@ -324,23 +328,144 @@ async function hasRejection(acceptanceId) {
  * 而列表要按「待我处理 / 进行中 / 已完成」分组统计角标 ——
  * 分页会让分组计数变得没有意义（每页各算一次）。
  */
-async function listByProject(projectId) {
-  return db.query(
-    `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
-            a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at, a.resubmit_count,
-            a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
-            a.report_pdf_status, a.report_pdf_error, a.report_no, a.created_at,
-            s.name AS stage_name, i.name AS item_name,
-            u.nickname AS submitter_nickname, u.real_name AS submitter_real_name,
-            (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count
+/**
+ * 后台验收列表的 FROM / JOIN 片段。count 与列表查询共用，避免两处条件分叉。
+ * 三张关联表都按主键 1:1 关联，因此不会把行数放大。
+ */
+const LIST_FROM = `
        FROM acceptance a
        LEFT JOIN project_stage s ON s.id = a.project_stage_id
        LEFT JOIN project_item i ON i.id = a.project_item_id
-       LEFT JOIN user u ON u.id = a.submitter_id
+       LEFT JOIN user u ON u.id = a.submitter_id`
+
+/** 列表字段。后台分页列表与 C 端分组列表共用，避免两边字段悄悄分叉 */
+const LIST_COLUMNS = `
+            a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
+            a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at, a.resubmit_count,
+            a.finished_at, a.signature_url, a.signature_key, a.signature_mode, a.esign_status,
+            a.report_pdf_status, a.report_pdf_error, a.report_no, a.created_at,
+            s.name AS stage_name, i.name AS item_name,
+            u.nickname AS submitter_nickname, u.real_name AS submitter_real_name,
+            (SELECT COUNT(*) FROM acceptance_flow f WHERE f.acceptance_id = a.id AND f.action = 'reject') AS reject_count`
+
+/**
+ * 列表展示用的报告编号表达式，必须与 utils/acceptanceReportNo 的规则一致：
+ * 优先用已落库的 report_no（旧报告回填为 AC-{id}），否则按
+ * 「通过日期 + 项目 + 6 位验收单 id」推算。
+ *
+ * 为什么不能只查 report_no 列：PDF 生成前该列还是 NULL，但列表接口
+ * 已经按同一函数显示了编号 —— 只查列会让「生成中 / 生成失败」的已通过单搜不到。
+ */
+const REPORT_NO_EXPR = `COALESCE(
+          a.report_no,
+          CONCAT('AC-', DATE_FORMAT(COALESCE(a.finished_at, a.submitted_at, a.created_at), '%Y%m%d'),
+                 '-', a.project_id, '-', LPAD(a.id, 6, '0'))
+        )`
+
+/**
+ * 后台验收列表的筛选条件（AC-AD45，筛选在服务端完成）。
+ *
+ * 语义与前端此前的事后筛选保持一致：
+ * - status=passed → 已通过；rectify → 待整改；pending → 其余全部在途状态
+ * - type → stage / item
+ * - keyword → 报告编号 / 阶段名 / 工序名 / 提交人昵称 / 验收单 id
+ *   提交人只匹配昵称，因为列表返回的 submitter 就是昵称（与展示一致）。
+ */
+function buildListFilter(projectId, filters = {}) {
+  const where = ['a.project_id = ?', 'a.deleted_at IS NULL']
+  const params = [projectId]
+
+  if (filters.status === 'passed') {
+    where.push("a.status = 'passed'")
+  } else if (filters.status === 'rectify') {
+    where.push("a.status = 'pending_rectify'")
+  } else if (filters.status === 'pending') {
+    where.push("a.status <> 'passed' AND a.status <> 'pending_rectify'")
+  }
+
+  if (filters.type) {
+    where.push('a.type = ?')
+    params.push(filters.type)
+  }
+
+  if (filters.keyword) {
+    // 与 project.model 一致：用户输入的 % 与 _ 按字面匹配，否则一个 % 就能捞出全量
+    const like = `%${escapeLike(filters.keyword)}%`
+    // 只有已通过的单子才展示报告编号，未通过的单子不该被编号搜出来
+    where.push(`(
+        CAST(a.id AS CHAR) LIKE ?
+        OR s.name LIKE ?
+        OR i.name LIKE ?
+        OR u.nickname LIKE ?
+        OR (a.status = 'passed' AND ${REPORT_NO_EXPR} LIKE ?)
+      )`)
+    params.push(like, like, like, like, like)
+  }
+
+  return { fromWhere: `${LIST_FROM} WHERE ${where.join(' AND ')}`, params }
+}
+
+/** 转义 LIKE 通配符（与 project.model 同一规则） */
+function escapeLike(value) {
+  return String(value).replace(/[\\%_]/g, (ch) => `\\${ch}`)
+}
+
+/**
+ * 项目下的验收单分页列表。筛选与分页都在 SQL 里完成 ——
+ * 先全量查出再在内存里切，既违背 AC-AD45 的强制分页，也会随项目变大越来越慢。
+ */
+async function listByProject(projectId, { filters = {}, paging } = {}) {
+  const { fromWhere, params } = buildListFilter(projectId, filters)
+  const total = await db.count(fromWhere, params)
+
+  const rows = await db.query(
+    `SELECT ${LIST_COLUMNS}
+       ${fromWhere}
+      ORDER BY a.id DESC
+      LIMIT ? OFFSET ?`,
+    [...params, paging.limit, paging.offset]
+  )
+
+  return { total, rows }
+}
+
+/**
+ * 项目下的**全部**验收单（不分页）。
+ *
+ * 仅供 C 端分组列表使用（AC-A23）：分组计数与列表必须来自同一次查询，
+ * 因此不能复用分页接口。后台列表必须走 listByProject —— 它的分页是 AC-AD45 的硬约束。
+ */
+async function listAllByProject(projectId) {
+  return db.query(
+    `SELECT ${LIST_COLUMNS}
+       ${LIST_FROM}
       WHERE a.project_id = ? AND a.deleted_at IS NULL
       ORDER BY a.id DESC`,
     [projectId]
   )
+}
+
+/**
+ * 项目验收摘要。**始终按项目全量统计**，不随列表筛选变化 ——
+ * 摘要卡展示的是项目整体情况，跟着筛选走会让「总数」在切换筛选时跳动。
+ */
+async function statsByProject(projectId) {
+  const row = await db.queryOne(
+    `SELECT COUNT(*) AS total,
+            SUM(a.status = 'passed') AS passed,
+            SUM(a.status <> 'passed') AS in_progress,
+            SUM(a.status = 'passed' AND a.report_pdf_status = 'success') AS report_ready
+       FROM acceptance a
+      WHERE a.project_id = ? AND a.deleted_at IS NULL`,
+    [projectId]
+  )
+
+  return {
+    total: Number(row && row.total) || 0,
+    passed: Number(row && row.passed) || 0,
+    inProgress: Number(row && row.in_progress) || 0,
+    reportReady: Number(row && row.report_ready) || 0,
+  }
 }
 
 /**
@@ -357,7 +482,7 @@ async function listInboxForUser(userId) {
   return db.query(
     `SELECT a.id, a.project_id, a.project_stage_id, a.project_item_id, a.type, a.status,
             a.submitter_id, a.submitted_at, a.current_step, a.step_entered_at,
-            a.resubmit_count, a.finished_at, a.signature_url, a.signature_mode, a.esign_status,
+            a.resubmit_count, a.finished_at, a.signature_url, a.signature_key, a.signature_mode, a.esign_status,
             a.report_pdf_status, a.created_at,
             p.tenant_id, t.name AS tenant_name,
             p.name AS project_name, p.address AS project_address, p.status AS project_status,
@@ -468,7 +593,7 @@ async function listPassedByProject(projectId) {
   return db.query(
     `SELECT a.id, a.type, a.project_stage_id, a.project_item_id, a.status,
             a.resubmit_count, a.submitted_at, a.finished_at,
-            a.signature_mode, a.signature_url, a.esign_status,
+            a.signature_mode, a.signature_url, a.signature_key, a.esign_status,
             a.report_pdf_status,
             s.name AS stage_name, s.seq AS stage_seq,
             i.name AS item_name
@@ -502,6 +627,8 @@ module.exports = {
   currentRound,
   hasRejection,
   listByProject,
+  listAllByProject,
+  statsByProject,
   listInboxForUser,
   listInitiablesForUser,
   listTimeoutCandidates,
