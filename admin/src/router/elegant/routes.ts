@@ -279,5 +279,14 @@ export const generatedRoutes: GeneratedRoute[] = [
       i18nKey: 'route.user-center',
       hideInMenu: true
     }
+  },
+  {
+    name: 'visit-stats',
+    path: '/visit-stats',
+    component: 'layout.base$view.visit-stats',
+    meta: {
+      title: 'visit-stats',
+      i18nKey: 'route.visit-stats'
+    }
   }
 ];

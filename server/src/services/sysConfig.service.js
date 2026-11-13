@@ -27,6 +27,19 @@ const CACHE_TTL_MS = 60_000
 /** @type {Map<string, {value: string|null, loadedAt: number}>} */
 const cache = new Map()
 
+/**
+ * 项目级覆盖（B-5.1）的独立缓存。
+ *
+ * **刻意只缓存「项目覆盖行本身」**，不缓存「最终生效值」。生效值由
+ * 「项目覆盖 → 租户覆盖 → 平台基础 → 代码默认值」四级拼出来，
+ * 若把拼好的结果也缓存，租户管理员在后台改了全局阈值后，
+ * 所有没配覆盖的项目还会继续读出旧值，且 `invalidate(tenantId)` 清不到它们。
+ * 只缓存最上面那一层，下层走 `getRaw` 自己的租户缓存，两层各自失效即可。
+ *
+ * key 用 `projectId:configKey`：项目 id 全局唯一，不需要再带租户。
+ */
+const projectCache = new Map()
+
 /** 全部全局配置的键名 → 默认值。默认值必须与种子数据一致（scripts/seed.js） */
 const DEFAULTS = {
   sign_in_distance_threshold: '500',
@@ -122,7 +135,11 @@ async function loadConfigRow(tenantId, key) {
 
 /** 取整数配置。非法值回落默认值并告警 —— 配置写错不该让接口 500 */
 async function getInt(tenantId, key) {
-  const raw = await getRaw(tenantId, key)
+  return parseIntRaw(await getRaw(tenantId, key), key)
+}
+
+/** 解析整数配置的公共部分：全局与项目级两条读取路径共用同一套回落规则 */
+function parseIntRaw(raw, key) {
   const parsed = Number.parseInt(raw, 10)
   if (Number.isNaN(parsed)) {
     logger.warn('系统配置不是合法整数，已回落默认值', { key, raw, fallback: DEFAULTS[key] })
@@ -156,6 +173,59 @@ function getGateStrength(tenantId) {
 }
 
 /**
+ * 取某个项目**实际生效**的配置原始值（B-5.1「支持按项目覆盖」）。
+ *
+ * 优先级固定为：项目覆盖 → 租户覆盖 → 平台基础 → 代码内置默认值。
+ * 只在「项目有行」时才用项目的值 —— 项目行被软删除等同于没配，
+ * 会自然回落到下一级，而不是残留一个旧值。
+ *
+ * 调用方必须同时给出 projectId 与 tenantId：前者决定覆盖，后者决定回退。
+ * 缺 tenantId 会在多租户下读到别的租户的基线，症状是「A 公司的阈值
+ * 莫名其妙变成了 B 公司的」，排查时很难联想到配置串号。
+ *
+ * @param {number} projectId
+ * @param {number|null} tenantId 项目所属租户
+ * @param {string} key
+ * @returns {Promise<string>}
+ */
+async function getRawForProject(projectId, tenantId, key) {
+  const row = await loadProjectConfigRow(projectId, key)
+  if (row) return row.config_value
+  return getRaw(tenantId, key)
+}
+
+/**
+ * 读项目覆盖行（带独立缓存）。
+ *
+ * `null` 表示「该项目没有覆盖」，与「覆盖成了空串」是两件事：
+ * 前者回落到租户配置，后者（若某种配置项允许空串）是显式覆盖。
+ * 用行是否存在判断，与 `loadConfigRow` 的口径一致。
+ */
+async function loadProjectConfigRow(projectId, key) {
+  const cacheKey = `${projectId}:${key}`
+  const cached = projectCache.get(cacheKey)
+  if (cached && Date.now() - cached.loadedAt < CACHE_TTL_MS) {
+    return cached.value
+  }
+
+  let row = null
+  try {
+    row = await sysConfigModel.findProject(projectId, key)
+  } catch (err) {
+    // 与全局读取一致：配置表读不到不该让签到接口挂掉，回落到下一级
+    logger.error('读取项目级配置失败，回落到租户配置', { projectId, key, err })
+  }
+
+  projectCache.set(cacheKey, { value: row || null, loadedAt: Date.now() })
+  return row || null
+}
+
+/** 取项目生效的整数配置（含项目级覆盖） */
+async function getIntForProject(projectId, tenantId, key) {
+  return parseIntRaw(await getRawForProject(projectId, tenantId, key), key)
+}
+
+/**
  * 配置项注册表：每一项的类型、取值范围、展示文案（§5.5 的表格落到代码里）。
  *
  * ── 为什么需要它，而不是只留上面的 DEFAULTS ──
@@ -179,7 +249,7 @@ const SCHEMA = {
     unit: 'm',
     label: '签到偏差阈值',
     requirement: 'B-5.1',
-    note: '按项目所属租户读取；修改后只影响新签到，历史记录保留当时的阈值快照',
+    note: '生效优先级：项目覆盖 → 租户配置 → 平台基础 → 默认 500 米；修改后只影响新签到，历史记录保留当时的阈值快照',
   },
   stale_report_days: {
     type: 'int',
@@ -550,6 +620,196 @@ async function describe(tenantId, key) {
 }
 
 /**
+ * 项目视角的配置回显（B-5.1）。
+ *
+ * 一次返回四层里的三个有用值：
+ * - `value` / `source`：这个项目**实际生效**什么、来自哪一层；
+ * - `projectValue`：项目自己配的值，没配就是 null（界面据此显示「跟随全局」）；
+ * - `tenantValue` / `platformValue`：点了「清除覆盖」之后会回到哪个值。
+ *
+ * 前端不该自己拿 tenantValue 与 projectValue 比较再猜 source ——
+ * 「都等于 500」与「项目配了 500」是两件事，猜出来会把「重置」按钮显错。
+ */
+async function describeProject(projectId, tenantId, key) {
+  const spec = SCHEMA[key]
+  if (!spec) throw AppError.badRequest('未知的配置项')
+
+  const tenantDesc = await describe(tenantId, key)
+  const row = await loadProjectConfigRow(projectId, key)
+
+  const source = row ? 'project' : tenantDesc.source
+  const value = row ? formatValue(key, row.config_value) : tenantDesc.value
+
+  return {
+    key,
+    label: spec.label,
+    requirement: spec.requirement,
+    type: spec.type,
+    unit: spec.unit ?? null,
+    note: spec.note ?? null,
+    min: spec.min ?? null,
+    max: spec.max ?? null,
+    allowed: spec.allowed ?? null,
+    // 生效值及其来源：project / tenant / platform / default
+    value,
+    source,
+    hasOverride: Boolean(row),
+    projectValue: row ? formatValue(key, row.config_value) : null,
+    // 清除覆盖后的回退目标：租户视角的生效值（租户覆盖或平台基础或默认值）
+    tenantValue: tenantDesc.value,
+    tenantSource: tenantDesc.source,
+    platformValue: tenantDesc.platformValue,
+    updatedAt: row ? row.updated_at : null,
+    updatedBy: row ? row.updated_by : null,
+    effective: spec.effective !== false,
+  }
+}
+
+/**
+ * 写入项目级覆盖（B-5.1）。
+ *
+ * 权限与作用域：
+ * - 仅租户 owner 可写（§5.5「项目管理员只能查看」）；
+ * - 只能写自己租户的项目覆盖，平台排障窗口只读；
+ * - 平台专属配置（品牌、订阅消息模板 ID）不接受项目覆盖 —— 它们来自
+ *   小程序 / 后台主体，与项目无关，允许多一层覆盖只会造出一串永不生效的值。
+ *
+ * 校验复用 `normalizeValue`，与全局配置共用同一份区间定义：
+ * 两处各写一套范围，迟早出现「全局允许 50–5000、项目允许 1–99999」的分叉。
+ */
+async function updateProject(operator, project, key, value) {
+  assertProjectConfigWritable(operator, project)
+
+  const spec = SCHEMA[key]
+  if (!spec) throw AppError.badRequest('未知的配置项')
+  if (spec.platformOnly) {
+    throw AppError.forbidden(`${spec.label}不支持按项目覆盖`)
+  }
+
+  const normalized = normalizeValue(key, value)
+  const before = await describeProject(project.id, project.tenant_id, key)
+
+  if (before.hasOverride && before.projectValue === normalized) {
+    // 值没变不写库、不记日志 —— 与全局配置的口径一致
+    return { ...before, changed: false }
+  }
+
+  await db.withTransaction(async (tx) => {
+    await sysConfigModel.upsertProject(
+      {
+        tenantId: project.tenant_id,
+        projectId: project.id,
+        key,
+        value: normalized,
+        description: spec.label,
+        updatedBy: operator.id,
+      },
+      tx
+    )
+
+    await operationLog.record(
+      {
+        ...operationLog.fromOperator(operator),
+        // 复用全局配置的动作名，靠 detail.scope='project' 区分作用域。
+        // 另起一个 action 会让「按配置项查变更历史」要查两条动作
+        action: operationLog.ACTIONS.SYS_CONFIG_UPDATE,
+        targetType: 'sys_config',
+        targetId: project.id,
+        // 冗余项目归属，日志详情页能按项目筛出来
+        projectId: project.id,
+        detail: {
+          scope: 'project',
+          projectId: Number(project.id),
+          key,
+          before: { value: before.hasOverride ? before.projectValue : null },
+          after: { value: normalized },
+        },
+      },
+      tx
+    )
+  })
+
+  invalidateProject(project.id)
+  return { ...(await describeProject(project.id, project.tenant_id, key)), changed: true }
+}
+
+/**
+ * 清除项目覆盖，重新跟随租户 / 平台配置。
+ *
+ * 与全局的「恢复平台默认」不同，项目级清除是常态操作：
+ * 阈值是项目属性，项目结束后该回到默认。因此不要求额外确认，
+ * 但仍写审计日志 —— 要能回答「谁把某项目的阈值改回了全局」。
+ */
+async function resetProject(operator, project, key) {
+  assertProjectConfigWritable(operator, project)
+
+  const spec = SCHEMA[key]
+  if (!spec) throw AppError.badRequest('未知的配置项')
+
+  const before = await describeProject(project.id, project.tenant_id, key)
+  if (!before.hasOverride) {
+    return { ...before, changed: false }
+  }
+
+  await db.withTransaction(async (tx) => {
+    await sysConfigModel.softDeleteProjectOverride(
+      { projectId: project.id, key, updatedBy: operator.id },
+      tx
+    )
+
+    await operationLog.record(
+      {
+        ...operationLog.fromOperator(operator),
+        action: operationLog.ACTIONS.SYS_CONFIG_RESET,
+        targetType: 'sys_config',
+        targetId: project.id,
+        projectId: project.id,
+        detail: {
+          scope: 'project',
+          projectId: Number(project.id),
+          key,
+          before: { value: before.projectValue },
+          after: { value: before.tenantValue },
+        },
+      },
+      tx
+    )
+  })
+
+  invalidateProject(project.id)
+  return { ...(await describeProject(project.id, project.tenant_id, key)), changed: true }
+}
+
+/**
+ * 项目级配置的写权限判定。
+ *
+ * 平台账号即便持有排障授权（`tenantId` 会被改写成目标租户）也只能看：
+ * 排障窗口的语义是「能看客户数据」，不是「能替客户改参数」。
+ */
+function assertProjectConfigWritable(operator, project) {
+  if (!operator || operator.type !== 'admin') {
+    throw AppError.forbidden('仅后台账号可修改项目配置')
+  }
+  if (operator.role === 'platform') {
+    throw AppError.forbidden('平台账号对租户数据仅可查看，不能修改')
+  }
+  if (operator.role !== 'owner' || operator.tenantId == null) {
+    throw AppError.forbidden('仅租户管理员可修改项目配置')
+  }
+  if (Number(operator.tenantId) !== Number(project.tenant_id)) {
+    throw AppError.forbidden('无权修改其他租户的项目配置')
+  }
+}
+
+/** 清掉某个项目的覆盖缓存；清除 / 更新覆盖后必须调用，否则最久 60 秒才生效 */
+function invalidateProject(projectId) {
+  const prefix = `${projectId}:`
+  for (const key of projectCache.keys()) {
+    if (key.startsWith(prefix)) projectCache.delete(key)
+  }
+}
+
+/**
  * 更新一项配置（AC-AD65 / AC-AD66 / AC-AD67）。
  *
  * ── 变更必须立刻对**新**数据生效 ──
@@ -713,6 +973,9 @@ function resolveTargetTenant(operator) {
 function invalidate(tenantId) {
   if (tenantId === undefined) {
     cache.clear()
+    // 全清时项目覆盖缓存也要一起清：它缓存的是「生效值最上面那一层」，
+    // 若只清全局，测试用例里「同一项目换一个阈值再读」会拿到上一轮的值
+    projectCache.clear()
     return
   }
   const prefix = `${tenantId}:`
@@ -730,10 +993,17 @@ module.exports = {
   getFloat,
   getEnum,
   getGateStrength,
+  // B-5.1：项目级覆盖。优先级 项目 → 租户 → 平台 → 默认值
+  getRawForProject,
+  getIntForProject,
   describeAll,
   describe,
+  describeProject,
   update,
   reset,
+  updateProject,
+  resetProject,
   normalizeValue,
   invalidate,
+  invalidateProject,
 }

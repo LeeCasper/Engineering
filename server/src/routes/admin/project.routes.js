@@ -12,13 +12,14 @@
 
 const express = require('express')
 const asyncHandler = require('../../utils/asyncHandler')
-const { requireAdmin, requireTenant } = require('../../middlewares/adminAuth')
+const { requireAdmin, requireTenant, requireTenantOwner } = require('../../middlewares/adminAuth')
 const { uploadAny } = require('../../middlewares/upload')
 const controller = require('../../controllers/adminProject.controller')
 const structure = require('../../controllers/adminStructure.controller')
 const operations = require('../../controllers/adminOperations.controller')
 const completionReport = require('../../controllers/projectCompletionReport.controller')
 const acceptance = require('../../controllers/adminAcceptance.controller')
+const visit = require('../../controllers/adminVisit.controller')
 
 const router = express.Router()
 
@@ -55,6 +56,13 @@ router.post('/:id/completion-report', asyncHandler(completionReport.adminGenerat
 
 // 验收报告查询：后台只读，数据权限与项目详情一致
 router.get('/:id/acceptances', asyncHandler(acceptance.list))
+
+// ── 项目级签到阈值（B-5.1）──
+// 读对所有后台账号开放（§5.5「所有后台账号都能查看生效值」），
+// 写只给租户 owner（AC-AD67 同口径：项目管理员只能查看系统配置）
+router.get('/:id/visit-threshold', asyncHandler(visit.getProjectThreshold))
+router.put('/:id/visit-threshold', requireTenantOwner, asyncHandler(visit.updateProjectThreshold))
+router.delete('/:id/visit-threshold', requireTenantOwner, asyncHandler(visit.resetProjectThreshold))
 
 router.get('/:id/members', asyncHandler(controller.listMembers))
 router.post('/:id/members', asyncHandler(controller.inviteMember))

@@ -204,7 +204,8 @@ const routeMap: RouteMap = {
   "project_detail": "/project/detail/:id",
   "project_list": "/project/list",
   "template": "/template",
-  "user-center": "/user-center"
+  "user-center": "/user-center",
+  "visit-stats": "/visit-stats"
 };
 
 /**

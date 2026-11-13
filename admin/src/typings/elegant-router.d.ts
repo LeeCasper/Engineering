@@ -59,6 +59,7 @@ declare module "@elegant-router/types" {
     "project_list": "/project/list";
     "template": "/template";
     "user-center": "/user-center";
+    "visit-stats": "/visit-stats";
   };
 
   /**
@@ -122,6 +123,7 @@ declare module "@elegant-router/types" {
     | "project"
     | "template"
     | "user-center"
+    | "visit-stats"
   >;
 
   /**
@@ -165,6 +167,7 @@ declare module "@elegant-router/types" {
     | "project_list"
     | "template"
     | "user-center"
+    | "visit-stats"
   >;
 
   /**

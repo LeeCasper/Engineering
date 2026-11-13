@@ -143,7 +143,11 @@ async function getMeta(userId, projectId) {
   const project = await projectModel.findByIdUnscoped(projectId)
   if (!project) throw AppError.notFound('项目不存在')
 
-  const thresholdM = await sysConfigService.getInt(
+  // B-5.1：项目可单独覆盖阈值。这里必须用项目视角读取 ——
+  // 只读租户配置的话，项目把阈值调到 300 米后签到页仍会提示 500 米，
+  // 而服务端判定却按项目值走，界面与判定各说各话
+  const thresholdM = await sysConfigService.getIntForProject(
+    projectId,
     project.tenant_id,
     'sign_in_distance_threshold'
   )
@@ -345,7 +349,11 @@ async function submitVisit(userId, projectId, input, { now = datetime.now() } = 
     seqInPlan: input.seqInPlan,
   })
 
-  const thresholdM = await sysConfigService.getInt(
+  // B-5.1：项目覆盖 > 租户配置 > 平台基础 > 默认值。
+  // 判定的阈值同时写进 `visit_record.threshold_m` 快照（AC-N21），
+  // 后续改配置不会回溯改写这条记录
+  const thresholdM = await sysConfigService.getIntForProject(
+    projectId,
     project.tenant_id,
     'sign_in_distance_threshold'
   )

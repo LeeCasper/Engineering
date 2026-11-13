@@ -35,6 +35,8 @@ router.use('/operation-logs', require('./log.routes'))
 // 权限口径也不同（项目管理员只看自己的登录记录）
 router.use('/login-logs', require('./loginLog.routes'))
 router.use('/sys-configs', require('./config.routes'))
+// 考察统计（B-4.6）：签到记录只读，按 dataScope 过滤可见项目
+router.use('/visit-stats', require('./visit.routes'))
 // 内容页与反馈是 M11 补出来的后台侧：AC-U17 明确要求「内容由后台可维护」，
 // 而反馈若没有读取侧，C 端的「提交成功」就是把内容丢进一个没人看的表
 router.use('/contents', require('./content.routes'))

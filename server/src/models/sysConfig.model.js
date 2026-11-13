@@ -3,9 +3,15 @@
 /**
  * sys_config 数据访问层（B-5.x / §6.2）。
  *
- * 只处理 `scope = 'global'` 的行。项目级覆盖（B-5.1 的「支持按项目覆盖」）
- * 需要一张配置界面与项目维度，属于那个模块自己的事 —— 混在这里会让
- * 「读配置」这个本该极简的操作多出一个必填的 projectId 参数。
+ * 全局配置与项目级覆盖分两组方法：
+ * - `listGlobal` / `findGlobal` / `upsertGlobal` / `softDeleteGlobalOverride`
+ *   只看 `scope = 'global'` 的行；
+ * - `findProject` / `upsertProject` / `softDeleteProjectOverride`
+ *   只看 `scope = 'project'` 的行（B-5.1 的「支持按项目覆盖」）。
+ *
+ * 两组方法刻意不共用一个带 scope 参数的函数：读取优先级是
+ * 「项目覆盖 → 租户覆盖 → 平台基础 → 代码默认值」，每条路径都只有一种语义，
+ * 合并之后每个调用方都要自己判断「这次该查哪一种」，漏掉一层就会静默取错值。
  */
 
 const db = require('../db/pool')
@@ -81,4 +87,73 @@ async function softDeleteGlobalOverride({ tenantId, key, updatedBy }, tx = db) {
   return result.affectedRows > 0
 }
 
-module.exports = { listGlobal, findGlobal, upsertGlobal, softDeleteGlobalOverride }
+/**
+ * 取某个项目的覆盖值（B-5.1）。
+ *
+ * 只按 `project_id` 过滤，不带 tenant_id —— 项目 id 全局唯一，
+ * 多带一层租户条件只会在两者不一致时制造「该信哪个」的歧义。
+ */
+async function findProject(projectId, key) {
+  return db.queryOne(
+    `SELECT id, config_key, config_value, description, updated_by, updated_at
+       FROM sys_config
+      WHERE config_key = ? AND scope = 'project' AND project_id = ? AND deleted_at IS NULL`,
+    [key, projectId]
+  )
+}
+
+/**
+ * 列出某个项目的全部覆盖值（后台阈值配置页回显用）。
+ */
+async function listProject(projectId) {
+  return db.query(
+    `SELECT config_key, config_value, description, updated_by, updated_at
+       FROM sys_config
+      WHERE scope = 'project' AND project_id = ? AND deleted_at IS NULL
+      ORDER BY config_key`,
+    [projectId]
+  )
+}
+
+/**
+ * 写入 / 更新项目覆盖值。
+ *
+ * 唯一索引是 `(tenant_key, config_key, scope, project_id_key)`；
+ * `tenant_id` 存项目所属租户，让同一租户的审计查询也能顺着租户过滤。
+ * 软删除过的行靠 `deleted_at = NULL` 复活 —— 否则「清空覆盖」之后
+ * 再设一次会撞上唯一键（CLAUDE.md 第 2 条那套生成列的同一类坑）。
+ */
+async function upsertProject({ tenantId, projectId, key, value, description, updatedBy }, tx = db) {
+  await tx.query(
+    `INSERT INTO sys_config (tenant_id, config_key, config_value, scope, project_id, description, updated_by)
+     VALUES (?, ?, ?, 'project', ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       config_value = VALUES(config_value),
+       description  = COALESCE(VALUES(description), description),
+       updated_by   = VALUES(updated_by),
+       deleted_at   = NULL`,
+    [tenantId, key, value, projectId, description ?? null, updatedBy ?? null]
+  )
+}
+
+/** 软删除项目覆盖值，使配置重新继承租户 / 平台 / 代码默认值（B-5.1） */
+async function softDeleteProjectOverride({ projectId, key, updatedBy }, tx = db) {
+  const result = await tx.query(
+    `UPDATE sys_config
+        SET deleted_at = NOW(), updated_by = ?
+      WHERE config_key = ? AND scope = 'project' AND project_id = ? AND deleted_at IS NULL`,
+    [updatedBy ?? null, key, projectId]
+  )
+  return result.affectedRows > 0
+}
+
+module.exports = {
+  listGlobal,
+  findGlobal,
+  upsertGlobal,
+  softDeleteGlobalOverride,
+  listProject,
+  findProject,
+  upsertProject,
+  softDeleteProjectOverride,
+}

@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   fetchGenerateProjectCompletionReport,
   fetchProjectCompletionReport,
   type ProjectCompletionReport,
   type ProjectDetail
 } from '@/service/api/project';
+import {
+  fetchProjectVisitThreshold,
+  fetchResetProjectVisitThreshold,
+  fetchUpdateProjectVisitThreshold,
+  type VisitThresholdConfig
+} from '@/service/api/visitStats';
+import { useAuthStore } from '@/store/modules/auth';
 import { useTenantReadOnly } from '@/hooks/common/tenant';
 import { openSignedApiPath } from '@/utils/signed-url';
 import { formatDate, formatMoney, GATE_STATUS_META, PAYMENT_STATUS_META } from '@/utils/format';
@@ -15,6 +22,7 @@ defineOptions({ name: 'ProjectOverviewTab' });
 
 const props = defineProps<{ detail: ProjectDetail }>();
 const readOnly = useTenantReadOnly();
+const authStore = useAuthStore();
 
 const completionReport = ref<ProjectCompletionReport | null>(null);
 const completionLoading = ref(false);
@@ -35,7 +43,84 @@ async function loadCompletionReport() {
   if (data) completionReport.value = data;
 }
 
-onMounted(loadCompletionReport);
+// ── 签到偏差阈值（B-5.1）──
+//
+// 项目级覆盖优先于租户 / 平台配置。界面必须同时展示「生效值来自哪一层」，
+// 否则管理员看到 500 会以为是自己设的，实际可能只是继承了租户默认值。
+const SOURCE_LABELS: Record<string, string> = {
+  project: '本项目单独设置',
+  tenant: '租户配置',
+  platform: '平台基础配置',
+  default: '系统默认值'
+};
+
+const threshold = ref<VisitThresholdConfig | null>(null);
+const thresholdDraft = ref('');
+const thresholdSaving = ref(false);
+// 写权限：租户 owner（§5.5 要求项目管理员只能查看），且不在只读排障窗口内
+const canEditThreshold = computed(() => authStore.isTenantOwner && !readOnly.value);
+
+async function loadThreshold() {
+  const { data } = await fetchProjectVisitThreshold(props.detail.id);
+
+  if (data) {
+    threshold.value = data;
+    thresholdDraft.value = data.value;
+  }
+}
+
+async function saveThreshold() {
+  if (!threshold.value) return;
+
+  const value = String(thresholdDraft.value).trim();
+  if (!/^\d+$/.test(value)) {
+    ElMessage.warning('阈值必须是正整数（米）');
+    return;
+  }
+
+  thresholdSaving.value = true;
+
+  try {
+    const { data, error } = await fetchUpdateProjectVisitThreshold(props.detail.id, value);
+
+    if (error || !data) return;
+
+    threshold.value = data;
+    thresholdDraft.value = data.value;
+    ElMessage.success(
+      data.changed ? '已保存，仅影响之后的新签到' : '与当前值一致，未做修改'
+    );
+  } finally {
+    thresholdSaving.value = false;
+  }
+}
+
+async function resetThreshold() {
+  if (!threshold.value) return;
+
+  try {
+    await ElMessageBox.confirm(
+      `清除后本项目将跟随「${SOURCE_LABELS[threshold.value.tenantSource] || '租户配置'}」（${threshold.value.tenantValue} 米）。历史签到的判定结果不受影响。`,
+      '清除项目覆盖',
+      { type: 'warning', confirmButtonText: '清除', cancelButtonText: '取消' }
+    );
+  } catch {
+    return;
+  }
+
+  const { data, error } = await fetchResetProjectVisitThreshold(props.detail.id);
+
+  if (error || !data) return;
+
+  threshold.value = data;
+  thresholdDraft.value = data.value;
+  ElMessage.success('已恢复为跟随全局配置');
+}
+
+onMounted(() => {
+  loadCompletionReport();
+  loadThreshold();
+});
 
 async function openCompletionReport(refresh = false) {
   if (completionLoading.value || reportStatus.value === 'pending') return;
@@ -163,6 +248,47 @@ const compositionMissing = computed(() => {
       <ElDescriptionsItem label="归档时间">{{ formatDate(detail.archivedAt) }}</ElDescriptionsItem>
       <ElDescriptionsItem label="备注" :span="3">{{ detail.remark || '-' }}</ElDescriptionsItem>
     </ElDescriptions>
+
+    <!-- 签到偏差阈值（B-5.1） -->
+    <div class="mt-20px">
+      <div class="mb-10px flex flex-wrap items-center justify-between gap-8px">
+        <span class="font-600">签到偏差阈值</span>
+        <div v-if="threshold" class="flex items-center gap-8px">
+          <ElButton
+            v-if="threshold.hasOverride"
+            :disabled="!canEditThreshold"
+            @click="resetThreshold"
+          >
+            清除覆盖
+          </ElButton>
+          <ElButton type="primary" :disabled="!canEditThreshold" :loading="thresholdSaving" @click="saveThreshold">
+            保存
+          </ElButton>
+        </div>
+      </div>
+
+      <div v-if="threshold" class="flex flex-wrap items-center gap-12px">
+        <ElInput
+          v-model="thresholdDraft"
+          class="w-200px"
+          :disabled="!canEditThreshold"
+          placeholder="例如 500"
+        >
+          <template #append>米</template>
+        </ElInput>
+        <ElTag :type="threshold.hasOverride ? 'success' : 'info'" size="small">
+          生效：{{ threshold.value }} 米（{{ SOURCE_LABELS[threshold.source] || threshold.source }}）
+        </ElTag>
+        <span class="text-12px text-#86909c">
+          清除覆盖后跟随 {{ SOURCE_LABELS[threshold.tenantSource] || threshold.tenantSource }}（{{ threshold.tenantValue }} 米）
+        </span>
+      </div>
+
+      <div class="mt-6px text-12px text-#86909c">
+        偏差未超过阈值判为正常，超过则必须填写异常说明才能提交；修改只影响之后的新签到，历史记录保留当时的阈值快照。
+        <span v-if="!canEditThreshold">仅租户管理员可修改，当前账号为只读查看。</span>
+      </div>
+    </div>
 
     <!-- 阶段概况 -->
     <div class="mt-20px">

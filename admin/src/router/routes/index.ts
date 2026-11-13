@@ -192,6 +192,19 @@ const appRoutes = [
     }
   },
   {
+    // 考察统计（B-4.6）。放在「运营分析」位置而不是塞进项目列表：
+    // 它按人 / 时间看的是现场考察的执行情况，与单个项目的详情不是同一视角
+    name: 'visit-stats',
+    path: '/visit-stats',
+    component: 'layout.base$view.visit-stats',
+    meta: {
+      title: '考察统计',
+      icon: 'mdi:map-marker-check-outline',
+      order: 11,
+      roles: ['owner', 'admin', 'platform']
+    }
+  },
+  {
     name: 'export-task',
     path: '/export-task',
     component: 'layout.base$view.export-task',
