@@ -118,4 +118,4 @@ if [ "$server_changed" -eq 1 ]; then
 fi
 
 echo "$NEW" > "$MARKER_FILE"
-log "仅前端有变化，不重启后端。部署完成：${NEW:0:7}"
+log "后端无变化，不重启。部署完成：${NEW:0:7}"
