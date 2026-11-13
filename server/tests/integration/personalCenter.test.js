@@ -14,6 +14,12 @@ const db = require('../../src/db/pool')
 const cache = require('../../src/cache')
 const sysConfigService = require('../../src/services/sysConfig.service')
 const operationLog = require('../../src/services/operationLog.service')
+const feedbackMediaCleanup = require('../../src/jobs/feedbackMediaCleanup')
+const config = require('../../config')
+const storage = require('../../src/storage')
+const datetime = require('../../src/utils/datetime')
+const fs = require('node:fs')
+const path = require('node:path')
 const { prepareDatabase } = require('./helpers/db')
 const request = require('./helpers/request')
 const auth = require('./helpers/auth')
@@ -832,6 +838,134 @@ describe('AC-U18 意见反馈', () => {
     const admin = await auth.createAndLogin({ username: `fb-admin4-${(seq += 1)}` })
     const res = await request.authed('put', '/admin/feedback/999999', admin.token).send({ status: 'processing' })
     expect(res.status).toBe(404)
+  })
+
+  // ── 逐张暂存（微信一次只能传一个文件）───────────────────────────
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex')
+
+  function stageImage(token) {
+    return request
+      .authed('post', '/feedback/media', token)
+      .attach('file', png, { filename: 'shot.png', contentType: 'image/png' })
+  }
+
+  it('逐张暂存后一次提交，3 张图片都落库且暂存行被消费', async () => {
+    // 用带项目的用户，让反馈归到租户 1，后台列表才看得到
+    const login = await feedbackUser(`feedback-stage-${(seq += 1)}`)
+    const mediaIds = []
+
+    for (let i = 0; i < 3; i += 1) {
+      const staged = await stageImage(login.token)
+      expect(staged.status).toBe(200)
+      mediaIds.push(staged.body.data.mediaId)
+    }
+
+    const res = await request
+      .authed('post', '/feedback', login.token)
+      .send({ content: '三个页面都有问题，截图见附件', mediaIds })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.imageCount).toBe(3)
+
+    const row = await db.queryOne('SELECT images FROM feedback WHERE id = ?', [res.body.data.id])
+    const images = typeof row.images === 'string' ? JSON.parse(row.images) : row.images
+    expect(images).toHaveLength(3)
+    expect(images[0].url).toContain('/uploads/feedback/')
+
+    const staged = await db.query(
+      `SELECT status, feedback_id FROM feedback_media_staging WHERE id IN (${mediaIds.map(() => '?').join(', ')})`,
+      mediaIds
+    )
+    expect(staged).toHaveLength(3)
+    for (const item of staged) {
+      expect(item.status).toBe('used')
+      expect(item.feedback_id).toBe(res.body.data.id)
+    }
+
+    // 后台拿到的必须是可直接渲染的 URL 字符串（前端 `:src="image"`），
+    // 不能是 `{ url }` 对象 —— 那会渲染成 "[object Object]"
+    const admin = await auth.createAndLogin({ username: `fb-admin-img-${(seq += 1)}` })
+    const listed = await request.authed('get', '/admin/feedback?status=new', admin.token)
+    const item = listed.body.data.list.find((feedback) => feedback.id === res.body.data.id)
+    expect(item.images).toHaveLength(3)
+    expect(typeof item.images[0]).toBe('string')
+    expect(item.images[0]).toContain('/uploads/feedback/')
+  })
+
+  it('不能消费别人暂存的图片', async () => {
+    const owner = await mini.login(`feedback-stage-a-${(seq += 1)}`)
+    const other = await mini.login(`feedback-stage-b-${(seq += 1)}`)
+    const staged = await stageImage(owner.token)
+
+    const res = await request
+      .authed('post', '/feedback', other.token)
+      .send({ content: '盗用别人的截图来提交反馈', mediaIds: [staged.body.data.mediaId] })
+
+    expect(res.status).toBe(400)
+    // 被拒绝后原图仍是 staged，本人还能继续提交
+    const row = await db.queryOne('SELECT status FROM feedback_media_staging WHERE id = ?', [
+      staged.body.data.mediaId,
+    ])
+    expect(row.status).toBe('staged')
+  })
+
+  it('同一张暂存图片不能被提交两次', async () => {
+    const login = await mini.login(`feedback-stage-reuse-${(seq += 1)}`)
+    const staged = await stageImage(login.token)
+    const mediaId = staged.body.data.mediaId
+
+    const first = await request
+      .authed('post', '/feedback', login.token)
+      .send({ content: '第一次提交带这张截图', mediaIds: [mediaId] })
+    const second = await request
+      .authed('post', '/feedback', login.token)
+      .send({ content: '第二次还想用同一张截图', mediaIds: [mediaId] })
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(400)
+    expect(await db.count('FROM feedback WHERE deleted_at IS NULL')).toBe(1)
+  })
+
+  it('超过 3 张、以及图片文件与 mediaIds 混用都会被拒绝', async () => {
+    const login = await mini.login(`feedback-stage-limit-${(seq += 1)}`)
+    const mediaIds = []
+    for (let i = 0; i < 4; i += 1) {
+      const staged = await stageImage(login.token)
+      mediaIds.push(staged.body.data.mediaId)
+    }
+
+    const tooMany = await request
+      .authed('post', '/feedback', login.token)
+      .send({ content: '一次提交四张截图应该被拒绝', mediaIds })
+    expect(tooMany.status).toBe(400)
+
+    const mixed = await request
+      .authed('post', '/feedback', login.token)
+      .field('content', '同时带文件和 mediaIds 应该被拒绝')
+      .field('mediaIds', JSON.stringify([mediaIds[0]]))
+      .attach('files', png, { filename: 'shot.png', contentType: 'image/png' })
+    expect(mixed.status).toBe(400)
+  })
+
+  it('过期未提交的暂存图片会被清理任务认领、删文件并删行', async () => {
+    const login = await mini.login(`feedback-stage-expire-${(seq += 1)}`)
+    const staged = await stageImage(login.token)
+    const mediaId = staged.body.data.mediaId
+    const key = storage.extractKey(staged.body.data.url)
+
+    expect(fs.existsSync(path.join(config.upload.dir, key))).toBe(true)
+
+    await db.query('UPDATE feedback_media_staging SET created_at = ? WHERE id = ?', [
+      datetime.now().subtract(2, 'day').format(datetime.DATETIME_FORMAT),
+      mediaId,
+    ])
+
+    const result = await feedbackMediaCleanup.runOnce({ now: datetime.now() })
+    expect(result.claimed).toBeGreaterThanOrEqual(1)
+    expect(fs.existsSync(path.join(config.upload.dir, key))).toBe(false)
+
+    const row = await db.queryOne('SELECT id FROM feedback_media_staging WHERE id = ?', [mediaId])
+    expect(row).toBeNull()
   })
 })
 

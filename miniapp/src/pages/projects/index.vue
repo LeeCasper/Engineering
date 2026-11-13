@@ -167,7 +167,15 @@
         开发环境未配置微信手机号授权，可直接输入手机号绑定。
       </text>
       <text v-else class="no-project-hint">绑定后点击刷新；管理员用该手机号发起邀请后即可看到。</text>
+      <!-- #ifdef MP-WEIXIN -->
+      <!-- 原来这里只有一行「客服联系方式」文本，点了没有反应；改成真正拉起客服会话 -->
+      <button class="no-project-contact no-project-contact-btn" open-type="contact">
+        联系在线客服
+      </button>
+      <!-- #endif -->
+      <!-- #ifndef MP-WEIXIN -->
       <text v-if="supportContact" class="no-project-contact">客服联系方式：{{ supportContact }}</text>
+      <!-- #endif -->
       <button class="no-project-refresh" :disabled="loading" @tap="load">刷新</button>
     </view>
 
@@ -1671,6 +1679,20 @@ function closeActiveSheet() {
   margin-top: dp(16);
   color: #eb5c20;
   font-size: dp(13);
+}
+
+/* 微信端是 button，H5 是纯文本；按钮形态要把默认样式收成与「刷新」同宽的胶囊 */
+.no-project-contact-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: dp(160);
+  height: dp(40);
+  border: 1px solid #f7c7b1;
+  border-radius: dp(8);
+  background: #fff7f2;
+  font-size: dp(13);
+  line-height: 1;
 }
 
 .no-project-refresh {

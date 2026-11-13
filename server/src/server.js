@@ -73,6 +73,7 @@ async function bootstrap() {
   require('./jobs/acceptanceTimeout').start()
   require('./jobs/reportMediaCleanup').start()
   require('./jobs/visitMediaCleanup').start()
+  require('./jobs/feedbackMediaCleanup').start()
   require('./jobs/esignSync').start()
   require('./jobs/acceptancePostPassRetry').start()
 

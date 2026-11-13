@@ -526,6 +526,8 @@ async function main() {
   await renderFilledIcon('icon-home-accent.png', '<path d="M12 3L2 12h3v8h6v-5h2v5h6v-8h3L12 3zm0 2.85l6 5.4V18h-2v-5H8v5H6v-6.75l6-5.4z"/>', { color: '#EB5C20' })
   await renderFilledIcon('icon-acceptance-accent.png', '<path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm9.707 5.707a1 1 0 00-1.414-1.414L9 12.586l-1.293-1.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>', { color: '#EB5C20' })
   await renderIcon('icon-bell-accent.png', '<path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>', { color: '#EB5C20', strokeWidth: 1.8 })
+  // 在线客服：麦克风 + 头梁，避免和「意见反馈」的铅笔、「关于我们」的信息图标撞脸
+  await renderIcon('icon-service-accent.png', '<path d="M4 13a8 8 0 1116 0v3a3 3 0 01-3 3h-2"/><rect x="3" y="12" width="4" height="7" rx="1.6"/><rect x="17" y="12" width="4" height="7" rx="1.6"/><path d="M12 19h3"/>', { color: '#EB5C20', strokeWidth: 1.8 })
   await renderIcon('icon-edit-accent.png', '<path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>', { color: '#EB5C20', strokeWidth: 1.8 })
   await renderIcon('icon-info-accent.png', '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 12v4"/>', { color: '#EB5C20', strokeWidth: 1.8 })
   await renderIcon('icon-logout-gray.png', '<path d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>', { color: '#8B8179', strokeWidth: 1.8 })

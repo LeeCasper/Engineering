@@ -946,7 +946,7 @@ import {
   disputeReconciliation,
 } from '../../api/ledger'
 import { resolveMediaUrl } from '../../api/request'
-import { getToken } from '../../store/session'
+import { getCachedProjects, getToken } from '../../store/session'
 import {
   getCurrentProject,
   setCurrentProject,
@@ -1159,6 +1159,39 @@ const isPrimaryOwner = computed(() =>
 )
 const isForeman = computed(() => myRole.value === 'foreman')
 const hasLedgerAccess = computed(() => isOwner.value || isForeman.value)
+
+/**
+ * 监理不参与记账（AC-L27），因此连记账 tab 的入口也要挡住。
+ *
+ * 原生 tabBar 是静态注册的，微信没有「隐藏单个 tab」的接口；改 custom tabBar
+ * 在真机切 tab 时会让底栏重绘闪烁（CLAUDE.md 已记录），所以这里采用
+ * 「进入页立即重定向」的做法：监理点到记账时提示一句并回到「我的」。
+ */
+let supervisorRedirecting = false
+
+/** 缓存里所有项目的角色都相同（角色是账号级固定的），据此尽早判定 */
+function cachedAccountRole() {
+  const cached = getCachedProjects()
+  const items = ((cached && cached.groups) || []).flatMap((group) => group.items || [])
+  const roles = new Set(items.map((item) => item.myRole).filter(Boolean))
+  return roles.size === 1 ? [...roles][0] : null
+}
+
+function redirectSupervisorAway() {
+  if (supervisorRedirecting) return
+  supervisorRedirecting = true
+  uni.showToast({ title: '监理不参与记账', icon: 'none' })
+  setTimeout(() => {
+    // tab 页会被保留：跳走后要把标记复位，否则下一次点「记账」时
+    // onShow 会直接 return，停留在一张空页面上
+    uni.switchTab({
+      url: '/pages/mine/index',
+      complete: () => {
+        supervisorRedirecting = false
+      },
+    })
+  }, 600)
+}
 
 const heroLabels = computed(() =>
   isOwner.value
@@ -1687,6 +1720,9 @@ async function submitInitiate() {
 async function load(options = {}) {
   const silent = options.silent === true
 
+  // 正在按角色重定向时不做任何请求：避免监理看到账目骨架屏或闪烁的内容
+  if (supervisorRedirecting) return
+
   if (!getToken()) {
     uni.redirectTo({ url: '/pages/login/index' })
     return
@@ -1725,6 +1761,13 @@ async function load(options = {}) {
       myRole: project.myRole,
       myRoleLabel: project.myRoleLabel,
     })
+
+    if (project.myRole === 'supervisor') {
+      // 缓存缺失时（例如从消息中心直接切进记账）由项目详情兜底判定
+      resetLedgerData()
+      redirectSupervisorAway()
+      return
+    }
 
     if (project.myRole !== 'owner' && project.myRole !== 'foreman') {
       resetLedgerData()
@@ -2033,11 +2076,24 @@ onLoad(() => {
   const info = uni.getSystemInfoSync()
   safeTop.value = info.statusBarHeight || 12
 
+  // 先用缓存里的账号角色尽早拦下：监理点「记账」时不应先看到账目加载态
+  if (cachedAccountRole() === 'supervisor') {
+    redirectSupervisorAway()
+    return
+  }
+
   bootstrapped = true
   load()
 })
 
 onShow(() => {
+  // 每次切回记账 tab 都要重新判一次角色：tab 页是保活的，
+  // 只在 onLoad 判一次会让第二次点进来时停在上一次的清空状态
+  if (cachedAccountRole() === 'supervisor') {
+    redirectSupervisorAway()
+    return
+  }
+  if (supervisorRedirecting) return
   if (bootstrapped && !loading.value) load({ silent: true })
 })
 
