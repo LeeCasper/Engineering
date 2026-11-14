@@ -19,9 +19,14 @@
 
     <view v-else-if="loadError" class="state-block">
       <image class="state-icon" src="/static/images/icon-acceptance-empty.png" mode="aspectFit" />
-      <text class="state-title">项目不可用</text>
+      <text class="state-title">{{ loadErrorTitle }}</text>
       <text class="state-text">{{ loadError }}</text>
-      <button class="state-btn" @tap="goBack">返回项目列表</button>
+      <button v-if="loadErrorRetryable" class="state-btn" @tap="retryLoad">重新加载</button>
+      <button
+        class="state-btn"
+        :class="{ 'state-btn-ghost': loadErrorRetryable }"
+        @tap="goBack"
+      >返回项目列表</button>
     </view>
 
     <template v-else-if="detail">
@@ -698,6 +703,11 @@ const subscribeTenantId = computed(() => {
 })
 const loading = ref(true)
 const loadError = ref('')
+// 错误态的标题与「能否重试」都要跟着错误类型走：
+// 原来无论什么错误都写死「项目不可用」，429（请求太频繁）被渲染成
+// 「项目被删 / 被移出」，让人以为数据没了。见 BZGGCB-11。
+const loadErrorTitle = ref('项目不可用')
+const loadErrorRetryable = ref(false)
 const detail = ref(null)
 const stageListRaw = ref([])
 const acceptanceData = ref({ groups: [] })
@@ -1130,6 +1140,8 @@ async function load(silent = false) {
   if (!id.value) return
   if (!silent) loading.value = true
   loadError.value = ''
+  loadErrorTitle.value = '项目不可用'
+  loadErrorRetryable.value = false
 
   try {
     const [
@@ -1184,13 +1196,33 @@ async function load(silent = false) {
 
     if (err.statusCode === 404) {
       clearCurrentProject()
+      loadErrorTitle.value = '项目不可用'
       loadError.value = '项目不存在，或您已不在该项目中'
+      return
+    }
+
+    // 429 是「请求太频繁」，与「项目不可用」是两回事：
+    // 前者稍后重试即可，后者才说明项目真的没了。分开渲染，避免误导。
+    if (err.statusCode === 429) {
+      const retryText = err.retryAfter ? `${err.retryAfter} 秒后再试` : '稍后重试'
+      const message = `请求太频繁，请 ${retryText}`
+
+      if (detail.value) {
+        uni.showToast({ title: message, icon: 'none' })
+      } else {
+        loadErrorTitle.value = '请求太频繁'
+        loadErrorRetryable.value = true
+        loadError.value = message
+      }
       return
     }
 
     if (detail.value) {
       uni.showToast({ title: err.message || '刷新失败，请稍后重试', icon: 'none' })
     } else {
+      // 网络异常 / 500 之类：同样允许重试，标题不再冒充「项目不可用」
+      loadErrorTitle.value = '加载失败'
+      loadErrorRetryable.value = true
       loadError.value = err.message || '加载失败，请稍后重试'
     }
   } finally {
@@ -1203,6 +1235,11 @@ function goBack() {
   uni.navigateBack({
     fail: () => uni.reLaunch({ url: '/pages/projects/index' }),
   })
+}
+
+/** 错误态里的「重新加载」：重新走一整套首屏加载（不是 onShow 的静默刷新） */
+function retryLoad() {
+  load()
 }
 
 function openMore() {
@@ -3022,6 +3059,14 @@ function closeActiveSheet() {
   font-size: dp(13);
   font-weight: 600;
   line-height: dp(38);
+}
+
+/* 与主按钮并排时的次要动作（返回列表），避免两个橙色主按钮抢焦点 */
+.state-btn-ghost {
+  margin-top: dp(8);
+  border: 1px solid #e7ded5;
+  background: transparent;
+  color: #8b8179;
 }
 
 /* ── 底部面板 ── */

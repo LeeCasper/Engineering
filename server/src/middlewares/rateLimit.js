@@ -1,17 +1,26 @@
 'use strict'
 
 /**
- * 接口限流（需求文档 §8.2：单用户 60 次/分钟）。
+ * 接口限流（需求文档 §8.2）。
  *
  * 建在缓存抽象层上而非引 express-rate-limit：后者默认的 MemoryStore 在多实例下无效，
  * 而复用本项目已有的 cache 抽象（Redis / 内存可切），限流计数能与验证码、
  * 登录态走同一套降级策略。
  *
- * 两处限流分工不同，缺一不可：
+ * 三处限流：
  *   globalRateLimit  路由之前按 IP 计数，挡未登录的洪水请求（此时还不知道用户是谁）
- *   userRateLimit    鉴权之后按用户 ID 计数，即 §8.2 说的「单用户 60 次/分钟」
+ *   userReadRateLimit  鉴权之后按用户 ID 计数，**读接口** 默认 180 次/分钟
+ *   userWriteRateLimit 鉴权之后按用户 ID 计数，**写接口** 默认 60 次/分钟
  *
  * 只做 IP 限流会让同一办公室的用户共用一个出口 IP 而互相误伤；只做用户限流则未登录请求不设防。
+ *
+ * ── 为什么读写分档 ──
+ * §8.2 原文只写了「单用户 60 次/分钟」，但 C 端一个页面就要并发十几个 GET
+ * （项目详情 9 个、记账页 8~10 个），每个 tab 页 onShow 还会静默刷新，
+ * 列表 ↔ 详情 ↔ 记账来回切四五趟就会把 60 次/分钟打满，正常用户被误伤成 429。
+ * 因此读接口单独放宽到 180 次/分钟，写接口维持原文的 60 次/分钟 ——
+ * 真正需要防的是写操作的刷量与误触，读请求的代价只是带宽。
+ * 这与需求文档的差异已同步到 §8.2 与 CLAUDE.md。
  */
 
 const cache = require('../cache')
@@ -71,6 +80,54 @@ function createRateLimit({ scope, max, identity, message }) {
   }
 }
 
+/** GET / HEAD / OPTIONS 算读请求，其余方法（含 DELETE）一律算写 */
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+function isReadMethod(method) {
+  return READ_METHODS.has(String(method || 'GET').toUpperCase())
+}
+
+/**
+ * 按请求方法选阈值的限流器。
+ *
+ * 读写各用一个独立的 scope：合用一个计数器会让写操作的配额被读请求吃掉，
+ * 反过来也一样，分档就失去意义了。两档都以“用户 id”为键，
+ * 同一账号多端（手机 + H5）仍然合并计数 —— 这是刻意的，配额属于账号。
+ */
+function createMethodRateLimit({ scope, identity, readMax, writeMax, readMessage, writeMessage }) {
+  // 读阈值 <= 0 表示整个用户级限流关闭：集成测试只设置 RATE_LIMIT_PER_USER_PER_MINUTE=0，
+  // 若只关读档，测试里连续的写请求仍会随机撞 429。
+  const effectiveWriteMax = readMax > 0 ? writeMax : 0
+
+  const readLimiter = createRateLimit({
+    scope: `${scope}:read`,
+    max: readMax,
+    identity,
+    message: readMessage,
+  })
+  const writeLimiter = createRateLimit({
+    scope: `${scope}:write`,
+    max: effectiveWriteMax,
+    identity,
+    message: writeMessage,
+  })
+
+  return function methodRateLimit(req, res, next) {
+    const limiter = isReadMethod(req.method) ? readLimiter : writeLimiter
+    return limiter(req, res, next)
+  }
+}
+
+/** 登录用户读写分档限流：§8.2 原文 60 次/分钟，读接口放宽到 180（见文件头说明） */
+const userRateLimit = createMethodRateLimit({
+  scope: 'user',
+  identity: (req) => (req.auth ? `${req.auth.type}:${req.auth.id}` : null),
+  readMax: config.rateLimit.perUserReadPerMinute,
+  writeMax: config.rateLimit.perUserWritePerMinute,
+  readMessage: `请求过于频繁，请稍后再试（读接口上限 ${config.rateLimit.perUserReadPerMinute} 次/分钟）`,
+  writeMessage: `请求过于频繁，请稍后再试（写接口上限 ${config.rateLimit.perUserWritePerMinute} 次/分钟）`,
+})
+
 /** 全局 IP 限流。阈值放宽到用户限流的数倍 —— 它挡的是脚本，不该挡正常用户 */
 const globalRateLimit = createRateLimit({
   scope: 'ip',
@@ -78,12 +135,11 @@ const globalRateLimit = createRateLimit({
   identity: (req) => req.ip,
 })
 
-/** 登录用户限流，§8.2 的 60 次/分钟 */
-const userRateLimit = createRateLimit({
-  scope: 'user',
-  max: config.rateLimit.perUserPerMinute,
-  identity: (req) => (req.auth ? `${req.auth.type}:${req.auth.id}` : null),
-  message: `请求过于频繁，请稍后再试（上限 ${config.rateLimit.perUserPerMinute} 次/分钟）`,
-})
-
-module.exports = { createRateLimit, globalRateLimit, userRateLimit, WINDOW_SECONDS }
+module.exports = {
+  createRateLimit,
+  createMethodRateLimit,
+  isReadMethod,
+  globalRateLimit,
+  userRateLimit,
+  WINDOW_SECONDS,
+}

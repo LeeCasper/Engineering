@@ -24,6 +24,21 @@ export function resolveMediaUrl(url) {
 }
 
 /**
+ * 取出限流响应的 Retry-After（秒）。
+ *
+ * 后端在 429 时下发 `Retry-After`，供客户端退避。uni.request 的 header 键名
+ * 在不同平台分别是 `Retry-After` / `retry-after`，两种都要认。
+ * 拿不到时返回 null，调用方按「稍后重试」处理，不要编一个数字。
+ */
+function readRetryAfter(headers) {
+  if (!headers) return null
+  const raw = headers['Retry-After'] ?? headers['retry-after'] ?? headers['RETRY-AFTER']
+  if (raw === undefined || raw === null || raw === '') return null
+  const seconds = Number(raw)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null
+}
+
+/**
  * multipart 上传（验收现场照片 / 业主签名）。
  *
  * 后端成功响应仍是 `{ code, message, data }`，但 `uni.uploadFile` 的 `res.data`
@@ -61,6 +76,7 @@ export function uploadFile({ url, filePath, name, formData = {}, auth = true, he
         error.statusCode = res.statusCode
         error.code = body.code
         error.data = body.data
+        error.retryAfter = readRetryAfter(res.header)
         reject(error)
       },
       fail(err) {
@@ -99,6 +115,8 @@ export function request({ url, method = 'GET', data, auth = true, header = {} })
         error.statusCode = res.statusCode
         error.code = body.code
         error.data = body.data
+        // 429 时带出 Retry-After（秒），供页面提示与后续自动退避使用
+        error.retryAfter = readRetryAfter(res.header)
         reject(error)
       },
       fail(err) {

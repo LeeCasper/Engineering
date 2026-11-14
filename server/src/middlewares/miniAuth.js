@@ -45,7 +45,7 @@ async function requireMini(req, res, next) {
       requestId: req.id || null,
     }
 
-    // 鉴权之后按用户计数（§8.2「单用户 60 次/分钟」）。
+    // 鉴权之后按用户计数（§8.2，读 180 / 写 60 次/分钟，见 rateLimit.js）。
     // 必须在 req.auth 写入之后：限流键取用户 id，不取 IP ——
     // 同一办公室的自然人共用一个出口 IP，按 IP 会互相误伤。
     return userRateLimit(req, res, next)

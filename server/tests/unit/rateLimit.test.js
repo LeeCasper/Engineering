@@ -10,7 +10,7 @@
  * 不依赖配置文件。
  */
 
-const { createRateLimit } = require('../../src/middlewares/rateLimit')
+const { createRateLimit, createMethodRateLimit } = require('../../src/middlewares/rateLimit')
 
 function makeReq(id) {
   return { auth: { type: 'mini', id }, ip: '127.0.0.1' }
@@ -91,6 +91,78 @@ describe('接口限流（§8.2）', () => {
       called += 1
     }
     expect(called).toBe(5)
+  })
+
+  it('按请求方法选阈值：GET 走读档、POST 走写档', async () => {
+    // 读档 180、写档 60 是默认配置；这里用小阈值把两档都打满，
+    // 断言的是「用哪一档」而不是具体数字。
+    const middleware = createMethodRateLimit({
+      scope: `unit-${Date.now()}-method`,
+      readMax: 2,
+      writeMax: 1,
+      identity: (req) => req.auth.id,
+    })
+
+    // 同一用户：2 次 GET 全部放行（读档 2）
+    expect(await run(middleware, { ...makeReq('user-e'), method: 'GET' }, makeRes())).toBeNull()
+    expect(await run(middleware, { ...makeReq('user-e'), method: 'GET' }, makeRes())).toBeNull()
+    expect(await run(middleware, { ...makeReq('user-e'), method: 'GET' }, makeRes())).toBeTruthy()
+
+    // 读档被打满不影响同一用户的写档 —— 写档 1，第一次放行、第二次拦下
+    expect(await run(middleware, { ...makeReq('user-e'), method: 'POST' }, makeRes())).toBeNull()
+    const writeErr = await run(middleware, { ...makeReq('user-e'), method: 'POST' }, makeRes())
+    expect(writeErr).toBeTruthy()
+    expect(writeErr.status).toBe(429)
+  })
+
+  it('HEAD / OPTIONS 也算读请求，DELETE / PATCH 算写请求', async () => {
+    const middleware = createMethodRateLimit({
+      scope: `unit-${Date.now()}-verbs`,
+      readMax: 1,
+      writeMax: 10,
+      identity: (req) => req.auth.id,
+    })
+
+    expect(await run(middleware, { ...makeReq('u-head'), method: 'HEAD' }, makeRes())).toBeNull()
+    expect(await run(middleware, { ...makeReq('u-head'), method: 'HEAD' }, makeRes())).toBeTruthy()
+
+    expect(await run(middleware, { ...makeReq('u-opt'), method: 'OPTIONS' }, makeRes())).toBeNull()
+    expect(await run(middleware, { ...makeReq('u-opt'), method: 'OPTIONS' }, makeRes())).toBeTruthy()
+
+    // 写档 10：DELETE 不会因为读档为 1 就被拦
+    expect(await run(middleware, { ...makeReq('u-del'), method: 'DELETE' }, makeRes())).toBeNull()
+    expect(await run(middleware, { ...makeReq('u-del'), method: 'PATCH' }, makeRes())).toBeNull()
+  })
+
+  it('读阈值为 0 时读写两档同时关闭（集成测试只设置这一项）', async () => {
+    const middleware = createMethodRateLimit({
+      scope: `unit-${Date.now()}-read-off`,
+      readMax: 0,
+      writeMax: 1,
+      identity: (req) => req.auth.id,
+    })
+
+    for (let i = 0; i < 100; i += 1) {
+      expect(await run(middleware, { ...makeReq('user-f'), method: 'GET' }, makeRes())).toBeNull()
+      expect(await run(middleware, { ...makeReq('user-f'), method: 'POST' }, makeRes())).toBeNull()
+    }
+  })
+
+  it('只把写阈值设为 0 时仅关闭写档', async () => {
+    const middleware = createMethodRateLimit({
+      scope: `unit-${Date.now()}-write-off`,
+      readMax: 1,
+      writeMax: 0,
+      identity: (req) => req.auth.id,
+    })
+
+    // 写档关闭：同一用户连打 50 次写请求全部放行
+    for (let i = 0; i < 50; i += 1) {
+      expect(await run(middleware, { ...makeReq('user-g'), method: 'POST' }, makeRes())).toBeNull()
+    }
+    // 读档仍然生效
+    expect(await run(middleware, { ...makeReq('user-g'), method: 'GET' }, makeRes())).toBeNull()
+    expect(await run(middleware, { ...makeReq('user-g'), method: 'GET' }, makeRes())).toBeTruthy()
   })
 
   it('max <= 0 时关闭限流（集成测试据此避免随机 429）', async () => {

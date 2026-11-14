@@ -109,8 +109,9 @@ async function requireAdmin(req, res, next) {
       requestId: req.id || null,
     }
 
-    // 鉴权之后按用户计数（§8.2「单用户 60 次/分钟」）。与 C 端同一套实现，
-    // 计数键带 auth.type，C 端与管理端账号 id 撞号时不会互相吃掉配额。
+    // 鉴权之后按用户计数（§8.2，读 180 / 写 60 次/分钟，见 rateLimit.js）。
+    // 与 C 端同一套实现，计数键带 auth.type，C 端与管理端账号 id 撞号时
+    // 不会互相吃掉配额。
     return userRateLimit(req, res, next)
   } catch (err) {
     return next(err)

@@ -171,13 +171,28 @@ const config = {
     /** 按 IP 的全局限流基数（实际阈值 = 该值 × 5） */
     perMinute: int('RATE_LIMIT_PER_MINUTE', 60),
     /**
-     * 鉴权后按用户 id 的限流阈值（§8.2「单用户 60 次/分钟」）。
+     * 鉴权后按用户 id 的**读接口**限流阈值。
+     *
+     * 需求文档 §8.2 原文是「单用户 60 次/分钟」，落地时拆成读写两档：
+     * C 端项目详情一次进入就并发 9 个 GET（详情 / 阶段 / 验收 / 动态 /
+     * 付款节点 / 账目 / 联系人 / 考察记录 / 竣工报告），记账页 8~10 个，
+     * 且每个 tab 页 onShow 都会静默刷新 —— 按 60 次/分钟一刀切会把正常
+     * 用户的连续切页误伤成 429。写操作频次低、风险高，仍维持 60 次/分钟
+     * （见 perUserWritePerMinute）。
      *
      * 单独一项是为了让集成测试能只关掉用户级限流：测试文件常用同一个账号
      * 连打上百个请求，而「IP 级限流生效」本身仍需要被验证（foundation 用例）。
-     * 设为 0 表示关闭该项。
+     * **设为 0 时读写两档同时关闭** —— 集成测试只设置了这一项，
+     * 如果只关读档，测试里的连续写请求会随机撞 429。
      */
-    perUserPerMinute: int('RATE_LIMIT_PER_USER_PER_MINUTE', int('RATE_LIMIT_PER_MINUTE', 60)),
+    perUserReadPerMinute: int('RATE_LIMIT_PER_USER_PER_MINUTE', 180),
+    /**
+     * 鉴权后按用户 id 的**写接口**限流阈值（POST / PUT / PATCH / DELETE）。
+     *
+     * 与原文 60 次/分钟一致。设为 0 表示关闭这一档；
+     * 读阈值设为 0 时这一档也一并关闭（见上）。
+     */
+    perUserWritePerMinute: int('RATE_LIMIT_PER_USER_WRITE_PER_MINUTE', 60),
   },
 
   security: {

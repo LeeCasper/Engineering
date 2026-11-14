@@ -31,7 +31,13 @@ function createApp() {
   app.set('trust proxy', 1)
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
-  app.use(cors())
+  // 限流响应头必须显式 expose：它们不在 CORS 安全清单里，跨源时 JS 读不到。
+  // 生产是同源反代不受影响，但 H5 调试、独立域名的客户端需要它才能做退避。
+  app.use(
+    cors({
+      exposedHeaders: ['Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+    })
+  )
 
   app.use(requestContext)
   app.use(attachResponseHelpers)
