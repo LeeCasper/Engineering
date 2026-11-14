@@ -1187,8 +1187,10 @@ async function load(silent = false) {
     // 429 是「请求太频繁」，与「项目不可用」是两回事：
     // 前者稍后重试即可，后者才说明项目真的没了。分开渲染，避免误导。
     if (err.statusCode === 429) {
-      const retryText = err.retryAfter ? `${err.retryAfter} 秒后再试` : '稍后重试'
-      const message = `请求太频繁，请 ${retryText}`
+      // 拿不到 Retry-After 时不要拼成「请 稍后重试」——「请…稍后重试」重复了两次
+      const message = err.retryAfter
+        ? `请求太频繁，请 ${err.retryAfter} 秒后再试`
+        : '请求太频繁，请稍后重试'
 
       if (detail.value) {
         uni.showToast({ title: message, icon: 'none' })

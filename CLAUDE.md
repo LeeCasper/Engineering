@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > 本文件记录**架构约定**与**踩过的坑**。改动代码前请先读「关键约束」一节 ——
 > 那里的每一条都是实际踩出来的，不是理论建议。
 >
-> **阅读建议**：先看「架构要点」→ 第 1~9 条（数据库/测试基础）→ 第 71~94 条（多租户、后台、小程序管理员、现场签到、主业主、可靠电子签名与实名认证）。
+> **阅读建议**：先看「架构要点」→ 第 1~9 条（数据库/测试基础）→ 第 71~95 条（多租户、后台、小程序管理员、现场签到、主业主、可靠电子签名、实名认证与鉴权幂等）。
 > 约束编号是历史追加顺序且被源码注释引用，**不要重排或复用编号**。
-> 94 条约束的完整说明已按主题拆到 [`docs/constraints/`](docs/constraints/)，
+> 95 条约束的完整说明已按主题拆到 [`docs/constraints/`](docs/constraints/)，
 > 本文件只保留编号索引，按编号仍可直接检索。
 
 ## 项目定位
@@ -38,8 +38,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 文件 | 内容 |
 | --- | --- |
 | `需求文档.md` | 产品需求（v2.14），**一切实现的最终依据** |
-| `CLAUDE.md` | 本文件：架构约定、常用命令、94 条约束编号索引 |
-| `docs/constraints/` | 94 条约束的完整说明，按主题拆分；编号与源码注释一一对应 |
+| `CLAUDE.md` | 本文件：架构约定、常用命令、95 条约束编号索引 |
+| `docs/constraints/` | 95 条约束的完整说明，按主题拆分；编号与源码注释一一对应 |
 | `docs/esign-legal.md` | 可靠电子签服务商资质与法律效力核验清单（仅在启用可靠电子签时适用） |
 | `server/.env.example` | 环境变量模板；新增配置必须同步这里与 `server/config/index.js` |
 | `README.md` | 环境准备、数据库初始化、快速开始、交付进度 |
@@ -788,7 +788,7 @@ controller / service 里**不允许**出现 `res.status(4xx).json(...)` —— �
 
 > 编号是**历史追加顺序**，不是阅读顺序；源码注释与文档会引用具体编号
 > （例如「CLAUDE.md 第 28 条」）。**不要重排、不要复用已删除的编号**，
-> 新增条目一律追加到末尾。多租户、后台、小程序管理员、现场签到、主业主、可靠电子签名与实名认证相关的条目集中在第 71~94 条。
+> 新增条目一律追加到末尾。多租户、后台、小程序管理员、现场签到、主业主、可靠电子签名、实名认证与鉴权幂等相关的条目集中在第 71~95 条。
 >
 > 完整说明已按主题拆到 [`docs/constraints/`](docs/constraints/)；本文件保留
 > 编号索引，源码注释里的「CLAUDE.md 第 N 条」仍然可以按编号查到。
@@ -1012,6 +1012,12 @@ controller / service 里**不允许**出现 `res.status(4xx).json(...)` —— �
 完整说明：[docs/constraints/14-real-name.md](docs/constraints/14-real-name.md)
 
 - [94. 实名认证：证件号不落库；本地校验 ≠ 公安库核验，等级必须如实标注](docs/constraints/14-real-name.md#c94)
+
+### 鉴权中间件（95）
+
+完整说明：[docs/constraints/15-route-auth.md](docs/constraints/15-route-auth.md)
+
+- [95. 鉴权中间件必须幂等：同一挂载点下串联的子路由会重复执行 use 中间件](docs/constraints/15-route-auth.md#c95)
 
 ## 尚未确定 / 需注意
 

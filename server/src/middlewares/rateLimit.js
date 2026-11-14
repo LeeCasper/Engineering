@@ -63,8 +63,11 @@ function createRateLimit({ scope, max, identity, message }) {
       res.setHeader('X-RateLimit-Remaining', String(Math.max(0, max - hits)))
 
       if (hits > max) {
-        const ttl = await cache.ttl(key)
-        if (ttl > 0) res.setHeader('Retry-After', String(ttl))
+        // Retry-After 用**窗口剩余秒数**，不是键的 TTL。
+        // 键在第一击时设 61 秒 TTL，窗口末尾撞限流的用户会被告知「请 61 秒后再试」，
+        // 而实际一两秒后就能用；显示真实剩余时间才诚实，客户端退避也不会等过头。
+        const remaining = WINDOW_SECONDS - (Math.floor(Date.now() / 1000) % WINDOW_SECONDS)
+        res.setHeader('Retry-After', String(Math.max(1, remaining)))
         return next(AppError.tooManyRequests(message))
       }
 

@@ -63,10 +63,10 @@
       <button class="state-btn state-btn--ghost" @tap="goProjects">返回项目列表</button>
     </view>
 
-    <!-- 加载失败 / 项目不可用 -->
+    <!-- 加载失败 / 项目不可用 / 请求太频繁 -->
     <view v-else-if="loadError" class="state-block">
       <image class="state-icon" src="/static/images/icon-acceptance-empty.png" mode="aspectFit" />
-      <text class="state-title">项目账目不可用</text>
+      <text class="state-title">{{ loadErrorTitle }}</text>
       <text class="state-text">{{ loadError }}</text>
       <button class="state-btn" @tap="reload">重新加载</button>
       <button class="state-btn state-btn--ghost" @tap="openProjectSheet">切换项目</button>
@@ -981,6 +981,9 @@ const CATEGORY_LABELS = {
 const safeTop = ref(12)
 const loading = ref(true)
 const loadError = ref('')
+// 错误态标题：原来写死「项目账目不可用」，429（请求太频繁）也被说成账目坏了，
+// 用户会以为数据丢了。与项目详情页同一套口径，见下面的 loadErrorTitle 赋值。
+const loadErrorTitle = ref('项目账目不可用')
 const current = ref(getCurrentProject())
 const detail = ref(null)
 const summary = ref(null)
@@ -1742,6 +1745,7 @@ async function load(options = {}) {
 
   if (!silent) loading.value = true
   loadError.value = ''
+  loadErrorTitle.value = '项目账目不可用'
 
   try {
     // 首屏聚合（BZGGCB-12）：项目详情 + 汇总 + 付款节点 + 阶段账目 + 支出构成
@@ -1792,6 +1796,11 @@ async function load(options = {}) {
     }
     lastLoadedAt = Date.now()
   } catch (err) {
+    if (err.statusCode === 401) {
+      uni.redirectTo({ url: '/pages/login/index' })
+      return
+    }
+
     if (err.statusCode === 404) {
       clearCurrentProject()
       current.value = null
@@ -1799,7 +1808,23 @@ async function load(options = {}) {
       resetLedgerData()
       await loadProjects()
       uni.showToast({ title: '上次进入的项目已不可用', icon: 'none' })
+    } else if (detail.value) {
+      // 已经加载过的页面，后台刷新失败只提示一句。
+      // 原来这里无条件写 loadError，于是「保存成功 → 刷新撞限流」会把整页
+      // 换成「项目账目不可用」，用户会以为账目坏了（BZGGCB-11 缺陷 2）。
+      // 项目详情页一直是这个口径，账目页跟它保持一致。
+      const message = err.statusCode === 429
+        ? (err.retryAfter ? `请求太频繁，请 ${err.retryAfter} 秒后再试` : '请求太频繁，请稍后重试')
+        : (err.message || '刷新失败，请稍后重试')
+      uni.showToast({ title: message, icon: 'none' })
+    } else if (err.statusCode === 429) {
+      // 首屏就撞限流：明说「请求太频繁」，不要把额度问题说成账目不可用
+      loadErrorTitle.value = '请求太频繁'
+      loadError.value = err.retryAfter
+        ? `请求太频繁，请 ${err.retryAfter} 秒后再试`
+        : '请求太频繁，请稍后重试'
     } else {
+      loadErrorTitle.value = '账目加载失败'
       loadError.value = err.message || '账目加载失败'
     }
   } finally {

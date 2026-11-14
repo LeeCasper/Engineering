@@ -18,8 +18,19 @@ const { userRateLimit } = require('./rateLimit')
 
 /**
  * 要求 C 端登录态。
+ *
+ * ── 幂等：同一请求只鉴权、只计一次限流 ──
+ * `routes/index.js` 把 7 条子路由串在同一个 `/projects` 挂载点上，每条子路由
+ * 自己 `use(requireMini)`。Express 会把它们**全部**执行一遍（匹配不到路由的那几条
+ * 也会跑 use 中间件），所以一个 `/projects/:id/visits` 请求会进来 7 次。
+ * 不在这里挡住的话，一次请求要回库查 7 次用户、并且扣掉 7 个读限流额度 ——
+ * 实测进一次项目详情（聚合前 9 个接口）扣了 24 个额度，用户可用量只剩标称的
+ * 1/3~1/4（CLAUDE.md 第 95 条）。鉴权结果与限流额度都是**请求级**的，
+ * 第二次进来直接放行，既不重查库也不重复计数。
  */
 async function requireMini(req, res, next) {
+  if (req.auth && req.auth.type === 'mini') return next()
+
   try {
     const token = jwt.extractToken(req)
     if (!token) throw AppError.unauthorized()

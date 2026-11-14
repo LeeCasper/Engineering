@@ -40,8 +40,16 @@ const PASSWORD_CHANGE_ALLOWLIST = ['/admin/auth/change-password', '/admin/auth/p
 
 /**
  * 要求 B 端登录态。校验顺序：签名 → 账号存在 → token_version → 状态 → 会话 → 首登改密限制。
+ *
+ * 与 C 端 `requireMini` 同理，这里也必须幂等：后台各子路由都挂在同一个
+ * `/admin` 下，一旦将来出现「多条子路由串在同一挂载点」的写法，Express 会把
+ * 每个 `use(requireAdmin)` 都跑一遍 —— 一次请求就会重复查账号、touch 会话、
+ * 并且扣多个限流额度（CLAUDE.md 第 95 条）。鉴权结果与限流额度都是请求级的，
+ * 已鉴权过的请求直接放行。
  */
 async function requireAdmin(req, res, next) {
+  if (req.auth && req.auth.type === 'admin') return next()
+
   try {
     const token = jwt.extractToken(req)
     if (!token) throw AppError.unauthorized()
