@@ -928,19 +928,14 @@ import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import {
   myProjects,
-  projectDetail,
-  projectPaymentNodes,
   payPaymentNode,
   confirmPaymentNode,
 } from '../../api/project'
 import {
-  fetchLedgerSummary,
+  fetchLedgerOverview,
   fetchLedgerEntries,
-  fetchExpenseBreakdown,
-  fetchStageLedger,
   createLedgerEntry,
   initiateReconciliation,
-  fetchReconciliations,
   fetchReconciliationDetail,
   confirmReconciliation,
   disputeReconciliation,
@@ -1142,6 +1137,10 @@ const EXPENSE_CATEGORY_OPTIONS = [
 ]
 
 let bootstrapped = false
+// onShow 静默刷新的最小间隔（BZGGCB-12）。记账是 tab 页，每次切回来都会 onShow；
+// 原来每次都整组重拉 6 个接口。30 秒内复用上次结果，下拉刷新不受限制。
+const REFRESH_MIN_INTERVAL_MS = 30 * 1000
+let lastLoadedAt = 0
 let confirmingNodeId = null
 let collectingNodeId = null
 let entriesSeq = 0
@@ -1744,7 +1743,10 @@ async function load(options = {}) {
   loadError.value = ''
 
   try {
-    const project = await projectDetail(context.id)
+    // 首屏聚合（BZGGCB-12）：项目详情 + 汇总 + 付款节点 + 阶段账目 + 支出构成
+    // + 对账单一次取回，原来这里是 1 + 5 个请求。流水列表仍按页签懒加载。
+    const overview = await fetchLedgerOverview(context.id)
+    const project = overview.project
     detail.value = project
     current.value = {
       ...context,
@@ -1774,25 +1776,20 @@ async function load(options = {}) {
       return
     }
 
-    const [summaryData, nodeData, stageData, breakdownData, recData] = await Promise.all([
-      fetchLedgerSummary(project.id),
-      projectPaymentNodes(project.id),
-      fetchStageLedger(project.id),
-      fetchExpenseBreakdown(project.id),
-      fetchReconciliations(project.id),
-    ])
-
-    summary.value = summaryData
-    nodes.value = (nodeData && nodeData.nodes) || []
-    stageLedger.value = stageData
-    breakdown.value = breakdownData
-    reconciliations.value = (recData && recData.list) || []
+    // 监理 / 无记账权限的成员：聚合接口已按原页面行为返回 null 数据集，
+    // 上面的角色判断会先跳走，这里不会被执行。
+    summary.value = overview.summary
+    nodes.value = (overview.paymentNodes && overview.paymentNodes.nodes) || []
+    stageLedger.value = overview.stageLedger
+    breakdown.value = overview.breakdown
+    reconciliations.value = (overview.reconciliations && overview.reconciliations.list) || []
 
     // 对账确认会让流水变成「已锁定」，返回流水页时必须重新取，
     // 否则会拿缓存里的旧 locked 状态继续显示
     if (activeTab.value === 'flow') {
       await loadEntries(true)
     }
+    lastLoadedAt = Date.now()
   } catch (err) {
     if (err.statusCode === 404) {
       clearCurrentProject()
@@ -2094,7 +2091,10 @@ onShow(() => {
     return
   }
   if (supervisorRedirecting) return
-  if (bootstrapped && !loading.value) load({ silent: true })
+  if (!bootstrapped || loading.value) return
+  // 切 tab 回来不必每次重拉：最小间隔内复用上次结果，只保留下拉 / 操作后的强制刷新
+  if (Date.now() - lastLoadedAt < REFRESH_MIN_INTERVAL_MS) return
+  load({ silent: true })
 })
 
 onPullDownRefresh(async () => {

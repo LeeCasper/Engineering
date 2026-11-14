@@ -7,6 +7,17 @@ import { request, uploadFile } from './request'
  * 金额一律是 DECIMAL 字符串，前端只负责格式化，不参与运算。
  */
 
+/**
+ * 记账页首屏聚合（BZGGCB-12）。
+ *
+ * 一次返回项目详情 + 汇总 + 付款节点 + 阶段账目 + 支出构成 + 对账单，
+ * 把首屏 6 个请求压到 1 个。流水列表仍走分页接口，切到「流水」页签时懒加载。
+ * 监理调用时 `ledgerAccess` 为 false，账目字段全为 null。
+ */
+export function fetchLedgerOverview(projectId) {
+  return request({ url: `/projects/${projectId}/ledger/overview` })
+}
+
 /** 账目总览（C-4.1）：合同额、已收、已支、待收、结余 */
 export function fetchLedgerSummary(projectId) {
   return request({ url: `/projects/${projectId}/ledger/summary` })

@@ -11,6 +11,17 @@ export function projectDetail(projectId) {
   return request({ url: `/projects/${projectId}` })
 }
 
+/**
+ * 项目详情首屏聚合（BZGGCB-12）。
+ *
+ * 一次返回详情 + 阶段树 + 验收 + 最新一条汇报 + 付款节点 + 账目汇总 + 联系方式
+ * + 考察记录 + 竣工报告状态，把首屏 9 个请求压到 1 个。
+ * 细粒度接口仍然保留：增量刷新（如只刷阶段树、只刷汇报）继续用它们。
+ */
+export function projectOverview(projectId) {
+  return request({ url: `/projects/${projectId}/overview` })
+}
+
 /** 阶段工序树（C-2.2 / C-2.3）：计划日期、门禁、canReport */
 export function projectStages(projectId) {
   return request({ url: `/projects/${projectId}/stages` })

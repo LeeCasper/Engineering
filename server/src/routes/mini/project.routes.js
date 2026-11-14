@@ -17,6 +17,7 @@ const controller = require('../../controllers/project.controller')
 const progress = require('../../controllers/progress.controller')
 const profile = require('../../controllers/profile.controller')
 const completionReport = require('../../controllers/projectCompletionReport.controller')
+const overview = require('../../controllers/miniOverview.controller')
 
 const router = express.Router()
 
@@ -29,6 +30,10 @@ router.get('/', asyncHandler(controller.myProjects))
 router.get('/my-stats', asyncHandler(profile.myStatsAll))
 router.get('/:id', asyncHandler(controller.detail))
 router.get('/:id/location', asyncHandler(controller.location))
+
+// 首屏聚合（BZGGCB-12）：详情 + 阶段 + 验收 + 最新汇报 + 其它卡片数据一次返回。
+// 细粒度接口全部保留 —— 聚合只减少首屏请求数，不取代增量刷新。
+router.get('/:id/overview', asyncHandler(overview.projectOverview))
 
 // 阶段工序树单列一个接口（§7.3）。它与项目详情的 stages 字段内容一致，
 // 但进度页需要单独刷新（提交汇报后只刷时间轴，不重拉整个项目详情）

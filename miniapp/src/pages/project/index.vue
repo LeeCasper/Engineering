@@ -652,20 +652,12 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import {
-  projectDetail,
-  projectStages,
-  projectAcceptances,
+  projectOverview,
   projectItemHistory,
-  projectReports,
-  projectPaymentNodes,
-  projectLedgerSummary,
-  projectContacts,
   confirmPaymentNode,
-  fetchProjectCompletionReport,
   generateProjectCompletionReport,
 } from '../../api/project'
 import { fetchReportComments, addReportComment } from '../../api/report'
-import { fetchProjectVisits } from '../../api/visit'
 import { resolveMediaUrl } from '../../api/request'
 import { getToken } from '../../store/session'
 import {
@@ -734,6 +726,11 @@ const commentSubmitting = ref(false)
 const activeReport = ref(null)
 
 let loadedOnce = false
+// onShow 静默刷新的最小间隔（BZGGCB-12）。原来每次从子页面返回都会整组重拉，
+// 而多数返回并没有改动项目数据。30 秒内的连续切换复用上次结果；
+// 下拉刷新与「更多 → 刷新」不受此限制，用户明确要刷新时立刻重取。
+const REFRESH_MIN_INTERVAL_MS = 30 * 1000
+let lastLoadedAt = 0
 
 const isOwner = computed(() => detail.value?.myRole === 'owner')
 // 临时业主与业主共享查看能力，但验收/付款/对账只有主业主能操作
@@ -1144,39 +1141,21 @@ async function load(silent = false) {
   loadErrorRetryable.value = false
 
   try {
-    const [
-      project,
-      stageData,
-      acceptance,
-      reportData,
-      nodeData,
-      ledgerData,
-      contactData,
-      visitData,
-      completionData,
-    ] = await Promise.all([
-      projectDetail(id.value),
-      projectStages(id.value).catch(() => null),
-      projectAcceptances(id.value).catch(() => null),
-      projectReports(id.value, { page: 1, pageSize: 20 }).catch(() => null),
-      projectPaymentNodes(id.value).catch(() => null),
-      projectLedgerSummary(id.value).catch(() => null),
-      projectContacts(id.value).catch(() => null),
-      // 考察记录不是项目详情的主数据；失败时不能把整页拖进错误态
-      fetchProjectVisits(id.value, { page: 1, pageSize: 3 }).catch(() => null),
-      // 监理没有查看权限；失败不应影响项目详情本身
-      fetchProjectCompletionReport(id.value).catch(() => null),
-    ])
+    // 首屏聚合（BZGGCB-12）：详情 / 阶段 / 验收 / 最新汇报 / 付款节点 / 账目汇总 /
+    // 联系方式 / 考察记录 / 竣工报告一次取回，原来这里是 9 个并发请求。
+    // 附属数据集的降级规则在后端与聚合前一致（无权限置 null，不拖垮整页）。
+    const overview = await projectOverview(id.value)
+    const project = overview.project
 
     detail.value = project
-    stageListRaw.value = (stageData && stageData.stages) || project.stages || []
-    acceptanceData.value = acceptance || { groups: [] }
-    reports.value = (reportData && reportData.list) || []
-    paymentNodes.value = (nodeData && nodeData.nodes) || []
-    ledger.value = ledgerData || null
-    contacts.value = (contactData && contactData.contacts) || []
-    visits.value = (visitData && visitData.list) || []
-    completionReport.value = completionData || null
+    stageListRaw.value = overview.stages || project.stages || []
+    acceptanceData.value = overview.acceptances || { groups: [] }
+    reports.value = (overview.reports && overview.reports.list) || []
+    paymentNodes.value = (overview.paymentNodes && overview.paymentNodes.nodes) || []
+    ledger.value = overview.ledgerSummary || null
+    contacts.value = (overview.contacts && overview.contacts.contacts) || []
+    visits.value = (overview.visits && overview.visits.list) || []
+    completionReport.value = overview.completionReport || null
 
     if (!expandedStageId.value) {
       expandedStageId.value = currentStage.value ? currentStage.value.id : null
@@ -1188,6 +1167,7 @@ async function load(silent = false) {
     }
 
     loadedOnce = true
+    lastLoadedAt = Date.now()
   } catch (err) {
     if (err.statusCode === 401) {
       uni.redirectTo({ url: '/pages/login/index' })
@@ -1556,7 +1536,11 @@ onLoad((options) => {
 })
 
 onShow(() => {
-  if (loadedOnce && !loading.value) load(true)
+  if (!loadedOnce || loading.value) return
+  // 刚从本页离开又回来（例如弹窗返回、tab 切换）不重复请求；
+  // 超过最小间隔才静默刷新，且只发聚合接口这 1 个请求。
+  if (Date.now() - lastLoadedAt < REFRESH_MIN_INTERVAL_MS) return
+  load(true)
 })
 
 onPullDownRefresh(() => {

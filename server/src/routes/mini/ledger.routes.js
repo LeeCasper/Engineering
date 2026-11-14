@@ -16,12 +16,16 @@ const { requireMini } = require('../../middlewares/miniAuth')
 const { tenantWriteGuard } = require('../../middlewares/tenantGuard')
 const { uploadAny } = require('../../middlewares/upload')
 const controller = require('../../controllers/ledger.controller')
+const overview = require('../../controllers/miniOverview.controller')
 
 const router = express.Router()
 router.use(requireMini)
 router.use('/:id', tenantWriteGuard({ resource: 'project' }))
 
 // ── 固定路径段必须排在参数段之前 ──
+// 首屏聚合（BZGGCB-12）：项目详情 + 汇总 + 付款节点 + 阶段账目 + 支出构成 + 对账单。
+// 必须排在 `/:id/ledger/:ledgerId` 之前，否则 `overview` 会被当成流水 id。
+router.get('/:id/ledger/overview', asyncHandler(overview.ledgerOverview))
 router.get('/:id/ledger/summary', asyncHandler(controller.summary))
 router.get('/:id/ledger/expense-breakdown', asyncHandler(controller.breakdown))
 router.get('/:id/stages/ledger', asyncHandler(controller.stageLedger))
