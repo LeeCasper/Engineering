@@ -161,6 +161,7 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow, onPullDownRefresh, onUnload } from '@dcloudio/uni-app'
 import { getToken } from '../../store/session'
+import { markProjectDirty } from '../../store/pageRefresh'
 import { deleteRoutePlan, fetchRoutePlan, previewRoutePlan } from '../../api/routePlan'
 
 defineOptions({ name: 'RoutePlanDetailPage' })
@@ -305,6 +306,9 @@ function onVisitCreated(payload) {
 
 function goCheckin(point) {
   if (!plan.value) return
+  // 路线点签到会写考察记录；返回项目详情时「考察记录」卡片必须立刻看到新记录，
+  // 不能被 30 秒最小刷新间隔挡住（BZGGCB-12）。
+  markProjectDirty(point.projectId)
   uni.navigateTo({
     url:
       `/pages/visit/checkin?projectId=${point.projectId}` +

@@ -650,7 +650,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onLoad, onShow, onPullDownRefresh, onUnload } from '@dcloudio/uni-app'
 import {
   projectOverview,
   projectItemHistory,
@@ -1545,8 +1545,28 @@ onLoad((options) => {
     return
   }
 
+  // 签到页提交成功后会广播 visit:created；从考察计划（路线站点）签到时，
+  // 本站页面栈里在它前面、不会经过 route-plan 的跳转前标记，所以这里也接一份。
+  uni.$on('visit:created', onVisitCreated)
+
   load()
 })
+
+onUnload(() => {
+  uni.$off('visit:created', onVisitCreated)
+})
+
+/**
+ * 考察记录被别处写入（路线点签到）后置刷新标记，返回时 onShow 消费即强制刷新。
+ *
+ * 只认本项目：考察计划可以同时排多个项目，在 A 的路线里签 B 的到，
+ * 不该让 A 的详情页多发一次请求。
+ */
+function onVisitCreated(payload) {
+  if (!payload || !id.value) return
+  if (Number(payload.projectId) !== Number(id.value)) return
+  markProjectDirty(id.value)
+}
 
 onShow(() => {
   if (!loadedOnce || loading.value) return
