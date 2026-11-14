@@ -942,6 +942,7 @@ import {
 } from '../../api/ledger'
 import { resolveMediaUrl } from '../../api/request'
 import { getCachedProjects, getToken } from '../../store/session'
+import { markLedgerDirty, consumeLedgerDirty } from '../../store/pageRefresh'
 import {
   getCurrentProject,
   setCurrentProject,
@@ -1933,6 +1934,8 @@ async function openReconciliation(rec) {
 
   // 阶段结算单有独立页面（应收、异议、结清下一阶段），不要塞进周期对账的详情面板
   if (rec && typeof rec === 'object' && rec.scopeType === 'stage') {
+    // 结算页可确认 / 提异议，确认后流水会变「已锁定」，返回必须刷新
+    markLedgerDirty(detail.value?.id || (current.value && current.value.id))
     uni.navigateTo({
       url: `/pages/settlement/detail?id=${id}`,
       fail: () => uni.showToast({ title: '阶段结算暂不可用', icon: 'none' }),
@@ -2092,8 +2095,12 @@ onShow(() => {
   }
   if (supervisorRedirecting) return
   if (!bootstrapped || loading.value) return
-  // 切 tab 回来不必每次重拉：最小间隔内复用上次结果，只保留下拉 / 操作后的强制刷新
-  if (Date.now() - lastLoadedAt < REFRESH_MIN_INTERVAL_MS) return
+
+  // 从阶段结算页返回属于写操作场景，无视最小间隔强制刷新（见 pageRefresh.js）
+  const dataMayHaveChanged = consumeLedgerDirty(detail.value?.id || (current.value && current.value.id))
+
+  // 纯浏览 / tab 切换不一定有数据变化：最小间隔内复用上次结果
+  if (!dataMayHaveChanged && Date.now() - lastLoadedAt < REFRESH_MIN_INTERVAL_MS) return
   load({ silent: true })
 })
 

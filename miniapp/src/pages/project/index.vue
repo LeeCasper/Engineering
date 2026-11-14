@@ -660,6 +660,7 @@ import {
 import { fetchReportComments, addReportComment } from '../../api/report'
 import { resolveMediaUrl } from '../../api/request'
 import { getToken } from '../../store/session'
+import { markProjectDirty, consumeProjectDirty } from '../../store/pageRefresh'
 import {
   getCurrentProject,
   setCurrentProject,
@@ -945,6 +946,8 @@ function stageSettlementLabel(stage) {
 
 function goStageSettlement(item) {
   if (!item) return
+  // 结算页可提交 / 确认 / 提异议，都会改「待我处理」与阶段状态
+  markProjectDirty(detail.value?.id)
   const query = item.id
     ? `id=${item.id}`
     : `projectId=${detail.value?.id || currentProjectId()}&stageId=${item.stageId}`
@@ -1263,6 +1266,8 @@ function goCheckin() {
     uni.showToast({ title: '项目尚未设置坐标，请联系管理员补全', icon: 'none' })
     return
   }
+  // 签到会写考察记录，返回时必须刷新「考察记录」卡片
+  markProjectDirty(detail.value.id)
   uni.navigateTo({
     url:
       `/pages/visit/checkin?projectId=${detail.value.id}` +
@@ -1330,6 +1335,8 @@ function navigateToProject() {
 
 function goAcceptance(task) {
   if (!task || !task.id) return
+  // 验收详情里会签名通过 / 驳回，返回后「待我处理」与阶段门禁都可能变
+  markProjectDirty(detail.value?.id)
   uni.navigateTo({ url: `/pages/acceptance/detail?id=${task.id}` })
 }
 
@@ -1370,11 +1377,15 @@ function showAllTasks() {
 }
 
 function showAllFeed() {
+  // 动态页可发表评论，首屏那条汇报的评论数会变
+  markProjectDirty(id.value)
   uni.navigateTo({ url: `/pages/project/feed?projectId=${id.value}` })
 }
 
 function goReport() {
   if (!detail.value) return
+  // 提交汇报后「工程动态」与完成度都会变，返回必须立刻显示新汇报
+  markProjectDirty(detail.value.id)
   uni.navigateTo({
     url: `/pages/report/submit?projectId=${detail.value.id}`,
   })
@@ -1537,9 +1548,14 @@ onLoad((options) => {
 
 onShow(() => {
   if (!loadedOnce || loading.value) return
-  // 刚从本页离开又回来（例如弹窗返回、tab 切换）不重复请求；
+
+  // 写操作页返回必须刷新：不刷新会显示旧汇报 / 旧待办 / 旧完成度，属于数据错误。
+  // 标记在跳转前写入（见 pageRefresh.js），这里消费一次即清空。
+  const dataMayHaveChanged = consumeProjectDirty(id.value)
+
+  // 纯浏览页（考察时间轴、路线规划、门锁密码）返回不重复请求；
   // 超过最小间隔才静默刷新，且只发聚合接口这 1 个请求。
-  if (Date.now() - lastLoadedAt < REFRESH_MIN_INTERVAL_MS) return
+  if (!dataMayHaveChanged && Date.now() - lastLoadedAt < REFRESH_MIN_INTERVAL_MS) return
   load(true)
 })
 

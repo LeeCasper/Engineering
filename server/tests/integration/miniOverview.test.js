@@ -132,6 +132,24 @@ describe('GET /projects/:id/overview —— 项目详情首屏聚合', () => {
     expect(res.status).toBe(401)
   })
 
+  it('阶段树与 /projects/:id/stages 同源，工长能看到 canReport', async () => {
+    const { projectId, foreman } = await setup()
+
+    const [overview, stages] = await Promise.all([
+      request.authed('get', `/projects/${projectId}/overview`, foreman.token),
+      request.authed('get', `/projects/${projectId}/stages`, foreman.token),
+    ])
+
+    expect(overview.status).toBe(200)
+    // 详情接口自带的 stages 没有 canReport；聚合必须用进度接口的视图，
+    // 否则工长的「汇报进度」入口会消失
+    expect(overview.body.data.stages).toEqual(stages.body.data.stages)
+    expect(overview.body.data.stages.every((stage) => typeof stage.canReport === 'boolean')).toBe(
+      true
+    )
+    expect(overview.body.data.stages.some((stage) => stage.canReport)).toBe(true)
+  })
+
   it('聚合结果与细粒度接口同源：业主的账目汇总数字一致', async () => {
     const { projectId, owner } = await setup()
 

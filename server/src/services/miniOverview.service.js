@@ -26,6 +26,7 @@ const reportService = require('./report.service')
 const ledgerService = require('./ledger.service')
 const profileService = require('./profile.service')
 const visitService = require('./visit.service')
+const progressService = require('./progress.service')
 const completionReportService = require('./projectCompletionReport.service')
 const reconciliationService = require('./reconciliation.service')
 
@@ -72,19 +73,30 @@ async function getProjectOverview(userId, projectId) {
   // 所有数据集**同时**开跑：详情本身也要跑同一套成员校验，先 await 它再加
   // 一层串行只会让首屏多等一个往返（实测约 +400ms），聚合就失去了意义。
   // 非参与项目时各 service 都会拒绝，Promise.all 直接失败，仍是 404（AC-P26）。
-  const [project, acceptances, reports, paymentNodes, ledgerSummary, contacts, visits, completionReport] =
+  const [project, stageView, acceptances, reports, paymentNodes, ledgerSummary, contacts, visits, completionReport] =
     await Promise.all([
       projectService.getProjectForMember(userId, projectId),
-      acceptanceService.listAcceptances(userId, projectId),
-      reportService.listReports(userId, projectId, {
-        paging: paging(1, REPORT_PREVIEW_LIMIT),
-      }),
+      // 阶段树必须用进度接口的视图：它带 `canReport` / `isPrimaryForeman` 等派生字段，
+      // 详情接口自带的 stages 只是原始树 —— 少了 canReport，工长的「汇报进度」入口会消失。
+      optionalData('stages', projectId, () => progressService.getProjectStages(userId, projectId)),
+      // 8 个附属数据集全部可选：聚合前前端对每一项都做了 `.catch(() => null)`，
+      // 单张卡片失败不该把整页拖进错误态 —— 只有「项目详情」本身是主数据。
+      optionalData('acceptances', projectId, () =>
+        acceptanceService.listAcceptances(userId, projectId)
+      ),
+      optionalData('reports', projectId, () =>
+        reportService.listReports(userId, projectId, {
+          paging: paging(1, REPORT_PREVIEW_LIMIT),
+        })
+      ),
       optionalData('payment-nodes', projectId, () =>
         ledgerService.listPaymentNodes(userId, projectId)
       ),
       optionalData('ledger-summary', projectId, () => ledgerService.getSummary(userId, projectId)),
       optionalData('contacts', projectId, () => profileService.getContacts(userId, projectId)),
-      visitService.listVisits(userId, projectId, { paging: paging(1, VISIT_PREVIEW_LIMIT) }),
+      optionalData('visits', projectId, () =>
+        visitService.listVisits(userId, projectId, { paging: paging(1, VISIT_PREVIEW_LIMIT) })
+      ),
       optionalData('completion-report', projectId, () =>
         completionReportService.getMiniState(userId, projectId)
       ),
@@ -92,9 +104,9 @@ async function getProjectOverview(userId, projectId) {
 
   return {
     project,
-    // 阶段树随详情一起下发（getProjectForMember 已带 stages），
-    // 不再单独请求 /projects/:id/stages
-    stages: project.stages || [],
+    // 与 `GET /projects/:id/stages` 同一份视图（含 canReport / isPrimaryForeman）；
+    // 该接口失败时退回详情自带的原始阶段树，页面仍可展示，只是没有汇报入口
+    stages: (stageView && stageView.stages) || project.stages || [],
     acceptances,
     reports,
     paymentNodes,
