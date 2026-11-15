@@ -580,6 +580,20 @@ uni-app + Vue 3 + Vite。页面与后端分离，通过 `src/config.js` 的 `API
   同范围保留旧值直到新值返回；「验收」用 `loaded` 标记，只有首次进入才显示首屏加载态。
   新增 tab 页的 `onShow` 刷新时沿用这个原则：**保留旧内容 + 后台更新，
   只有切换项目 / 范围变化才清空**。
+- **首屏聚合与细粒度接口并存**：项目详情 `GET /projects/:id/overview`、记账页
+  `GET /projects/:id/ledger/overview` 只服务首屏；`/stages`、`/reports`、`/ledger/summary`
+  等细粒度接口**全部保留**，供增量刷新与其它端复用，不要因为有了聚合就删或改它们。
+  聚合服务 `services/miniOverview.service.js` **不写 SQL**，每个数据集都调原 service，
+  权限 / 租户 / 归档口径与细粒度接口同源；新增数据集必须沿用同一套 service，不要为聚合另开查询。
+  降级方向是刻意相反的：详情聚合的附属数据集失败给 `null`（整页仍 200，只有项目详情本身
+  失败才报错）；记账聚合任一账目数据集失败则整页报错，不给半份财务数据。
+  监理走记账聚合返回 `ledgerAccess:false` 且账目字段全 `null`，非成员仍是 404。
+- **写操作返回必须刷新，30 秒节流不能吞掉它**：项目详情 / 记账页的 `onShow` 静默刷新有
+  30 秒最小间隔（省掉纯浏览页返回的整组重拉），但跳到可能写数据的页面之前必须
+  `markProjectDirty(projectId)`（记账页是 `markLedgerDirty`），返回时由 `onShow` 用
+  `consume*Dirty` 消费标记并无视间隔强制刷新一次。新增「会写数据的页面」时别忘了打标记 ——
+  用户看到旧完成度、旧待办、未锁定的旧流水，比多刷一次请求严重得多。
+  纯浏览页（考察时间轴、路线规划、门锁密码）不打标记。
 - **页面模块依次入场**：给内容容器加 `.gc-stagger`，直接子级会按
   `:nth-child` 以 20~340ms 的延迟依次淡入上浮（`gc-reveal-up`）。
   只加在纯内容容器（`.content`、`.card-list`、`.project-list`）上，
