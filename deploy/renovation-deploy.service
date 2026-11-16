@@ -8,6 +8,10 @@ Type=oneshot
 ExecStart=/usr/local/bin/renovation-deploy.sh
 TimeoutStartSec=1800
 Nice=10
+# 部署失败告警用的企业微信 webhook（WECOM_WEBHOOK=...）。
+# 文件不存在时由 `-` 前缀忽略，脚本会退化成「只记日志不告警」。
+# 该文件含密钥，权限必须是 600。
+EnvironmentFile=-/etc/renovation/deploy.env
 # 输出写入独立文件；journald 仍保留 unit 的启动/失败结果（systemctl status / journalctl -u）
 StandardOutput=append:/var/log/renovation/deploy.log
 StandardError=append:/var/log/renovation/deploy.log

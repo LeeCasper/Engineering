@@ -61,14 +61,54 @@ CI 不需要任何仓库 Secret：数据库与密钥都用 CI 专用假值。同
 1.5 **CI 闸门**：只有带 `ci-green/<完整 sha>` 标签的提交才继续。这个标签由 CI 的
     `mark-green` job 在三个 job 全绿后自动打上；标签还没出现说明 CI 仍在跑或失败，
     **保留线上旧版本**，等下一轮 timer 再看
+1.6 **隔离闸门**：这个提交上次部署失败并回滚过就跳过，不再重试（见下文「失败与回滚」）
 2. `git reset --hard origin/main`（`.env` 与 uploads 不被跟踪，不受影响）
 3. 仅当 `server/package*.json` 变化时执行 `npm ci --omit=dev`
 4. 执行 `npm run migrate`（迁移本身幂等）
 5. 仅当 `admin/` 变化或 `dist` 缺失时安装依赖并构建管理后台
-6. 仅当 `server/` 变化时重启 `renovation-api`，并轮询 `/health` 确认恢复
+6. 仅当 `server/` 变化时重启 `renovation-api`，并轮询**就绪探针**
+   `/api/v1/health` 确认恢复
 
 任一步失败都会在重启之前退出，线上继续跑旧进程。部署日志：
 `/var/log/renovation/deploy.log`。
+
+### 失败与回滚
+
+探针用的是 `/api/v1/health`（会真的 ping MySQL，DB 不可用返回 503），不是只证明
+进程活着的 `/health`。**不要换回 `/health`**，否则「进程起来了但连不上库」会被判为
+部署成功。
+
+新版本探活连续失败（默认 20 次 × 2 秒）时，脚本会：
+
+1. 把失败提交写进 `/srv/renovation/.failed-commit`；
+2. `git reset --hard` 到「上一次成功部署的提交」（没有标记时退回部署前的工作区）；
+3. 若回滚跨越了 `server/package*.json` 或 `admin/` 变化，重装依赖 / 重建管理后台；
+4. 重启并再次探活；
+5. 无论回滚成功与否都以非零退出 —— systemd 把这次部署标成 failed，日志里能查到。
+
+回滚成功后脚本会把 `.deployed-commit` 写成回滚目标。**隔离标记保留**，`origin/main`
+没变时 timer 不会再装一遍同一份坏代码（否则每 5 分钟重启一次，服务持续不可用）。
+出现新的 main 提交，或人工清空 `rm /srv/renovation/.failed-commit`（也可
+`DEPLOY_FORCE=1` 临时绕过）后恢复自动部署。
+
+**迁移不回滚**：迁移是前向的，代码回滚后新库结构仍然保留。因此回滚只恢复代码、
+依赖与后台产物；如果某次迁移本身不可逆，回滚后需要人工评估数据库状态。
+
+### 部署告警
+
+失败路径（包括脚本中途被 `set -e` 打断）会推企业微信群机器人，复用 CI 的
+`WECOM_WEBHOOK`。在服务器上建一个 600 权限的环境文件：
+
+```bash
+sudo install -d -m 755 /etc/renovation
+sudo sh -c 'umask 077; echo "WECOM_WEBHOOK=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." \
+  > /etc/renovation/deploy.env'
+sudo chmod 600 /etc/renovation/deploy.env
+```
+
+`renovation-deploy.service` 通过 `EnvironmentFile=-/etc/renovation/deploy.env` 注入；
+文件不存在或没配 webhook 时脚本只记日志，不影响部署结论。手动执行脚本时也会读取
+同一个文件。
 
 ### 为什么不是 GitHub Actions 推送部署
 
@@ -103,13 +143,37 @@ scp deploy/renovation-deploy.service deploy/renovation-deploy.timer \
   root@bzg.yanxinn.com:/etc/systemd/system/
 ssh root@bzg.yanxinn.com 'systemctl daemon-reload && systemctl enable --now renovation-deploy.timer'
 
+# 告警文件（含密钥，600；没有它部署仍能跑，只是不告警）
+sudo install -d -m 755 /etc/renovation
+sudo sh -c 'umask 077; echo "WECOM_WEBHOOK=<企业微信群机器人地址>" > /etc/renovation/deploy.env'
+sudo chmod 600 /etc/renovation/deploy.env
+
 # 手动触发一次
 ssh root@bzg.yanxinn.com 'systemctl start renovation-deploy.service'
 tail -f /var/log/renovation/deploy.log
 ```
 
+> 脚本改动**只有重新 scp 才会生效**：CD 只对 `APP_DIR` 做 `git reset`，
+> 不会把 `deploy/` 下的文件复制到 `/usr/local/bin` 或 `/etc/systemd/system`。
+
+### 改部署脚本后怎么验
+
+```bash
+bash -n deploy/renovation-deploy.sh
+bash deploy/test-deploy-lib.sh        # 纯决策逻辑（该不该部署 / 隔离 / 回滚目标 / 告警转义）
+bash deploy/test-deploy-rollback.sh   # 沙箱模拟：探活失败 → 回滚 → 隔离 → 新提交恢复
+```
+
+两个测试都不需要 root、不碰真实服务和数据库：`test-deploy-rollback.sh` 用 stub 替换
+`systemctl` / `npm` / `pnpm` / `curl`，在临时 git 仓库里跑完整链路。
+
 ### 回滚
 
-CD 不做自动回滚。出问题时把 main 指回上一个提交（`git revert` 后 push），
-timer 会在一个周期内自动部署回去；急用时直接 SSH 到服务器
-`git reset --hard <旧提交>` 后手动执行脚本。
+**新版本探活失败会自动回滚**（见「失败与回滚」）。需要人工回滚时有两种方式：
+
+- 常规：`git revert` 出问题的提交后 push，CI 绿了 timer 会在一个周期内部署回去；
+- 紧急：SSH 到服务器 `git reset --hard <旧提交>` 后手动执行
+  `/usr/local/bin/renovation-deploy.sh`，并确认 `.deployed-commit` 与工作区一致。
+
+如果线上是「代码没变但库结构被迁移改坏」这类不可逆问题，自动回滚帮不上忙，
+需要按备份恢复数据库 —— 迁移不回滚是刻意选择。
