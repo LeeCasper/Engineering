@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# 部署脚本的沙箱联调测试：模拟「新版本探活失败 → 自动回滚 → 隔离 → 新提交恢复」。
+# 部署脚本的沙箱联调测试：模拟「新版本探活失败 → 自动回滚 → 隔离 → 新提交恢复」，
+# 以及「回滚目标也不健康」时日志必须写出结论行。
 #
 # 所有副作用（systemctl / npm / pnpm / curl / journalctl）都 stub 到临时目录，
 # 不会碰真实服务、真实数据库，也不需要 root。
@@ -60,13 +61,17 @@ done
 
 if [ "$url" = "$SIM_HEALTH_URL" ]; then
   head=$(git -C "$SIM_APP" rev-parse HEAD)
-  [ "$head" = "$SIM_BAD_SHA" ] && { echo "unhealthy" >&2; exit 22; }
+  for bad in $SIM_BAD_SHAS; do
+    [ "$head" = "$bad" ] && { echo "unhealthy" >&2; exit 22; }
+  done
   echo '{"code":0,"data":{"checks":{"database":true}}}'
   exit 0
 fi
 
 if [ -n "$payload" ]; then
   echo "curl-notify $url" >> "$SIM_LOG"
+  # 告警正文原样落盘，断言用：结论必须同时出现在日志和告警里
+  echo "notify-payload $payload" >> "$SIM_LOG"
   if command -v node >/dev/null 2>&1; then
     node -e 'JSON.parse(process.argv[1])' "$payload" 2>/dev/null \
       && echo "notify-json-ok" >> "$SIM_LOG" \
@@ -102,7 +107,7 @@ git add -A && git commit -qm "c2: 探活会失败的提交"
 git push -q origin main
 SHA2=$(git rev-parse HEAD)
 git tag "ci-green/$SHA2" "$SHA2" && git push -q origin "ci-green/$SHA2"
-export SIM_BAD_SHA="$SHA2"
+export SIM_BAD_SHAS="$SHA2"
 
 # 场景起点：线上跑着 SHA1，成功标记也指向 SHA1
 echo "$SHA1" > "$ROOT/deployed"
@@ -135,6 +140,8 @@ if run_deploy "$ROOT/run1.out"; then no "应非零退出，实际 0"; else ok "�
   || no "隔离文件错误：$(cat "$FAILED_FILE" 2>/dev/null)"
 [ "$(git -C "$SIM_APP" rev-parse HEAD)" = "$SHA1" ] && ok "工作区已回滚" || no "工作区未回滚"
 grep -qF "回滚到 ${SHA1:0:7}" "$ROOT/run1.out" && ok "日志含回滚记录" || no "日志缺回滚记录"
+grep -qF "已回滚到 ${SHA1:0:7} 并探活通过，服务恢复" "$ROOT/run1.out" \
+  && ok "日志写出回滚成功结论" || no "日志缺回滚成功结论"
 grep -qF "systemctl restart renovation-api" "$SIM_LOG" && ok "重启了服务" || no "没有重启服务"
 grep -qF "notify-json-ok" "$SIM_LOG" && ok "告警已发送且 JSON 合法" || no "告警未发送或 JSON 非法"
 
@@ -160,11 +167,34 @@ if run_deploy "$ROOT/run3.out"; then ok "部署成功"; else no "应部署成功
 [ ! -f "$FAILED_FILE" ] && ok "隔离标记已清除" || no "隔离标记未清除"
 
 echo
+echo "第四轮：回滚目标也探活失败 → 日志写出结论并告警，不假装成功"
+# 让回滚目标（SHA3）与坏提交（SHA4）都探活失败：脚本必须明确写出「回滚后仍不健康」，
+# 而不是只留两条「就绪探针失败」让人自己推断（凤小九 C-003）。
+git -C "$SIM_APP" reset --hard -q "$SHA3"
+echo '{"name":"sim4"}' > "$SIM_APP/server/package.json"
+git -C "$SIM_APP" add -A && git -C "$SIM_APP" commit -qm "c4: 坏提交（回滚目标也不健康）"
+git -C "$SIM_APP" push -q origin main
+SHA4=$(git -C "$SIM_APP" rev-parse HEAD)
+git -C "$SIM_APP" tag "ci-green/$SHA4" "$SHA4" && git -C "$SIM_APP" push -q origin "ci-green/$SHA4"
+export SIM_BAD_SHAS="$SHA4 $SHA3"
+if run_deploy "$ROOT/run4.out"; then no "应非零退出，实际 0"; else ok "退出码非零"; fi
+grep -qF "回滚后仍不健康：服务不可用，等待人工介入" "$ROOT/run4.out" \
+  && ok "deploy.log 写出结论行" || no "deploy.log 缺「回滚后仍不健康」结论"
+grep -qF "回滚后仍不健康" "$SIM_LOG" && grep -qF "服务不可用" "$SIM_LOG" \
+  && ok "企微告警含同一结论" || no "企微告警缺结论"
+[ "$(cat "$FAILED_FILE" 2>/dev/null)" = "$SHA4" ] && ok "坏提交已隔离" \
+  || no "隔离文件错误：$(cat "$FAILED_FILE" 2>/dev/null)"
+[ "$(cat "$MARKER_FILE" 2>/dev/null)" = "$SHA3" ] && ok "成功标记未被写成坏提交" \
+  || no "标记错误：$(cat "$MARKER_FILE" 2>/dev/null)"
+[ "$(git -C "$SIM_APP" rev-parse HEAD)" = "$SHA3" ] && ok "工作区停在回滚目标" \
+  || no "工作区未回滚到 ${SHA3:0:7}"
+
+echo
 if [ "$fail" -eq 0 ]; then
   echo '全部通过'
 else
   echo "失败 $fail 项"
-  for f in run1 run2 run3; do
+  for f in run1 run2 run3 run4; do
     echo "--- ${f}.out"; tail -20 "$ROOT/$f.out"
   done
   # 失败时保留现场，方便排查

@@ -86,6 +86,17 @@ CI 不需要任何仓库 Secret：数据库与密钥都用 CI 专用假值。同
 4. 重启并再次探活；
 5. 无论回滚成功与否都以非零退出 —— systemd 把这次部署标成 failed，日志里能查到。
 
+日志结尾一定会写出**结论行**，不要只靠数「就绪探针失败」出现几次来推断：
+
+| 结局 | 日志结论行 |
+| --- | --- |
+| 回滚成功、服务恢复 | `已回滚到 <sha> 并探活通过，服务恢复；失败提交 <sha> 已隔离` |
+| 回滚后仍不健康 | `回滚后仍不健康：服务不可用，等待人工介入（回滚目标 …，失败提交 …）` |
+| 没有可回滚的提交 | `无法回滚：没有可用的历史提交，提交 <sha> 已隔离，服务不可用，等待人工介入` |
+
+企微告警的正文直接链到 `deploy.log`，所以结论必须落在日志里 —— 只写在告警里的话，
+点进日志的人看不到脚本最后停在哪。
+
 回滚成功后脚本会把 `.deployed-commit` 写成回滚目标。**隔离标记保留**，`origin/main`
 没变时 timer 不会再装一遍同一份坏代码（否则每 5 分钟重启一次，服务持续不可用）。
 出现新的 main 提交，或人工清空 `rm /srv/renovation/.failed-commit`（也可
@@ -161,7 +172,7 @@ tail -f /var/log/renovation/deploy.log
 ```bash
 bash -n deploy/renovation-deploy.sh
 bash deploy/test-deploy-lib.sh        # 纯决策逻辑（该不该部署 / 隔离 / 回滚目标 / 告警转义）
-bash deploy/test-deploy-rollback.sh   # 沙箱模拟：探活失败 → 回滚 → 隔离 → 新提交恢复
+bash deploy/test-deploy-rollback.sh   # 沙箱模拟：探活失败 → 回滚 → 隔离 → 新提交恢复；回滚目标也不健康时写结论
 ```
 
 两个测试都不需要 root、不碰真实服务和数据库：`test-deploy-rollback.sh` 用 stub 替换

@@ -236,6 +236,7 @@ handle_failure() { # NEW DEPLOYED OLD
   # 没有可回滚的提交（首次部署就失败）：隔离坏提交，停下等人工
   if [ -z "$target" ] || ! run_as_owner git -C "$APP_DIR" cat-file -e "${target}^{commit}" 2>/dev/null; then
     echo "$new" > "$FAILED_FILE"
+    log "无法回滚：没有可用的历史提交，提交 ${new:0:7} 已隔离，服务不可用，等待人工介入"
     notify "❌ 部署失败且无法回滚" "提交 ${new:0:7} 就绪检查失败，且没有可回滚的历史提交；服务当前不可用，需要人工介入。"
     exit 1
   fi
@@ -245,10 +246,14 @@ handle_failure() { # NEW DEPLOYED OLD
     # 这里**不能**调 mark_success —— 它会清掉隔离文件，而失败提交必须留着，
     # 否则 timer 下一轮又把同一份坏代码装一遍。
     echo "$target" > "$MARKER_FILE"
+    log "已回滚到 ${target:0:7} 并探活通过，服务恢复；失败提交 ${new:0:7} 已隔离"
     notify "⚠️ 部署失败，已自动回滚" "提交 ${new:0:7} 就绪检查失败，已回滚到 ${target:0:7}；该提交已隔离，等待新的 main 提交。"
     exit 1
   fi
 
+  # 日志必须自己写出结论：告警正文直接链到 deploy.log，点进去只看得到两条
+  # 「就绪探针失败」，读者得自己推断脚本最后停在哪。结论行由脚本补齐。
+  log "回滚后仍不健康：服务不可用，等待人工介入（回滚目标 ${target:0:7}，失败提交 ${new:0:7}）"
   notify "❌ 回滚后仍不健康" "提交 ${new:0:7} 失败，回滚到 ${target:0:7} 后仍无法通过就绪检查；服务不可用，需要人工介入。"
   exit 1
 }
