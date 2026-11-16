@@ -38,13 +38,38 @@ done
 exec "$@"
 EOF
 
-for cmd in systemctl npm pnpm journalctl; do
+for cmd in npm pnpm journalctl; do
   cat > "$BIN/$cmd" <<EOF
 #!/usr/bin/env bash
 echo "$cmd \$*" >> "\$SIM_LOG"
 exit 0
 EOF
 done
+
+# systemctl 替身：维护一个模拟主进程号，成功重启时换号。
+#   - show -p MainPID --value → 读当前进程号（0 表示没在跑）
+#   - restart → 前 SIM_RESTART_FAIL_TIMES 次返回 1（进程号不变），之后成功
+# 这样「restart 失败但旧进程仍在」能被脚本按进程号判出来（BZGGCB-17）。
+cat > "$BIN/systemctl" <<'EOF'
+#!/usr/bin/env bash
+echo "systemctl $*" >> "$SIM_LOG"
+case "$1" in
+  show)
+    cat "$SIM_PID_FILE" 2>/dev/null || echo 0
+    ;;
+  restart)
+    n=$(cat "$SIM_RESTART_FILE" 2>/dev/null || true)
+    n=$((${n:-0} + 1))
+    echo "$n" > "$SIM_RESTART_FILE"
+    if [ "$n" -le "${SIM_RESTART_FAIL_TIMES:-0}" ]; then
+      echo "Job for renovation-api.service failed (simulated)" >&2
+      exit 1
+    fi
+    echo $(( $(cat "$SIM_PID_FILE" 2>/dev/null || echo 1000) + 1 )) > "$SIM_PID_FILE"
+    ;;
+esac
+exit 0
+EOF
 
 # 就绪探针：当前 HEAD 是坏提交就返回 503（curl -f → 退出 22）；
 # 企业微信 webhook 则校验 JSON 是否可解析。
@@ -86,6 +111,10 @@ export PATH="$BIN:$PATH"
 export SIM_APP="$ROOT/app"
 export SIM_LOG="$ROOT/sim.log"
 export SIM_HEALTH_URL="http://127.0.0.1:3100/api/v1/health"
+export SIM_PID_FILE="$ROOT/api.pid"
+export SIM_RESTART_FILE="$ROOT/restart.count"
+echo 1000 > "$SIM_PID_FILE"
+: > "$SIM_RESTART_FILE"
 : > "$SIM_LOG"
 
 # ── 造一个带 origin 的沙箱仓库 ──
@@ -190,11 +219,39 @@ grep -qF "回滚后仍不健康" "$SIM_LOG" && grep -qF "服务不可用" "$SIM_
   || no "工作区未回滚到 ${SHA3:0:7}"
 
 echo
+echo "第五轮：systemctl restart 失败但探针恒通 → 判失败、回滚、告警（BZGGCB-17）"
+# 探针恒通、但第一次 restart 返回 1（模拟主进程号不变 = 旧进程仍在服务）。
+# 修复前这种情况被记成部署成功；修复后必须判失败并走回滚 + 企微告警。
+git -C "$SIM_APP" reset --hard -q "$SHA4"
+echo '{"name":"sim5"}' > "$SIM_APP/server/package.json"
+git -C "$SIM_APP" add -A && git -C "$SIM_APP" commit -qm "c5: 重启会失败的提交"
+git -C "$SIM_APP" push -q origin main
+SHA5=$(git -C "$SIM_APP" rev-parse HEAD)
+git -C "$SIM_APP" tag "ci-green/$SHA5" "$SHA5" && git -C "$SIM_APP" push -q origin "ci-green/$SHA5"
+export SIM_BAD_SHAS=""           # 就绪探针恒通：失败只能来自重启判定
+rm -f "$SIM_RESTART_FILE"        # 计数从头来
+export SIM_RESTART_FAIL_TIMES=1  # 只有第一次 restart 失败，回滚那次必须成功
+: > "$SIM_LOG"
+if run_deploy "$ROOT/run5.out"; then no "应非零退出，实际 0"; else ok "退出码非零"; fi
+[ "$(cat "$MARKER_FILE" 2>/dev/null)" = "$SHA3" ] && ok "成功标记未被写成新提交" \
+  || no "标记错误：$(cat "$MARKER_FILE" 2>/dev/null)"
+[ "$(cat "$FAILED_FILE" 2>/dev/null)" = "$SHA5" ] && ok "重启失败的提交已隔离" \
+  || no "隔离文件错误：$(cat "$FAILED_FILE" 2>/dev/null)"
+grep -qF "旧进程仍在服务（主进程号" "$ROOT/run5.out" && ok "日志写明旧进程仍在服务" \
+  || no "日志缺「旧进程仍在服务」的判定"
+grep -qF "已回滚到 ${SHA3:0:7} 并探活通过，服务恢复" "$ROOT/run5.out" \
+  && ok "回滚成功并写出结论行" || no "日志缺回滚成功结论"
+grep -qF "notify-payload" "$SIM_LOG" && grep -qF "${SHA5:0:7}" "$SIM_LOG" \
+  && ok "企微告警已发送且含失败提交" || no "企微告警未发送或不含失败提交"
+[ "$(git -C "$SIM_APP" rev-parse HEAD)" = "$SHA3" ] && ok "工作区已回滚到 ${SHA3:0:7}" \
+  || no "工作区未回滚"
+
+echo
 if [ "$fail" -eq 0 ]; then
   echo '全部通过'
 else
   echo "失败 $fail 项"
-  for f in run1 run2 run3 run4; do
+  for f in run1 run2 run3 run4 run5; do
     echo "--- ${f}.out"; tail -20 "$ROOT/$f.out"
   done
   # 失败时保留现场，方便排查

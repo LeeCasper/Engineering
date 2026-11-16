@@ -178,10 +178,41 @@ wait_healthy() {
   return 1
 }
 
-# 重启后端并等待就绪
+# 重启后端并等待就绪。
+#
+# 不能只看 `systemctl restart` 的退出码，也不能只看就绪探针（BZGGCB-17）：
+# 本函数是在 `if restart_and_probe` / `if rollback_and_probe` 里被调用的，
+# `set -e` 在 if 上下文不生效，restart 的失败会被静默吞掉；而重启失败时
+# 旧进程仍在服务，探针照样返回 200 —— 坏部署被写成成功，timer 下一轮判
+# 「已是最新」不再重试，新代码永远不生效且没有告警。
+#
+# 判定标准改成「进程有没有真的被换掉」：
+#   - 重启后主进程号没变且进程仍在 → 旧进程还在服务，判失败（不看退出码）；
+#   - 退出码非 0 且读不到进程号 / 进程已不在 → 判失败；
+#   - 进程号确实变了但命令报错 → 新进程已在跑，交给就绪探针，不白回滚一次；
+#   - 其余情况 → 等就绪探针。
 restart_and_probe() {
   log "重启 renovation-api"
-  systemctl restart renovation-api
+  local before after rc=0
+  # 服务未运行时 systemctl 返回 0（不是空串），下面按「0 表示没有进程」处理
+  before=$(systemctl show -p MainPID --value renovation-api 2>/dev/null || true)
+  systemctl restart renovation-api || rc=$?
+  after=$(systemctl show -p MainPID --value renovation-api 2>/dev/null || true)
+
+  if [ -n "$after" ] && [ "$after" != "0" ] && [ "$after" = "$before" ]; then
+    log "重启失败：旧进程仍在服务（主进程号 ${before} 未变，systemctl restart 退出码 ${rc}），判部署失败"
+    return 1
+  fi
+
+  if [ "$rc" -ne 0 ] && { [ -z "$before" ] || [ -z "$after" ] || [ "$after" = "0" ]; }; then
+    log "重启失败：systemctl restart 退出码 ${rc}，判部署失败"
+    return 1
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    log "systemctl restart 返回 ${rc}，但主进程号已变化（${before} -> ${after}），以就绪探针为准"
+  fi
+
   wait_healthy
 }
 
@@ -228,7 +259,7 @@ rollback_and_probe() { # TARGET BROKEN
 handle_failure() { # NEW DEPLOYED OLD
   local new=$1 deployed=$2 old=$3 target
 
-  log "新版本就绪检查失败，准备回滚"
+  log "新版本重启或就绪检查失败，准备回滚"
   journalctl -u renovation-api -n 50 --no-pager || true
 
   target=$(choose_rollback_target "$deployed" "$old" "$new")
@@ -237,7 +268,7 @@ handle_failure() { # NEW DEPLOYED OLD
   if [ -z "$target" ] || ! run_as_owner git -C "$APP_DIR" cat-file -e "${target}^{commit}" 2>/dev/null; then
     echo "$new" > "$FAILED_FILE"
     log "无法回滚：没有可用的历史提交，提交 ${new:0:7} 已隔离，服务不可用，等待人工介入"
-    notify "❌ 部署失败且无法回滚" "提交 ${new:0:7} 就绪检查失败，且没有可回滚的历史提交；服务当前不可用，需要人工介入。"
+    notify "❌ 部署失败且无法回滚" "提交 ${new:0:7} 重启或就绪检查失败，且没有可回滚的历史提交；服务当前不可用，需要人工介入。"
     exit 1
   fi
 
@@ -247,7 +278,7 @@ handle_failure() { # NEW DEPLOYED OLD
     # 否则 timer 下一轮又把同一份坏代码装一遍。
     echo "$target" > "$MARKER_FILE"
     log "已回滚到 ${target:0:7} 并探活通过，服务恢复；失败提交 ${new:0:7} 已隔离"
-    notify "⚠️ 部署失败，已自动回滚" "提交 ${new:0:7} 就绪检查失败，已回滚到 ${target:0:7}；该提交已隔离，等待新的 main 提交。"
+    notify "⚠️ 部署失败，已自动回滚" "提交 ${new:0:7} 重启或就绪检查失败，已回滚到 ${target:0:7}；该提交已隔离，等待新的 main 提交。"
     exit 1
   fi
 
